@@ -19,11 +19,11 @@ server) can be added under `packages/` without restructuring.
 
 ## Workflow when omnigraph cuts a new release
 
-1. Bump `OMNIGRAPH_VERSION` in `package.json` (root) to match the omnigraph release tag (e.g., `0.4.0`).
-2. `pnpm run sync-spec` — fetches `openapi.json` from `https://raw.githubusercontent.com/ModernRelay/omnigraph/v$OMNIGRAPH_VERSION/openapi.json` into `spec/openapi.json`.
+1. Bump `.omnigraph-version` (a single-line file at the repo root) to match the omnigraph release tag (e.g., `0.4.0`).
+2. `pnpm run sync-spec` — fetches `openapi.json` from `https://raw.githubusercontent.com/ModernRelay/omnigraph/v$(cat .omnigraph-version)/openapi.json` into `spec/openapi.json`.
 3. `pnpm run generate` — regenerates `packages/sdk/src/generated/`.
 4. Commit both `spec/openapi.json` and `packages/sdk/src/generated/`. PR shows the full upstream change.
-5. Bump `packages/sdk/package.json#version` to match `OMNIGRAPH_VERSION`. Tag `vX.Y.Z`.
+5. Bump `packages/sdk/package.json#version` to match `.omnigraph-version`. Tag `vX.Y.Z`.
 6. `release.yml` publishes `@modernrelay/omnigraph@X.Y.Z` to npm.
 
 ## Version alignment

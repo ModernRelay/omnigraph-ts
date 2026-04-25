@@ -39,7 +39,7 @@ const result = await read({
 ## What's exported
 
 - `createOmnigraphClient(options)` — configure the shared client.
-- One function per API operation (snake_case match with `operationId` from the spec).
+- One function per API operation (camelCase, derived from `operationId` in the spec).
 - All request/response types.
 
 The shape comes from hey-api's defaults; see the

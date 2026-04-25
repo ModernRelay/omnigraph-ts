@@ -18,10 +18,6 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: Record<string, unknown>;
 };
 
-/**
- * List all branches.
- * Returns branch names sorted alphabetically. Read-only.
- */
 export const listBranches = <ThrowOnError extends boolean = false>(options?: Options<ListBranchesData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<ListBranchesResponse, ListBranchesError, ThrowOnError>({
         security: [
@@ -35,12 +31,6 @@ export const listBranches = <ThrowOnError extends boolean = false>(options?: Opt
     });
 };
 
-/**
- * Create a new branch.
- * Forks `name` off of `from` (defaults to `main`). The new branch shares
- * table data with its parent until it is mutated. Returns 409 if `name`
- * already exists.
- */
 export const createBranch = <ThrowOnError extends boolean = false>(options: Options<CreateBranchData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<CreateBranchResponse, CreateBranchError, ThrowOnError>({
         security: [
@@ -58,13 +48,6 @@ export const createBranch = <ThrowOnError extends boolean = false>(options: Opti
     });
 };
 
-/**
- * Merge one branch into another.
- * Merges `source` into `target` (defaults to `main`). Outcome is one of
- * `already_up_to_date`, `fast_forward`, or `merged`. Returns 409 with the
- * list of conflicts if the merge cannot be completed; the target is left
- * unchanged in that case. **Destructive** to `target` on success.
- */
 export const mergeBranches = <ThrowOnError extends boolean = false>(options: Options<MergeBranchesData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<MergeBranchesResponse, MergeBranchesError, ThrowOnError>({
         security: [
@@ -82,12 +65,6 @@ export const mergeBranches = <ThrowOnError extends boolean = false>(options: Opt
     });
 };
 
-/**
- * Delete a branch.
- * **Irreversible.** Removes the branch pointer; commits remain reachable
- * only if referenced by another branch. Returns 404 if the branch does not
- * exist.
- */
 export const deleteBranch = <ThrowOnError extends boolean = false>(options: Options<DeleteBranchData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).delete<DeleteBranchResponse, DeleteBranchError, ThrowOnError>({
         security: [
@@ -101,13 +78,6 @@ export const deleteBranch = <ThrowOnError extends boolean = false>(options: Opti
     });
 };
 
-/**
- * Apply a GQ mutation to a branch.
- * Writes to the named `branch` (defaults to `main`). Mutations are atomic
- * per call and produce a new commit. Returns counts of nodes and edges
- * affected. **Destructive**: on success the branch is updated; rejected
- * mutations may still acquire locks briefly. Returns 409 on merge conflict.
- */
 export const change = <ThrowOnError extends boolean = false>(options: Options<ChangeData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<ChangeResponse, ChangeError, ThrowOnError>({
         security: [
@@ -125,11 +95,6 @@ export const change = <ThrowOnError extends boolean = false>(options: Options<Ch
     });
 };
 
-/**
- * List commits.
- * Filter by `branch` to get the commits on a single branch (most recent
- * first); omit to list across all branches. Read-only.
- */
 export const listCommits = <ThrowOnError extends boolean = false>(options?: Options<ListCommitsData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<ListCommitsResponse, ListCommitsError, ThrowOnError>({
         security: [
@@ -143,11 +108,6 @@ export const listCommits = <ThrowOnError extends boolean = false>(options?: Opti
     });
 };
 
-/**
- * Get a single commit.
- * Returns the commit's manifest version, parent commit(s), and creation
- * metadata. Read-only.
- */
 export const getCommit = <ThrowOnError extends boolean = false>(options: Options<GetCommitData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).get<GetCommitResponse, GetCommitError, ThrowOnError>({
         security: [
@@ -161,13 +121,6 @@ export const getCommit = <ThrowOnError extends boolean = false>(options: Options
     });
 };
 
-/**
- * Stream the contents of a branch as NDJSON.
- * Emits one JSON object per line (`application/x-ndjson`). Filter with
- * `type_names` (node/edge type names) and/or `table_keys`; both empty
- * streams the entire branch. Suitable for large exports — the response is
- * streamed, not buffered. Read-only.
- */
 export const export_ = <ThrowOnError extends boolean = false>(options: Options<ExportData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<unknown, ExportError, ThrowOnError>({
         security: [
@@ -185,12 +138,6 @@ export const export_ = <ThrowOnError extends boolean = false>(options: Options<E
     });
 };
 
-/**
- * Liveness probe.
- * Returns server status and version. Unauthenticated; safe to call from any
- * caller. Use this to confirm the server is reachable before invoking other
- * endpoints.
- */
 export const health = <ThrowOnError extends boolean = false>(options?: Options<HealthData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<HealthResponse, unknown, ThrowOnError>({
         url: '/healthz',
@@ -198,14 +145,6 @@ export const health = <ThrowOnError extends boolean = false>(options?: Options<H
     });
 };
 
-/**
- * Bulk-ingest NDJSON data into a branch.
- * `data` is NDJSON with one record per line. `mode` controls behavior on
- * existing rows: `merge` upserts by id (default), `append` blindly inserts,
- * `overwrite` replaces table contents. If `branch` does not exist it is
- * created from `from` (defaults to `main`). **Destructive** when `mode` is
- * `overwrite` or when ingest produces conflicting writes.
- */
 export const ingest = <ThrowOnError extends boolean = false>(options: Options<IngestData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<IngestResponse, IngestError, ThrowOnError>({
         security: [
@@ -223,14 +162,6 @@ export const ingest = <ThrowOnError extends boolean = false>(options: Options<In
     });
 };
 
-/**
- * Execute a GQ read query.
- * Runs the query in `query_source` against either a branch or a frozen
- * snapshot (mutually exclusive). When `query_source` defines multiple named
- * queries, pick one with `query_name`. `params` is a JSON object whose keys
- * match the parameters declared by the query. Returns rows as a JSON array
- * plus a `columns` list. Read-only.
- */
 export const read = <ThrowOnError extends boolean = false>(options: Options<ReadData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<ReadResponse, ReadError, ThrowOnError>({
         security: [
@@ -248,12 +179,6 @@ export const read = <ThrowOnError extends boolean = false>(options: Options<Read
     });
 };
 
-/**
- * List all runs.
- * A run is an ephemeral branch produced by an agent or background job. The
- * list includes pending, in-progress, published, and aborted runs across
- * all target branches. Read-only.
- */
 export const listRuns = <ThrowOnError extends boolean = false>(options?: Options<ListRunsData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<ListRunsResponse, ListRunsError, ThrowOnError>({
         security: [
@@ -267,11 +192,6 @@ export const listRuns = <ThrowOnError extends boolean = false>(options?: Options
     });
 };
 
-/**
- * Get a single run.
- * Returns the run's status, target/run branches, base snapshot, and (if
- * published) the resulting snapshot id. Read-only.
- */
 export const getRun = <ThrowOnError extends boolean = false>(options: Options<GetRunData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).get<GetRunResponse, GetRunError, ThrowOnError>({
         security: [
@@ -285,11 +205,6 @@ export const getRun = <ThrowOnError extends boolean = false>(options: Options<Ge
     });
 };
 
-/**
- * Abort a run.
- * Marks the run as aborted and releases its working branch. **Irreversible**:
- * the run cannot be resumed once aborted.
- */
 export const abortRun = <ThrowOnError extends boolean = false>(options: Options<AbortRunData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<AbortRunResponse, AbortRunError, ThrowOnError>({
         security: [
@@ -303,11 +218,6 @@ export const abortRun = <ThrowOnError extends boolean = false>(options: Options<
     });
 };
 
-/**
- * Publish a run to its target branch.
- * Promotes the run's snapshot onto its `target_branch` as a new commit. The
- * run must be in a publishable state. **Destructive** to the target branch.
- */
 export const publishRun = <ThrowOnError extends boolean = false>(options: Options<PublishRunData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<PublishRunResponse, PublishRunError, ThrowOnError>({
         security: [
@@ -321,12 +231,6 @@ export const publishRun = <ThrowOnError extends boolean = false>(options: Option
     });
 };
 
-/**
- * Read the current schema source.
- * Returns the project's schema as a single string in `.pg` source form.
- * Useful for clients that want to introspect available types and tables
- * before constructing GQ queries. Read-only.
- */
 export const getSchema = <ThrowOnError extends boolean = false>(options?: Options<GetSchemaData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<GetSchemaResponse, GetSchemaError, ThrowOnError>({
         security: [
@@ -340,13 +244,6 @@ export const getSchema = <ThrowOnError extends boolean = false>(options?: Option
     });
 };
 
-/**
- * Apply a schema migration.
- * Diffs `schema_source` against the current schema and applies the resulting
- * migration steps (add/drop type, add/drop column, etc.). **Destructive**:
- * some steps drop data. Returns the list of steps applied; if `applied` is
- * false the diff was unsupported and no changes were made.
- */
 export const applySchema = <ThrowOnError extends boolean = false>(options: Options<ApplySchemaData, ThrowOnError>) => {
     return (options.client ?? _heyApiClient).post<ApplySchemaResponse, ApplySchemaError, ThrowOnError>({
         security: [
@@ -364,12 +261,6 @@ export const applySchema = <ThrowOnError extends boolean = false>(options: Optio
     });
 };
 
-/**
- * Read the current snapshot of a branch.
- * Returns the manifest version plus per-table metadata (path, version, row
- * count) for every table on the branch. Defaults to `main` when `branch` is
- * omitted. Read-only.
- */
 export const getSnapshot = <ThrowOnError extends boolean = false>(options?: Options<GetSnapshotData, ThrowOnError>) => {
     return (options?.client ?? _heyApiClient).get<GetSnapshotResponse, GetSnapshotError, ThrowOnError>({
         security: [

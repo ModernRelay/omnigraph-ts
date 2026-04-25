@@ -5,6 +5,7 @@
   "description": "TypeScript SDK and tooling for the Omnigraph HTTP API.",
   "license": "MIT",
   "repository": "github:ModernRelay/omnigraph-ts",
+  "type": "module",
   "engines": {
     "node": ">=22"
   },

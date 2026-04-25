@@ -8,13 +8,7 @@ export type BranchCreateOutput = {
 };
 
 export type BranchCreateRequest = {
-    /**
-     * Parent branch to fork from. Defaults to `main`.
-     */
     from?: string | null;
-    /**
-     * Name of the new branch. Must not already exist.
-     */
     name: string;
 };
 
@@ -38,13 +32,7 @@ export type BranchMergeOutput = {
 };
 
 export type BranchMergeRequest = {
-    /**
-     * Source branch whose commits will be merged.
-     */
     source: string;
-    /**
-     * Target branch that will receive the merge. Defaults to `main`.
-     */
     target?: string | null;
 };
 
@@ -57,22 +45,9 @@ export type ChangeOutput = {
 };
 
 export type ChangeRequest = {
-    /**
-     * Target branch. Defaults to `main`.
-     */
     branch?: string | null;
-    /**
-     * JSON object whose keys match the mutation's declared parameters.
-     */
     params?: unknown;
-    /**
-     * Name of the mutation to run when `query_source` declares multiple.
-     */
     query_name?: string | null;
-    /**
-     * GQ mutation source containing `insert`, `update`, or `delete` statements.
-     * May declare multiple named mutations; pick one with `query_name`.
-     */
     query_source: string;
 };
 
@@ -82,9 +57,6 @@ export type CommitListOutput = {
 
 export type CommitOutput = {
     actor_id?: string | null;
-    /**
-     * Commit creation time as Unix epoch microseconds.
-     */
     created_at: number;
     graph_commit_id: string;
     manifest_branch?: string | null;
@@ -102,17 +74,8 @@ export type ErrorOutput = {
 };
 
 export type ExportRequest = {
-    /**
-     * Branch to export. Defaults to `main`.
-     */
     branch?: string | null;
-    /**
-     * Restrict the export to these table keys. Empty exports all tables.
-     */
     table_keys?: Array<string>;
-    /**
-     * Restrict the export to these node/edge type names. Empty exports all types.
-     */
     type_names?: Array<string>;
 };
 
@@ -133,18 +96,8 @@ export type IngestOutput = {
 };
 
 export type IngestRequest = {
-    /**
-     * Target branch. Created from `from` if it does not yet exist. Defaults to `main`.
-     */
     branch?: string | null;
-    /**
-     * NDJSON payload: one record per line, each shaped
-     * `{"type": "<TypeName>", "data": {...}}`.
-     */
     data: string;
-    /**
-     * Parent branch used to create `branch` if it does not exist. Defaults to `main`.
-     */
     from?: string | null;
     mode?: null | LoadMode;
 };
@@ -177,27 +130,10 @@ export type ReadOutput = {
 };
 
 export type ReadRequest = {
-    /**
-     * Branch to read from. Mutually exclusive with `snapshot`. Defaults to `main`.
-     */
     branch?: string | null;
-    /**
-     * JSON object whose keys match the query's declared parameters.
-     */
     params?: unknown;
-    /**
-     * Name of the query to run when `query_source` declares multiple. Optional
-     * when only one query is declared.
-     */
     query_name?: string | null;
-    /**
-     * GQ query source. May declare one or more named queries; pick one with
-     * `query_name` if there is more than one.
-     */
     query_source: string;
-    /**
-     * Snapshot id to read from. Mutually exclusive with `branch`.
-     */
     snapshot?: string | null;
 };
 
@@ -214,9 +150,6 @@ export type RunOutput = {
     actor_id?: string | null;
     base_manifest_version: number;
     base_snapshot_id: string;
-    /**
-     * Run creation time as Unix epoch microseconds.
-     */
     created_at: number;
     operation_hash?: string | null;
     published_snapshot_id?: string | null;
@@ -224,9 +157,6 @@ export type RunOutput = {
     run_id: string;
     status: string;
     target_branch: string;
-    /**
-     * Last status change as Unix epoch microseconds.
-     */
     updated_at: number;
 };
 
@@ -240,10 +170,6 @@ export type SchemaApplyOutput = {
 };
 
 export type SchemaApplyRequest = {
-    /**
-     * Project schema in `.pg` source form. The diff against the current
-     * schema produces the migration steps that will be applied.
-     */
     schema_source: string;
 };
 
