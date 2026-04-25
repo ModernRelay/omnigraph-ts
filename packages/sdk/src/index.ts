@@ -33,6 +33,3 @@ export function createOmnigraphClient(options: OmnigraphClientOptions) {
   });
   return client;
 }
-
-const _ciSmokeTypeError: number = "this is a string not a number";
-void _ciSmokeTypeError;

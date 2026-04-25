@@ -1,10 +1,8 @@
 import { defineConfig } from 'tsup';
+import { thisDoesNotExist } from 'this-package-does-not-exist';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: [thisDoesNotExist],
   format: ['esm', 'cjs'],
   dts: true,
-  clean: true,
-  sourcemap: true,
-  target: 'node22',
 });
