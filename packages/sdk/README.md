@@ -46,6 +46,30 @@ The shape comes from hey-api's defaults; see the
 [hey-api docs](https://heyapi.dev) for client interceptors, request/response
 hooks, and per-call config.
 
+## Operation naming
+
+Operations track the OpenAPI `operationId` in camelCase. One name collides
+with a TypeScript reserved word: `export` becomes `export_` (note the
+trailing underscore). All other operations use their natural name.
+
+## Multiple servers in one process
+
+`createOmnigraphClient()` configures a shared singleton. If you need to
+talk to multiple servers from the same process, use hey-api's per-call
+override:
+
+```ts
+import { createClient } from '@hey-api/client-fetch';
+import { listBranches } from '@modernrelay/omnigraph';
+
+const eu = createClient({ baseUrl: 'https://eu.example' });
+const us = createClient({ baseUrl: 'https://us.example' });
+
+await listBranches({ client: eu });
+await listBranches({ client: us });
+```
+
+
 ## License
 
 MIT

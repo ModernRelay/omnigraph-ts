@@ -37,7 +37,8 @@
     "generate": "openapi-ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist src/generated"
+    "clean": "rm -rf dist src/generated",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@hey-api/client-fetch": "^0.13.0"
