@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "INTENTIONALLY MUTATED FOR CI TEST",
+    "title": "Omnigraph API",
     "description": "HTTP API for the Omnigraph graph database",
     "license": {
       "name": "MIT",
