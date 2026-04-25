@@ -4,8 +4,7 @@ export default defineConfig({
   input: '../../spec/openapi.json',
   output: {
     path: 'src/generated',
-    format: 'prettier',
-    lint: false,
+    postProcess: ['prettier'],
   },
   plugins: [
     '@hey-api/client-fetch',
