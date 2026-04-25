@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify spec matches upstream pinned tag
+        run: pnpm run check-drift
+      - name: Verify generated SDK is up to date
+        run: |
+          pnpm run generate
+          if ! git diff --quiet packages/sdk/src/generated; then
+            echo "Generated SDK is stale. Run 'pnpm run generate' and commit."
+            git diff packages/sdk/src/generated
+            exit 1
+          fi
+      - run: pnpm run typecheck
+      - run: pnpm run build
