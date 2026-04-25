@@ -1,35 +1,63 @@
-import { client } from './generated/client.gen';
+import Omnigraph from './client';
 
-export * from './generated';
+export default Omnigraph;
+export { Omnigraph };
 
-export interface OmnigraphClientOptions {
-  baseUrl: string;
-  token?: string;
-  fetch?: typeof globalThis.fetch;
-}
+export type { OmnigraphOptions, SnapshotInput } from './client';
+export type { CallOptions, ListCommitsInput, ListRunsInput, GetSchemaInput, FetchLike } from './internals';
 
-/**
- * Configure the SDK's shared HTTP client. Call once at application start.
- *
- * @example
- * ```ts
- * import { createOmnigraphClient, listBranches } from '@modernrelay/omnigraph';
- *
- * createOmnigraphClient({
- *   baseUrl: 'http://localhost:8080',
- *   token: process.env.OMNIGRAPH_TOKEN,
- * });
- *
- * const { data, error } = await listBranches();
- * ```
- */
-export function createOmnigraphClient(options: OmnigraphClientOptions) {
-  client.setConfig({
-    baseUrl: options.baseUrl,
-    headers: options.token
-      ? { Authorization: `Bearer ${options.token}` }
-      : undefined,
-    ...(options.fetch ? { fetch: options.fetch } : {}),
-  });
-  return client;
-}
+// Errors — typed hierarchy. Catch the specific class you care about.
+export {
+  OmnigraphError,
+  BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  InternalServerError,
+  NetworkError,
+  TimeoutError,
+} from './errors';
+
+// Public DTO types (camelCase). Inputs end in `Input`; outputs are bare nouns.
+export type {
+  // Branches
+  BranchCreate,
+  BranchCreateInput,
+  BranchDelete,
+  BranchList,
+  BranchMerge,
+  BranchMergeInput,
+  BranchMergeOutcome,
+  // Commits
+  Commit,
+  CommitList,
+  // Runs
+  Run,
+  RunList,
+  // Schema
+  Schema,
+  SchemaApply,
+  SchemaApplyInput,
+  // Operations
+  Change,
+  ChangeInput,
+  ExportInput,
+  Health,
+  Ingest,
+  IngestInput,
+  IngestTable,
+  Read,
+  ReadInput,
+  ReadTarget,
+  Snapshot,
+  SnapshotTable,
+  // Conflict / errors / shared
+  MergeConflict,
+  MergeConflictKindOutput,
+  ErrorCode,
+  ErrorOutput,
+  LoadMode,
+  // Utility
+  Camelize,
+} from './types';

@@ -26,5 +26,8 @@ jobs:
             git diff packages/sdk/src/generated
             exit 1
           fi
+      - name: Verify every operation has a facade binding
+        run: pnpm run check-coverage
       - run: pnpm run typecheck
       - run: pnpm run build
+      - run: pnpm run test

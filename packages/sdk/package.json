@@ -38,16 +38,15 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist src/generated",
-    "prepublishOnly": "pnpm run build"
-  },
-  "dependencies": {
-    "@hey-api/client-fetch": "^0.13.0"
+    "prepublishOnly": "pnpm run build",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.96.1",
     "prettier": "^3.8.3",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2"
   },
   "publishConfig": {
     "access": "public"
