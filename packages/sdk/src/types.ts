@@ -78,7 +78,14 @@ export type ReadInput = Camelize<ReadRequest>;
 export type SchemaApplyInput = Camelize<SchemaApplyRequest>;
 
 // Enums and discriminators are unchanged (no snake-case keys to convert).
-export type { ErrorCode, BranchMergeOutcome, LoadMode, MergeConflictKindOutput };
+// Re-export both the runtime values (constant objects) and the types so
+// callers can write `LoadMode.MERGE` and `mode: LoadMode` interchangeably.
+export {
+  ErrorCode,
+  BranchMergeOutcome,
+  LoadMode,
+  MergeConflictKindOutput,
+} from './generated/types.gen';
 
 // CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.
 export type ErrorOutput = Camelize<import('./generated/types.gen').ErrorOutput>;

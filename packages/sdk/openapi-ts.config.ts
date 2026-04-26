@@ -6,5 +6,10 @@ export default defineConfig({
     path: 'src/generated',
     postProcess: ['prettier'],
   },
-  plugins: ['@hey-api/typescript'],
+  plugins: [
+    {
+      name: '@hey-api/typescript',
+      enums: 'javascript',
+    },
+  ],
 });

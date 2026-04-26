@@ -23,7 +23,11 @@ Requires Node 22+ (uses native `fetch` and `Response.body.getReader()`).
 ## Usage
 
 ```ts
-import Omnigraph, { ConflictError, NotFoundError } from '@modernrelay/omnigraph';
+import Omnigraph, {
+  ConflictError,
+  LoadMode,
+  NotFoundError,
+} from '@modernrelay/omnigraph';
 
 const og = new Omnigraph({
   baseUrl: 'http://127.0.0.1:8080',
@@ -50,7 +54,7 @@ const result = await og.read({
   querySource: 'query q() { match { $a: Decision } return { $a.title } }',
 });
 await og.change({ branch: 'feature', querySource });
-await og.ingest({ branch: 'feature', data: ndjson, mode: 'merge' });
+await og.ingest({ branch: 'feature', data: ndjson, mode: LoadMode.MERGE });
 
 for await (const row of og.export({ branch: 'main' })) {
   console.log(row);

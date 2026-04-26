@@ -28,7 +28,6 @@ export type {
   BranchList,
   BranchMerge,
   BranchMergeInput,
-  BranchMergeOutcome,
   // Commits
   Commit,
   CommitList,
@@ -54,10 +53,17 @@ export type {
   SnapshotTable,
   // Conflict / errors / shared
   MergeConflict,
-  MergeConflictKindOutput,
-  ErrorCode,
   ErrorOutput,
-  LoadMode,
   // Utility
   Camelize,
+} from './types';
+
+// Runtime enum constants — also valid as types via TS declaration merging.
+// Use as values: `og.ingest({ ..., mode: LoadMode.MERGE })`.
+// Use as types: `function check(c: ErrorCode) { ... }`.
+export {
+  BranchMergeOutcome,
+  ErrorCode,
+  LoadMode,
+  MergeConflictKindOutput,
 } from './types';
