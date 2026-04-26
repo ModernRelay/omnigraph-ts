@@ -42,7 +42,7 @@ await og.branches.delete('feature');
 
 // Commits / runs / schema
 const commits = await og.commits.list({ branch: 'main' });
-const c = await og.commits.retrieve('cmt_01KQ...');             // (prefixed in v0.4.0+)
+const c = await og.commits.retrieve('01KQ2JK3PC35ZZW3867A5H7Q15');
 const runs = await og.runs.list();
 await og.runs.publish(runId);
 const schema = await og.schema.get();
