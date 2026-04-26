@@ -1,6 +1,5 @@
 import { camelToSnake, snakeToCamel } from './case';
 import { fromResponse, NetworkError } from './errors';
-import { withRetryAfter } from './retry';
 
 export type FetchLike = (
   input: string | URL | Request,
@@ -32,8 +31,6 @@ export interface RequestOptions {
    */
   opaqueResponseKeys?: ReadonlySet<string>;
 }
-
-const RETRYABLE_METHODS = new Set(['GET', 'HEAD']);
 
 export class Transport {
   private readonly baseUrl: string;
@@ -88,15 +85,9 @@ export class Transport {
       signal: opts.signal,
     };
     const requestMeta = { method, url };
-    const requestFn = () => this.fetchImpl(url, init);
     let response: Response;
     try {
-      // Only retry idempotent methods. Retrying a POST that already mutated
-      // server state on the first hit (and only the response was lost) would
-      // double-write — for non-idempotent calls, surface the 503 to the caller.
-      response = RETRYABLE_METHODS.has(method.toUpperCase())
-        ? await withRetryAfter(requestFn, { signal: opts.signal })
-        : await requestFn();
+      response = await this.fetchImpl(url, init);
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw e;
       throw new NetworkError({
