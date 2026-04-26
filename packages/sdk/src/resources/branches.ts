@@ -7,10 +7,7 @@ import type {
   BranchMerge,
   BranchMergeInput,
 } from '../types';
-
-export interface CallOptions {
-  signal?: AbortSignal;
-}
+import type { CallOptions } from '../internals';
 
 export class BranchesResource {
   constructor(private readonly t: Transport) {}

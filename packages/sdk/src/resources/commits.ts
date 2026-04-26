@@ -1,6 +1,6 @@
 import type { Transport } from '../transport';
 import type { Commit, CommitList } from '../types';
-import type { CallOptions } from './branches';
+import type { CallOptions } from '../internals';
 
 export interface ListCommitsInput {
   branch?: string;

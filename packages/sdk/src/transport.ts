@@ -17,7 +17,6 @@ export interface RequestOptions {
   body?: unknown;
   query?: Record<string, string | string[] | undefined | null>;
   signal?: AbortSignal;
-  headers?: Record<string, string>;
   /**
    * Top-level body keys whose values should be passed through verbatim
    * instead of having their nested keys camelCase-to-snake_case converted.
@@ -72,7 +71,7 @@ export class Transport {
     opts: RequestOptions,
   ): Promise<Response> {
     const url = this.buildUrl(path, opts.query);
-    const headers = new Headers(opts.headers);
+    const headers = new Headers();
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
     headers.set('Accept', 'application/json, application/x-ndjson');
     let bodyInit: BodyInit | undefined;

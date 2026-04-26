@@ -2,7 +2,7 @@ import { ndjsonIterator } from './stream';
 import { Transport } from './transport';
 import type { FetchLike } from './transport';
 import { BranchesResource } from './resources/branches';
-import type { CallOptions } from './resources/branches';
+import type { CallOptions } from './internals';
 import { CommitsResource } from './resources/commits';
 import { RunsResource } from './resources/runs';
 import { SchemaResource } from './resources/schema';

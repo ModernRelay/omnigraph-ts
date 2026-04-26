@@ -1,6 +1,6 @@
 import type { Transport } from '../transport';
 import type { Run, RunList } from '../types';
-import type { CallOptions } from './branches';
+import type { CallOptions } from '../internals';
 
 export class RunsResource {
   constructor(private readonly t: Transport) {}

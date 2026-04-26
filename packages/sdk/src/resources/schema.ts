@@ -1,6 +1,6 @@
 import type { Transport } from '../transport';
 import type { Schema, SchemaApply, SchemaApplyInput } from '../types';
-import type { CallOptions } from './branches';
+import type { CallOptions } from '../internals';
 
 export class SchemaResource {
   constructor(private readonly t: Transport) {}

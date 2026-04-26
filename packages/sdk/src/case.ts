@@ -1,11 +1,3 @@
-type JsonLike =
-  | null
-  | string
-  | number
-  | boolean
-  | JsonLike[]
-  | { [key: string]: JsonLike };
-
 const snakeRe = /_([a-z0-9])/g;
 const camelRe = /([A-Z])/g;
 
@@ -60,7 +52,6 @@ function transform(
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
     const newKey = keyFn(k);
     if (opaque?.has(newKey)) {
-      // Pass through verbatim — caller-controlled key space.
       out[newKey] = v;
     } else {
       out[newKey] = transform(v, keyFn, options);
@@ -68,5 +59,3 @@ function transform(
   }
   return out;
 }
-
-export type { JsonLike };
