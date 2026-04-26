@@ -2,21 +2,18 @@ import type { Transport } from '../transport';
 import type { Run, RunList } from '../types';
 import type { CallOptions } from './branches';
 
-export interface ListRunsInput {
-  branch?: string;
-}
-
 export class RunsResource {
   constructor(private readonly t: Transport) {}
 
   /**
-   * List runs. Filter to a single branch with `branch`. Read-only.
+   * List runs across all branches. Read-only.
+   *
+   * The current `GET /runs` endpoint does not support server-side branch
+   * filtering; callers can post-filter `r.target_branch`. Add server-side
+   * filtering in a follow-up if it becomes a hot path.
    */
-  async list(input: ListRunsInput = {}, opts: CallOptions = {}): Promise<Run[]> {
-    const r = await this.t.request<RunList>('GET', '/runs', {
-      query: { branch: input.branch },
-      signal: opts.signal,
-    });
+  async list(opts: CallOptions = {}): Promise<Run[]> {
+    const r = await this.t.request<RunList>('GET', '/runs', { signal: opts.signal });
     return r.runs;
   }
 

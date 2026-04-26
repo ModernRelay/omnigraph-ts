@@ -4,7 +4,7 @@ export default Omnigraph;
 export { Omnigraph };
 
 export type { OmnigraphOptions, SnapshotInput } from './client';
-export type { CallOptions, ListCommitsInput, ListRunsInput, GetSchemaInput, FetchLike } from './internals';
+export type { CallOptions, ListCommitsInput, FetchLike } from './internals';
 
 // Errors — typed hierarchy. Catch the specific class you care about.
 export {

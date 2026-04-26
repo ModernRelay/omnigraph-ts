@@ -17,21 +17,54 @@ export function camelToSnakeKey(key: string): string {
   return key.replace(camelRe, (_m, c: string) => `_${c.toLowerCase()}`);
 }
 
-export function snakeToCamel<T = unknown>(value: unknown): T {
-  return transform(value, snakeToCamelKey) as T;
+export interface CaseOptions {
+  /**
+   * Keys whose values are passed through verbatim instead of recursed into.
+   * The check is against the **transformed** key — e.g., on a request,
+   * `opaqueKeys: ['params']` keeps the body key (already snake_case) opaque;
+   * on a response, the same set keeps the response key (already snake_case)
+   * opaque. Use for free-form maps where caller-controlled names must
+   * survive the boundary unchanged (e.g., GQ `params` / `rows` / `columns`).
+   */
+  opaqueKeys?: ReadonlySet<string>;
 }
 
-export function camelToSnake<T = unknown>(value: unknown): T {
-  return transform(value, camelToSnakeKey) as T;
+export function snakeToCamel<T = unknown>(
+  value: unknown,
+  options: CaseOptions = {},
+): T {
+  return transform(value, snakeToCamelKey, options) as T;
 }
 
-function transform(value: unknown, keyFn: (k: string) => string): unknown {
+export function camelToSnake<T = unknown>(
+  value: unknown,
+  options: CaseOptions = {},
+): T {
+  return transform(value, camelToSnakeKey, options) as T;
+}
+
+function transform(
+  value: unknown,
+  keyFn: (k: string) => string,
+  options: CaseOptions,
+): unknown {
   if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) return value.map((v) => transform(v, keyFn));
+  if (Array.isArray(value)) {
+    return value.map((v) => transform(v, keyFn, options));
+  }
   if (typeof value !== 'object') return value;
-  const out: Record<string, unknown> = {};
+  // Null-prototype accumulator: defends against `__proto__` / `constructor`
+  // poisoning when transforming caller-supplied objects.
+  const out = Object.create(null) as Record<string, unknown>;
+  const opaque = options.opaqueKeys;
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[keyFn(k)] = transform(v, keyFn);
+    const newKey = keyFn(k);
+    if (opaque?.has(newKey)) {
+      // Pass through verbatim — caller-controlled key space.
+      out[newKey] = v;
+    } else {
+      out[newKey] = transform(v, keyFn, options);
+    }
   }
   return out;
 }

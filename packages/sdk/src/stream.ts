@@ -28,6 +28,14 @@ export async function* ndjsonIterator<T = unknown>(
       yield snakeToCamel<T>(JSON.parse(final));
     }
   } finally {
+    // Cancel propagates upstream (closes the network connection on early
+    // `break`); release the lock so the body can be GC'd. Both must run
+    // even if cancel rejects (e.g., body already closed).
+    try {
+      await reader.cancel();
+    } catch {
+      // best-effort
+    }
     reader.releaseLock();
   }
 }

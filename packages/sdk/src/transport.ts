@@ -18,7 +18,23 @@ export interface RequestOptions {
   query?: Record<string, string | string[] | undefined | null>;
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  /**
+   * Top-level body keys whose values should be passed through verbatim
+   * instead of having their nested keys camelCase-to-snake_case converted.
+   * For free-form maps such as GQ `params`, where caller-controlled names
+   * (e.g. `$userId`) must survive the boundary unchanged.
+   */
+  opaqueBodyKeys?: ReadonlySet<string>;
+  /**
+   * Top-level response keys whose values should be passed through verbatim
+   * instead of having their nested keys snake_case-to-camelCase converted.
+   * For free-form maps such as GQ `rows` and `columns`, whose key/value
+   * shapes are user-schema-controlled.
+   */
+  opaqueResponseKeys?: ReadonlySet<string>;
 }
+
+const RETRYABLE_METHODS = new Set(['GET', 'HEAD']);
 
 export class Transport {
   private readonly baseUrl: string;
@@ -43,7 +59,7 @@ export class Transport {
     const text = await response.text();
     if (!text) return undefined as T;
     const parsed = JSON.parse(text);
-    return snakeToCamel<T>(parsed);
+    return snakeToCamel<T>(parsed, { opaqueKeys: opts.opaqueResponseKeys });
   }
 
   async stream(method: string, path: string, opts: RequestOptions = {}): Promise<Response> {
@@ -61,7 +77,9 @@ export class Transport {
     headers.set('Accept', 'application/json, application/x-ndjson');
     let bodyInit: BodyInit | undefined;
     if (opts.body !== undefined) {
-      bodyInit = JSON.stringify(camelToSnake(opts.body));
+      bodyInit = JSON.stringify(
+        camelToSnake(opts.body, { opaqueKeys: opts.opaqueBodyKeys }),
+      );
       if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     }
     const init: RequestInit = {
@@ -71,9 +89,15 @@ export class Transport {
       signal: opts.signal,
     };
     const requestMeta = { method, url };
+    const requestFn = () => this.fetchImpl(url, init);
     let response: Response;
     try {
-      response = await withRetryAfter(() => this.fetchImpl(url, init), { signal: opts.signal });
+      // Only retry idempotent methods. Retrying a POST that already mutated
+      // server state on the first hit (and only the response was lost) would
+      // double-write — for non-idempotent calls, surface the 503 to the caller.
+      response = RETRYABLE_METHODS.has(method.toUpperCase())
+        ? await withRetryAfter(requestFn, { signal: opts.signal })
+        : await requestFn();
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') throw e;
       throw new NetworkError({

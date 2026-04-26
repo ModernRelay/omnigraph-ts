@@ -2,6 +2,10 @@ export interface RetryOptions {
   signal?: AbortSignal;
 }
 
+/** Cap on `Retry-After` server hints. A misconfigured or hostile server
+ * returning `Retry-After: 31536000` (1 year) shouldn't wedge the SDK. */
+const MAX_RETRY_AFTER_MS = 60_000;
+
 export async function withRetryAfter(
   doFetch: () => Promise<Response>,
   opts: RetryOptions = {},
@@ -12,17 +16,23 @@ export async function withRetryAfter(
   if (!headerValue) return first;
   const delayMs = parseRetryAfter(headerValue);
   if (delayMs === null) return first;
+  // Drain/cancel the discarded response body so the underlying connection
+  // can be reused or closed cleanly while we sleep.
+  await first.body?.cancel().catch(() => {});
   await sleep(delayMs, opts.signal);
   return doFetch();
 }
 
 function parseRetryAfter(value: string): number | null {
   const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  }
   const date = Date.parse(value);
   if (Number.isFinite(date)) {
     const delta = date - Date.now();
-    return delta > 0 ? delta : 0;
+    if (delta <= 0) return 0;
+    return Math.min(delta, MAX_RETRY_AFTER_MS);
   }
   return null;
 }

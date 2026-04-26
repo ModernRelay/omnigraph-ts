@@ -18,6 +18,13 @@ import type {
   Snapshot,
 } from './types';
 
+// GQ params are caller-controlled (matched by name to `$varName` in query
+// source). Their wire-format keys must survive the camel<->snake boundary
+// unchanged. Same for ReadOutput.rows / .columns: shapes are user-schema-driven.
+const READ_OPAQUE_REQUEST = new Set(['params']);
+const READ_OPAQUE_RESPONSE = new Set(['rows', 'columns']);
+const CHANGE_OPAQUE_REQUEST = new Set(['params']);
+
 export interface OmnigraphOptions {
   /** Base URL of the omnigraph-server. e.g. `http://127.0.0.1:8080`. */
   baseUrl: string;
@@ -58,7 +65,12 @@ export default class Omnigraph {
    * Run a GQ read query. Read-only.
    */
   read(input: ReadInput, opts: CallOptions = {}): Promise<Read> {
-    return this.t.request<Read>('POST', '/read', { body: input, signal: opts.signal });
+    return this.t.request<Read>('POST', '/read', {
+      body: input,
+      signal: opts.signal,
+      opaqueBodyKeys: READ_OPAQUE_REQUEST,
+      opaqueResponseKeys: READ_OPAQUE_RESPONSE,
+    });
   }
 
   /**
@@ -70,7 +82,11 @@ export default class Omnigraph {
    * unique keys can duplicate on retry.
    */
   change(input: ChangeInput, opts: CallOptions = {}): Promise<Change> {
-    return this.t.request<Change>('POST', '/change', { body: input, signal: opts.signal });
+    return this.t.request<Change>('POST', '/change', {
+      body: input,
+      signal: opts.signal,
+      opaqueBodyKeys: CHANGE_OPAQUE_REQUEST,
+    });
   }
 
   /**

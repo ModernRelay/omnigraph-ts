@@ -2,21 +2,17 @@ import type { Transport } from '../transport';
 import type { Schema, SchemaApply, SchemaApplyInput } from '../types';
 import type { CallOptions } from './branches';
 
-export interface GetSchemaInput {
-  branch?: string;
-}
-
 export class SchemaResource {
   constructor(private readonly t: Transport) {}
 
   /**
-   * Fetch the active schema for a branch. Read-only.
+   * Fetch the active schema. Read-only.
+   *
+   * The current `GET /schema` endpoint always returns the schema for the
+   * default branch; per-branch schema retrieval is a follow-up.
    */
-  get(input: GetSchemaInput = {}, opts: CallOptions = {}): Promise<Schema> {
-    return this.t.request<Schema>('GET', '/schema', {
-      query: { branch: input.branch },
-      signal: opts.signal,
-    });
+  get(opts: CallOptions = {}): Promise<Schema> {
+    return this.t.request<Schema>('GET', '/schema', { signal: opts.signal });
   }
 
   /**
