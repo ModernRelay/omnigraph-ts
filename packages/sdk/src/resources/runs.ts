@@ -9,7 +9,7 @@ export class RunsResource {
    * List runs across all branches. Read-only.
    *
    * The current `GET /runs` endpoint does not support server-side branch
-   * filtering; callers can post-filter `r.target_branch`. Add server-side
+   * filtering; callers can post-filter `r.targetBranch`. Add server-side
    * filtering in a follow-up if it becomes a hot path.
    */
   async list(opts: CallOptions = {}): Promise<Run[]> {

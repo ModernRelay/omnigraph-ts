@@ -27,16 +27,19 @@ export function stubFetch(responses: StubResponse[] | StubResponse) {
     calls.push({ url, method, headers, body });
     const r: StubResponse = queue.shift() ?? { status: 200, body: {} };
     if (r.delayMs) await new Promise((res) => setTimeout(res, r.delayMs));
-    const responseBody =
-      typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? {});
+    const status = r.status ?? 200;
+    // The Response constructor throws if a body is supplied for 204/205/304.
+    const isNullBody = status === 204 || status === 205 || status === 304;
+    const responseBody = isNullBody
+      ? null
+      : typeof r.body === 'string'
+      ? r.body
+      : JSON.stringify(r.body ?? {});
     const responseHeaders = new Headers(r.headers ?? {});
-    if (typeof r.body !== 'string' && !responseHeaders.has('content-type')) {
+    if (!isNullBody && typeof r.body !== 'string' && !responseHeaders.has('content-type')) {
       responseHeaders.set('content-type', 'application/json');
     }
-    return new Response(responseBody, {
-      status: r.status ?? 200,
-      headers: responseHeaders,
-    });
+    return new Response(responseBody, { status, headers: responseHeaders });
   });
   return { fetch: fn as unknown as typeof globalThis.fetch, calls };
 }

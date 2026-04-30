@@ -20,13 +20,16 @@ export function camelToSnakeKey(key: string): string {
 
 export interface CaseOptions {
   /**
-   * Top-level keys whose values are passed through verbatim instead of
-   * recursed into. Use for free-form maps where caller-controlled names
-   * must survive the boundary unchanged (e.g., GQ `params`, response
-   * `rows` / `columns`).
+   * Keys whose values are passed through verbatim instead of recursed
+   * into. The check applies at **every nesting level** — any object key
+   * matching this set short-circuits recursion. Pick names unlikely to
+   * collide with user-controlled data (`params`, `rows`, `columns` are
+   * safe choices).
    *
-   * Match against the **post-transform** key. For names that are identical
-   * in both cases (e.g. `params`, `rows`), either spelling works.
+   * Use for free-form maps where caller-controlled names must survive
+   * the boundary unchanged (GQ `params`, query result `rows` / `columns`).
+   * Match against the post-transform key; for names identical in both
+   * cases (e.g. `params`, `rows`) either spelling works.
    */
   opaqueKeys?: ReadonlySet<string>;
 }

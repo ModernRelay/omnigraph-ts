@@ -36,6 +36,8 @@ jobs:
           fi
       - name: Verify every operation has a facade binding
         run: pnpm run check-coverage
-      - run: pnpm run typecheck
+      # Build first so downstream packages (mcp) can resolve @modernrelay/omnigraph
+      # types from the SDK's dist/ when typechecking.
       - run: pnpm run build
+      - run: pnpm run typecheck
       - run: pnpm run test

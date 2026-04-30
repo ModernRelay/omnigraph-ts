@@ -30,13 +30,15 @@ jobs:
           set -euo pipefail
           v="${{ steps.ver.outputs.version }}"
           asset="omnigraph-linux-x86_64.tar.gz"
+          checksum="omnigraph-linux-x86_64.sha256"
           mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o /tmp/og.tar.gz \
+          # Keep the original asset filename so the .sha256 manifest matches.
+          curl -fsSL -o "/tmp/${asset}" \
             "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/${asset}"
-          curl -fsSL -o /tmp/og.sha256 \
-            "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/omnigraph-linux-x86_64.sha256"
-          (cd /tmp && sha256sum -c og.sha256)
-          tar -C "$HOME/.local/bin" -xzf /tmp/og.tar.gz
+          curl -fsSL -o "/tmp/${checksum}" \
+            "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/${checksum}"
+          (cd /tmp && sha256sum -c "${checksum}")
+          tar -C "$HOME/.local/bin" -xzf "/tmp/${asset}"
           chmod +x "$HOME/.local/bin/omnigraph" "$HOME/.local/bin/omnigraph-server"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 

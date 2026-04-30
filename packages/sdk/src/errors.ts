@@ -47,7 +47,6 @@ export class ConflictError extends OmnigraphError {
 
 export class InternalServerError extends OmnigraphError {}
 export class NetworkError extends OmnigraphError {}
-export class TimeoutError extends OmnigraphError {}
 
 const codeToClass: Record<ErrorCode, new (ctx: OmnigraphErrorContext) => OmnigraphError> = {
   bad_request: BadRequestError,

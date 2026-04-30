@@ -21,7 +21,6 @@ export {
   ConflictError,
   InternalServerError,
   NetworkError,
-  TimeoutError,
 } from './errors';
 
 // Public DTO types (camelCase). Inputs end in `Input`; outputs are bare nouns.
