@@ -1,0 +1,93 @@
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Read pinned server version
+        id: ver
+        run: |
+          v=$(node -p "require('./package.json').omnigraph.serverVersion")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Pinned omnigraph-server: v$v"
+
+      - name: Download omnigraph-server binary
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          asset="omnigraph-linux-x86_64.tar.gz"
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o /tmp/og.tar.gz \
+            "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/${asset}"
+          curl -fsSL -o /tmp/og.sha256 \
+            "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/omnigraph-linux-x86_64.sha256"
+          (cd /tmp && sha256sum -c og.sha256)
+          tar -C "$HOME/.local/bin" -xzf /tmp/og.tar.gz
+          chmod +x "$HOME/.local/bin/omnigraph" "$HOME/.local/bin/omnigraph-server"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify server binary version matches pin
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          got=$(omnigraph --version 2>&1 | awk '{print $2}')
+          if [ "$got" != "$v" ]; then
+            echo "version mismatch: pinned $v, got $got"; exit 1
+          fi
+
+      - name: Init repo and load fixture
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/og
+          omnigraph init --schema packages/sdk/test/fixtures/schema.pg /tmp/og/repo.omni
+          omnigraph load --data packages/sdk/test/fixtures/data.jsonl --mode overwrite /tmp/og/repo.omni
+
+      - name: Start omnigraph-server in background
+        run: |
+          set -euo pipefail
+          OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token \
+            nohup omnigraph-server /tmp/og/repo.omni --bind 127.0.0.1:18080 \
+            > /tmp/og/server.log 2>&1 &
+          echo $! > /tmp/og/server.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/healthz > /dev/null; then
+              echo "server up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server failed to start within 30s"; cat /tmp/og/server.log; exit 1
+
+      - name: Run e2e tests
+        env:
+          OMNIGRAPH_E2E: '1'
+          OMNIGRAPH_BASE_URL: http://127.0.0.1:18080
+          OMNIGRAPH_TOKEN: ci-token
+        run: pnpm --filter @modernrelay/omnigraph run test
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/og/server.pid ]; then
+            kill "$(cat /tmp/og/server.pid)" || true
+          fi
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnigraph-server-log
+          path: /tmp/og/server.log

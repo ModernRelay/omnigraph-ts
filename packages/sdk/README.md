@@ -135,6 +135,29 @@ const og = new Omnigraph({
 });
 ```
 
+
+## Server compatibility
+
+The SDK is built against a specific `omnigraph-server` release; the pinned
+version is exposed at runtime so callers can detect drift early:
+
+```ts
+import { Omnigraph, SERVER_VERSION } from '@modernrelay/omnigraph';
+
+const og = new Omnigraph({ baseUrl: process.env.OG_URL! });
+const { version } = await og.health();
+const sdkMm = SERVER_VERSION.split('.').slice(0, 2).join('.');
+const srvMm = version.split('.').slice(0, 2).join('.');
+if (sdkMm !== srvMm) {
+  throw new Error(`SDK targets server ${SERVER_VERSION}, but server reports ${version}`);
+}
+```
+
+The pin lives in the repo-root `package.json#omnigraph.serverVersion`. CI
+fetches the OpenAPI spec at that tag, regenerates types, and runs an
+end-to-end test against an `omnigraph-server` of the same release, so a
+published SDK is always faithful to a real server build.
+
 ## License
 
 MIT

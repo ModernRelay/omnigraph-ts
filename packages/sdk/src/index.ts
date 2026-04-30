@@ -6,6 +6,11 @@ export { Omnigraph };
 export type { OmnigraphOptions, SnapshotInput } from './client';
 export type { CallOptions, ListCommitsInput, FetchLike } from './internals';
 
+// Build-time pin: which omnigraph-server release this SDK was generated
+// against. Compare against `og.health()` at startup if you want to detect
+// a server / SDK version skew.
+export { SERVER_VERSION } from './version.gen';
+
 // Errors — typed hierarchy. Catch the specific class you care about.
 export {
   OmnigraphError,

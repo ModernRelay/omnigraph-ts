@@ -10,10 +10,14 @@
     "node": ">=22"
   },
   "packageManager": "pnpm@9.15.0",
+  "omnigraph": {
+    "serverVersion": "0.3.0"
+  },
   "scripts": {
     "sync-spec": "tsx scripts/sync-spec.ts",
     "check-drift": "tsx scripts/check-drift.ts",
-    "generate": "pnpm --filter @modernrelay/omnigraph run generate",
+    "gen-version": "tsx scripts/gen-version.ts",
+    "generate": "tsx scripts/gen-version.ts && pnpm --filter @modernrelay/omnigraph run generate",
     "build": "pnpm --filter @modernrelay/omnigraph run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
