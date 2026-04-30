@@ -120,7 +120,8 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       });
       expect(r.rows).toHaveLength(1);
       // Row keys are user-schema-driven and not camelized (opaque).
-      const row = r.rows[0] as Record<string, unknown>;
+      const rows = r.rows as Record<string, unknown>[];
+      const row = rows[0]!;
       const nameField = row['$p.name'] ?? row['p.name'] ?? row['name'];
       expect(nameField).toBe('Alice');
     });
@@ -132,7 +133,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
         queryName: 'adults',
         branch: 'main',
       });
-      expect(r.rows.length).toBeGreaterThanOrEqual(2);
+      expect((r.rows as unknown[]).length).toBeGreaterThanOrEqual(2);
     });
 
     it('change inserts a row on a fresh branch', async () => {
@@ -171,7 +172,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
         params: { name: dianaName },
         branch,
       });
-      expect(r.rows).toHaveLength(1);
+      expect((r.rows as unknown[]).length).toBe(1);
     });
   });
 
@@ -201,8 +202,8 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   describe('schema', () => {
     it('get returns the persisted .pg source', async () => {
       const s = await og.schema.get();
-      expect(typeof s.source).toBe('string');
-      expect(s.source).toContain('node Person');
+      expect(typeof s.schemaSource).toBe('string');
+      expect(s.schemaSource).toContain('node Person');
     });
   });
 

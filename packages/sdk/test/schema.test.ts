@@ -3,15 +3,15 @@ import Omnigraph from '../src';
 import { stubFetch } from './helpers';
 
 describe('schema resource', () => {
-  it('get returns Schema with .source, sends GET /schema', async () => {
+  it('get returns Schema with .schemaSource, sends GET /schema', async () => {
     const { fetch, calls } = stubFetch({
-      body: { source: 'node Person { name: String @key }' },
+      body: { schema_source: 'node Person { name: String @key }' },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
     const r = await og.schema.get();
     expect(calls[0]?.method).toBe('GET');
     expect(calls[0]?.url).toBe('http://x/schema');
-    expect(r.source).toContain('node Person');
+    expect(r.schemaSource).toContain('node Person');
   });
 
   it('apply sends POST /schema/apply with snake_case body', async () => {

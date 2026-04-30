@@ -42,7 +42,7 @@ describe('top-level client operations', () => {
         branch_created: true,
         mode: 'merge',
         tables: [
-          { table_key: 'node:Person', rows_inserted: 2, rows_updated: 0, rows_deleted: 0 },
+          { table_key: 'node:Person', rows_loaded: 2 },
         ],
         uri: 's3://x',
       },
@@ -63,7 +63,7 @@ describe('top-level client operations', () => {
     expect(body.data).toContain('Person');
     expect(r.branchCreated).toBe(true);
     expect(r.tables[0]?.tableKey).toBe('node:Person');
-    expect(r.tables[0]?.rowsInserted).toBe(2);
+    expect(r.tables[0]?.rowsLoaded).toBe(2);
   });
 });
 

@@ -25,7 +25,7 @@ export function stubFetch(responses: StubResponse[] | StubResponse) {
     let body: string | undefined;
     if (typeof init?.body === 'string') body = init.body;
     calls.push({ url, method, headers, body });
-    const r = queue.shift() ?? { status: 200, body: {} };
+    const r: StubResponse = queue.shift() ?? { status: 200, body: {} };
     if (r.delayMs) await new Promise((res) => setTimeout(res, r.delayMs));
     const responseBody =
       typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? {});
