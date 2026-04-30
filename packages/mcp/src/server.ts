@@ -38,14 +38,6 @@ function plainText(text: string) {
   return [{ type: 'text' as const, text }];
 }
 
-function errText(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    isError: true,
-    content: [{ type: 'text' as const, text: message }],
-  };
-}
-
 export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   const og = new Omnigraph({ baseUrl: opts.baseUrl, token: opts.token, fetch: opts.fetch });
   const defaultBranch = opts.defaultBranch ?? 'main';
@@ -235,7 +227,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ name, from }) => {
-      const r = await og.branches.create({ name, from });
+      const r = await og.branches.create({ name, from: from ?? defaultBranch });
       return { content: jsonText(r) };
     },
   );
@@ -319,9 +311,6 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       };
     },
   );
-
-  // Suppress unused-import warning on errText when not referenced inline.
-  void errText;
 
   return server;
 }

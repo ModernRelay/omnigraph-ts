@@ -158,6 +158,36 @@ describe('omnigraph-mcp server', () => {
     expect(JSON.parse(block.text!)).toEqual(['main', 'feature']);
   });
 
+it('branches_create honours configured defaultBranch when `from` is omitted', async () => {
+    let observedFrom: string | undefined;
+    const recordingFetch: typeof globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'POST' && path === '/branches') {
+        const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        observedFrom = body.from;
+        return new Response(
+          JSON.stringify({ uri: 's3://x', name: body.name, from: body.from, actor_id: null }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const server = createOmnigraphMcpServer({
+      baseUrl: 'http://x',
+      defaultBranch: 'review-2026',
+      fetch: recordingFetch,
+    });
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+
+    await client.callTool({ name: 'branches_create', arguments: { name: 'feature' } });
+    expect(observedFrom).toBe('review-2026');
+  });
+
   it('rejects calls with missing required input', async () => {
     const { client } = await setup();
     // querySource is required on `read`.
