@@ -1,5 +1,4 @@
-import type { ErrorCode } from './generated/types.gen';
-import type { ErrorOutput, MergeConflict } from './types';
+import type { ErrorCode, ErrorOutput, MergeConflict } from './types';
 
 export interface OmnigraphErrorContext {
   status: number;

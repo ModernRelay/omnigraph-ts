@@ -1,6 +1,15 @@
 const snakeRe = /_([a-z0-9])/g;
 const camelRe = /([A-Z])/g;
 
+// Naming assumptions (apply both directions):
+//   - Caller-supplied camelCase humps acronyms (`userId`, `urlPath`), not
+//     all-caps (`userID`, `URLPath`). All-caps would round-trip through
+//     `camelToSnakeKey` as `user_i_d` / `_u_r_l_path` and the server would
+//     reject. The OpenAPI spec is snake_case, so the camel side never
+//     encounters acronyms in practice.
+//   - Wire fields with leading underscores (e.g. `__manifest`) are server
+//     internals and are not exposed in the public OpenAPI surface, so the
+//     `__double` ambiguity is not exercised.
 export function snakeToCamelKey(key: string): string {
   return key.replace(snakeRe, (_m, c: string) => c.toUpperCase());
 }
@@ -11,12 +20,13 @@ export function camelToSnakeKey(key: string): string {
 
 export interface CaseOptions {
   /**
-   * Keys whose values are passed through verbatim instead of recursed into.
-   * The check is against the **transformed** key — e.g., on a request,
-   * `opaqueKeys: ['params']` keeps the body key (already snake_case) opaque;
-   * on a response, the same set keeps the response key (already snake_case)
-   * opaque. Use for free-form maps where caller-controlled names must
-   * survive the boundary unchanged (e.g., GQ `params` / `rows` / `columns`).
+   * Top-level keys whose values are passed through verbatim instead of
+   * recursed into. Use for free-form maps where caller-controlled names
+   * must survive the boundary unchanged (e.g., GQ `params`, response
+   * `rows` / `columns`).
+   *
+   * Match against the **post-transform** key. For names that are identical
+   * in both cases (e.g. `params`, `rows`), either spelling works.
    */
   opaqueKeys?: ReadonlySet<string>;
 }

@@ -43,6 +43,15 @@ export class Transport {
     this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
+  /**
+   * Issue a JSON request and parse the response as `T`.
+   *
+   * Empty-body contract: if the server returns 204, an empty body, or
+   * `Content-Length: 0`, this resolves to `undefined as T`. No current
+   * Omnigraph endpoint behaves that way, so resource methods that type
+   * their return as `Promise<X>` are honoured. If a future endpoint adopts
+   * 204, those resource signatures must change to `Promise<X | undefined>`.
+   */
   async request<T = unknown>(
     method: string,
     path: string,
@@ -117,6 +126,12 @@ export class Transport {
   }
 
   private buildUrl(path: string, query?: RequestOptions['query']): string {
+    // Resource methods all pass leading-slash paths; this assertion catches
+    // any future caller that forgets and would otherwise produce
+    // `http://hostbranches` from `http://host` + `branches`.
+    if (!path.startsWith('/')) {
+      throw new Error(`Transport path must start with '/': got ${JSON.stringify(path)}`);
+    }
     const url = new URL(this.baseUrl + path);
     if (query) {
       for (const [k, v] of Object.entries(query)) {

@@ -21,9 +21,8 @@ import type {
 // GQ params are caller-controlled (matched by name to `$varName` in query
 // source). Their wire-format keys must survive the camel<->snake boundary
 // unchanged. Same for ReadOutput.rows / .columns: shapes are user-schema-driven.
-const READ_OPAQUE_REQUEST = new Set(['params']);
-const READ_OPAQUE_RESPONSE = new Set(['rows', 'columns']);
-const CHANGE_OPAQUE_REQUEST = new Set(['params']);
+const OPAQUE_PARAMS = new Set(['params']);
+const OPAQUE_READ_RESPONSE = new Set(['rows', 'columns']);
 
 export interface OmnigraphOptions {
   /** Base URL of the omnigraph-server. e.g. `http://127.0.0.1:8080`. */
@@ -68,8 +67,8 @@ export default class Omnigraph {
     return this.t.request<Read>('POST', '/read', {
       body: input,
       signal: opts.signal,
-      opaqueBodyKeys: READ_OPAQUE_REQUEST,
-      opaqueResponseKeys: READ_OPAQUE_RESPONSE,
+      opaqueBodyKeys: OPAQUE_PARAMS,
+      opaqueResponseKeys: OPAQUE_READ_RESPONSE,
     });
   }
 
@@ -85,7 +84,7 @@ export default class Omnigraph {
     return this.t.request<Change>('POST', '/change', {
       body: input,
       signal: opts.signal,
-      opaqueBodyKeys: CHANGE_OPAQUE_REQUEST,
+      opaqueBodyKeys: OPAQUE_PARAMS,
     });
   }
 
@@ -110,8 +109,23 @@ export default class Omnigraph {
   /**
    * Stream the contents of a branch as NDJSON. Returns an async iterator —
    * iterate with `for await (const row of og.export(...))` to avoid buffering.
+   *
+   * **Iterate at most once.** The iterable lazily issues `POST /export` from
+   * its `[Symbol.asyncIterator]()`, so a second iteration would re-hit the
+   * server. Bind the iterator to a variable if you need to peek.
+   *
+   * **Cancellation.** Aborting `opts.signal` mid-iteration terminates the
+   * fetch and lets the `for await` reject; the upstream connection is
+   * cancelled in `ndjsonIterator`'s `finally`.
+   *
+   * The default row type is `Record<string, unknown>` (rows are
+   * user-schema-driven). Pass an explicit `T` if your caller already
+   * knows the row shape: `og.export<MyRow>({ branch: 'main' })`.
    */
-  export(input: ExportInput = {}, opts: CallOptions = {}): AsyncIterable<Record<string, unknown>> {
+  export<T = Record<string, unknown>>(
+    input: ExportInput = {},
+    opts: CallOptions = {},
+  ): AsyncIterable<T> {
     const t = this.t;
     return {
       async *[Symbol.asyncIterator]() {
@@ -119,7 +133,7 @@ export default class Omnigraph {
           body: input,
           signal: opts.signal,
         });
-        yield* ndjsonIterator<Record<string, unknown>>(response);
+        yield* ndjsonIterator<T>(response);
       },
     };
   }
