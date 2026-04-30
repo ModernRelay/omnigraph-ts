@@ -7,8 +7,9 @@ export default defineConfig({
     postProcess: ['prettier'],
   },
   plugins: [
-    '@hey-api/client-fetch',
-    '@hey-api/typescript',
-    '@hey-api/sdk',
+    {
+      name: '@hey-api/typescript',
+      enums: 'javascript',
+    },
   ],
 });

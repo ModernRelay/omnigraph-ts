@@ -21,10 +21,23 @@ jobs:
       - name: Verify generated SDK is up to date
         run: |
           pnpm run generate
+          stale=0
           if ! git diff --quiet packages/sdk/src/generated; then
-            echo "Generated SDK is stale. Run 'pnpm run generate' and commit."
-            git diff packages/sdk/src/generated
+            echo "openapi-ts generated files are stale"
+            stale=1
+          fi
+          if ! git diff --quiet packages/sdk/src/version.gen.ts; then
+            echo "version.gen.ts is stale (run 'pnpm run gen-version')"
+            stale=1
+          fi
+          if [ "$stale" -ne 0 ]; then
+            git diff packages/sdk/src/generated packages/sdk/src/version.gen.ts
             exit 1
           fi
-      - run: pnpm run typecheck
+      - name: Verify every operation has a facade binding
+        run: pnpm run check-coverage
+      # Build first so downstream packages (mcp) can resolve @modernrelay/omnigraph
+      # types from the SDK's dist/ when typechecking.
       - run: pnpm run build
+      - run: pnpm run typecheck
+      - run: pnpm run test

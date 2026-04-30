@@ -1,11 +1,19 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
-const VERSION_FILE = join(ROOT, '.omnigraph-version');
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const ROOT_PKG = join(ROOT, 'package.json');
 const SPEC_FILE = join(ROOT, 'spec/openapi.json');
 
-const version = readFileSync(VERSION_FILE, 'utf8').trim();
+const pkg = JSON.parse(readFileSync(ROOT_PKG, 'utf8')) as {
+  omnigraph?: { serverVersion?: string };
+};
+const version = pkg.omnigraph?.serverVersion;
+if (!version) {
+  throw new Error(`omnigraph.serverVersion missing from ${ROOT_PKG}`);
+}
+
 const local = readFileSync(SPEC_FILE, 'utf8');
 
 const url = `https://raw.githubusercontent.com/ModernRelay/omnigraph/v${version}/openapi.json`;

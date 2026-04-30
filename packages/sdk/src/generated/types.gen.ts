@@ -26,10 +26,14 @@ export type BranchListOutput = {
   branches: Array<string>;
 };
 
+export const BranchMergeOutcome = {
+  ALREADY_UP_TO_DATE: "already_up_to_date",
+  FAST_FORWARD: "fast_forward",
+  MERGED: "merged",
+} as const;
+
 export type BranchMergeOutcome =
-  | "already_up_to_date"
-  | "fast_forward"
-  | "merged";
+  (typeof BranchMergeOutcome)[keyof typeof BranchMergeOutcome];
 
 export type BranchMergeOutput = {
   actor_id?: string | null;
@@ -72,13 +76,16 @@ export type CommitOutput = {
   parent_commit_id?: string | null;
 };
 
-export type ErrorCode =
-  | "unauthorized"
-  | "forbidden"
-  | "bad_request"
-  | "not_found"
-  | "conflict"
-  | "internal";
+export const ErrorCode = {
+  UNAUTHORIZED: "unauthorized",
+  FORBIDDEN: "forbidden",
+  BAD_REQUEST: "bad_request",
+  NOT_FOUND: "not_found",
+  CONFLICT: "conflict",
+  INTERNAL: "internal",
+} as const;
+
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export type ErrorOutput = {
   code?: null | ErrorCode;
@@ -123,16 +130,29 @@ export type IngestTableOutput = {
 /**
  * Shadow enum for documenting [`LoadMode`] in the OpenAPI schema.
  */
-export type LoadMode = "overwrite" | "append" | "merge";
+export const LoadMode = {
+  OVERWRITE: "overwrite",
+  APPEND: "append",
+  MERGE: "merge",
+} as const;
+
+/**
+ * Shadow enum for documenting [`LoadMode`] in the OpenAPI schema.
+ */
+export type LoadMode = (typeof LoadMode)[keyof typeof LoadMode];
+
+export const MergeConflictKindOutput = {
+  DIVERGENT_INSERT: "divergent_insert",
+  DIVERGENT_UPDATE: "divergent_update",
+  DELETE_VS_UPDATE: "delete_vs_update",
+  ORPHAN_EDGE: "orphan_edge",
+  UNIQUE_VIOLATION: "unique_violation",
+  CARDINALITY_VIOLATION: "cardinality_violation",
+  VALUE_CONSTRAINT_VIOLATION: "value_constraint_violation",
+} as const;
 
 export type MergeConflictKindOutput =
-  | "divergent_insert"
-  | "divergent_update"
-  | "delete_vs_update"
-  | "orphan_edge"
-  | "unique_violation"
-  | "cardinality_violation"
-  | "value_constraint_violation";
+  (typeof MergeConflictKindOutput)[keyof typeof MergeConflictKindOutput];
 
 export type MergeConflictOutput = {
   kind: MergeConflictKindOutput;
