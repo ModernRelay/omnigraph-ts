@@ -5,6 +5,7 @@ import Omnigraph, {
   ForbiddenError,
   InternalServerError,
   NotFoundError,
+  TooManyRequestsError,
   UnauthorizedError,
 } from '../src';
 import { stubFetch } from './helpers';
@@ -15,6 +16,7 @@ const cases: Array<[number, string, unknown]> = [
   [403, 'forbidden', ForbiddenError],
   [404, 'not_found', NotFoundError],
   [409, 'conflict', ConflictError],
+  [429, 'too_many_requests', TooManyRequestsError],
   [500, 'internal', InternalServerError],
 ];
 
@@ -31,6 +33,26 @@ describe('error dispatcher', () => {
     const { fetch } = stubFetch({ status: 404, body: { error: 'gone' } });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
     await expect(og.health()).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('ConflictError exposes manifestConflict when present', async () => {
+    const { fetch } = stubFetch({
+      status: 409,
+      body: {
+        error: 'manifest version mismatch',
+        code: 'conflict',
+        manifest_conflict: { actual: 7, expected: 5, table_key: 'Person' },
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    try {
+      await og.change({ querySource: 'insert Person { name: "x" }' });
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConflictError);
+      const err = e as ConflictError;
+      expect(err.manifestConflict).toEqual({ actual: 7, expected: 5, tableKey: 'Person' });
+    }
   });
 
   it('ConflictError exposes mergeConflicts when present', async () => {

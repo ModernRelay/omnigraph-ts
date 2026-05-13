@@ -19,6 +19,7 @@ export {
   ForbiddenError,
   NotFoundError,
   ConflictError,
+  TooManyRequestsError,
   InternalServerError,
   NetworkError,
 } from './errors';
@@ -35,9 +36,6 @@ export type {
   // Commits
   Commit,
   CommitList,
-  // Runs
-  Run,
-  RunList,
   // Schema
   Schema,
   SchemaApply,
@@ -57,6 +55,7 @@ export type {
   SnapshotTable,
   // Conflict / errors / shared
   MergeConflict,
+  ManifestConflict,
   ErrorOutput,
   // Utility
   Camelize,

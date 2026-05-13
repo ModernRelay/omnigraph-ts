@@ -12,7 +12,13 @@ export type BranchCreateOutput = {
 };
 
 export type BranchCreateRequest = {
+  /**
+   * Parent branch to fork from. Defaults to `main`.
+   */
   from?: string | null;
+  /**
+   * Name of the new branch. Must not already exist.
+   */
   name: string;
 };
 
@@ -43,7 +49,13 @@ export type BranchMergeOutput = {
 };
 
 export type BranchMergeRequest = {
+  /**
+   * Source branch whose commits will be merged.
+   */
   source: string;
+  /**
+   * Target branch that will receive the merge. Defaults to `main`.
+   */
   target?: string | null;
 };
 
@@ -56,9 +68,22 @@ export type ChangeOutput = {
 };
 
 export type ChangeRequest = {
+  /**
+   * Target branch. Defaults to `main`.
+   */
   branch?: string | null;
+  /**
+   * JSON object whose keys match the mutation's declared parameters.
+   */
   params?: unknown;
+  /**
+   * Name of the mutation to run when `query_source` declares multiple.
+   */
   query_name?: string | null;
+  /**
+   * GQ mutation source containing `insert`, `update`, or `delete` statements.
+   * May declare multiple named mutations; pick one with `query_name`.
+   */
   query_source: string;
 };
 
@@ -68,6 +93,9 @@ export type CommitListOutput = {
 
 export type CommitOutput = {
   actor_id?: string | null;
+  /**
+   * Commit creation time as Unix epoch microseconds.
+   */
   created_at: number;
   graph_commit_id: string;
   manifest_branch?: string | null;
@@ -82,6 +110,7 @@ export const ErrorCode = {
   BAD_REQUEST: "bad_request",
   NOT_FOUND: "not_found",
   CONFLICT: "conflict",
+  TOO_MANY_REQUESTS: "too_many_requests",
   INTERNAL: "internal",
 } as const;
 
@@ -90,12 +119,22 @@ export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 export type ErrorOutput = {
   code?: null | ErrorCode;
   error: string;
+  manifest_conflict?: null | ManifestConflictOutput;
   merge_conflicts?: Array<MergeConflictOutput>;
 };
 
 export type ExportRequest = {
+  /**
+   * Branch to export. Defaults to `main`.
+   */
   branch?: string | null;
+  /**
+   * Restrict the export to these table keys. Empty exports all tables.
+   */
   table_keys?: Array<string>;
+  /**
+   * Restrict the export to these node/edge type names. Empty exports all types.
+   */
   type_names?: Array<string>;
 };
 
@@ -116,8 +155,18 @@ export type IngestOutput = {
 };
 
 export type IngestRequest = {
+  /**
+   * Target branch. Created from `from` if it does not yet exist. Defaults to `main`.
+   */
   branch?: string | null;
+  /**
+   * NDJSON payload: one record per line, each shaped
+   * `{"type": "<TypeName>", "data": {...}}`.
+   */
   data: string;
+  /**
+   * Parent branch used to create `branch` if it does not exist. Defaults to `main`.
+   */
   from?: string | null;
   mode?: null | LoadMode;
 };
@@ -140,6 +189,18 @@ export const LoadMode = {
  * Shadow enum for documenting [`LoadMode`] in the OpenAPI schema.
  */
 export type LoadMode = (typeof LoadMode)[keyof typeof LoadMode];
+
+/**
+ * Structured details for a publisher-level OCC failure. Surfaces alongside
+ * HTTP 409 when a write was rejected because the caller's pre-write view of
+ * one table's manifest version was stale relative to the current head. The
+ * expected/actual fields tell the client which table to refresh.
+ */
+export type ManifestConflictOutput = {
+  actual: number;
+  expected: number;
+  table_key: string;
+};
 
 export const MergeConflictKindOutput = {
   DIVERGENT_INSERT: "divergent_insert",
@@ -170,34 +231,33 @@ export type ReadOutput = {
 };
 
 export type ReadRequest = {
+  /**
+   * Branch to read from. Mutually exclusive with `snapshot`. Defaults to `main`.
+   */
   branch?: string | null;
+  /**
+   * JSON object whose keys match the query's declared parameters.
+   */
   params?: unknown;
+  /**
+   * Name of the query to run when `query_source` declares multiple. Optional
+   * when only one query is declared.
+   */
   query_name?: string | null;
+  /**
+   * GQ query source. May declare one or more named queries; pick one with
+   * `query_name` if there is more than one.
+   */
   query_source: string;
+  /**
+   * Snapshot id to read from. Mutually exclusive with `branch`.
+   */
   snapshot?: string | null;
 };
 
 export type ReadTargetOutput = {
   branch?: string | null;
   snapshot?: string | null;
-};
-
-export type RunListOutput = {
-  runs: Array<RunOutput>;
-};
-
-export type RunOutput = {
-  actor_id?: string | null;
-  base_manifest_version: number;
-  base_snapshot_id: string;
-  created_at: number;
-  operation_hash?: string | null;
-  published_snapshot_id?: string | null;
-  run_branch: string;
-  run_id: string;
-  status: string;
-  target_branch: string;
-  updated_at: number;
 };
 
 export type SchemaApplyOutput = {
@@ -210,6 +270,10 @@ export type SchemaApplyOutput = {
 };
 
 export type SchemaApplyRequest = {
+  /**
+   * Project schema in `.pg` source form. The diff against the current
+   * schema produces the migration steps that will be applied.
+   */
   schema_source: string;
 };
 
@@ -285,6 +349,10 @@ export type CreateBranchErrors = {
    * Branch already exists
    */
   409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
 };
 
 export type CreateBranchError = CreateBranchErrors[keyof CreateBranchErrors];
@@ -323,6 +391,10 @@ export type MergeBranchesErrors = {
    * Merge conflict
    */
   409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
 };
 
 export type MergeBranchesError = MergeBranchesErrors[keyof MergeBranchesErrors];
@@ -362,6 +434,10 @@ export type DeleteBranchErrors = {
    * Branch not found
    */
   404: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
 };
 
 export type DeleteBranchError = DeleteBranchErrors[keyof DeleteBranchErrors];
@@ -400,6 +476,10 @@ export type ChangeErrors = {
    * Merge conflict
    */
   409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
 };
 
 export type ChangeError = ChangeErrors[keyof ChangeErrors];
@@ -550,6 +630,10 @@ export type IngestErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
 };
 
 export type IngestError = IngestErrors[keyof IngestErrors];
@@ -595,149 +679,6 @@ export type ReadResponses = {
 };
 
 export type ReadResponse = ReadResponses[keyof ReadResponses];
-
-export type ListRunsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/runs";
-};
-
-export type ListRunsErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-};
-
-export type ListRunsError = ListRunsErrors[keyof ListRunsErrors];
-
-export type ListRunsResponses = {
-  /**
-   * List of runs
-   */
-  200: RunListOutput;
-};
-
-export type ListRunsResponse = ListRunsResponses[keyof ListRunsResponses];
-
-export type GetRunData = {
-  body?: never;
-  path: {
-    /**
-     * Run identifier
-     */
-    run_id: string;
-  };
-  query?: never;
-  url: "/runs/{run_id}";
-};
-
-export type GetRunErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Run not found
-   */
-  404: ErrorOutput;
-};
-
-export type GetRunError = GetRunErrors[keyof GetRunErrors];
-
-export type GetRunResponses = {
-  /**
-   * Run details
-   */
-  200: RunOutput;
-};
-
-export type GetRunResponse = GetRunResponses[keyof GetRunResponses];
-
-export type AbortRunData = {
-  body?: never;
-  path: {
-    /**
-     * Run identifier
-     */
-    run_id: string;
-  };
-  query?: never;
-  url: "/runs/{run_id}/abort";
-};
-
-export type AbortRunErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Run not found
-   */
-  404: ErrorOutput;
-};
-
-export type AbortRunError = AbortRunErrors[keyof AbortRunErrors];
-
-export type AbortRunResponses = {
-  /**
-   * Run aborted
-   */
-  200: RunOutput;
-};
-
-export type AbortRunResponse = AbortRunResponses[keyof AbortRunResponses];
-
-export type PublishRunData = {
-  body?: never;
-  path: {
-    /**
-     * Run identifier
-     */
-    run_id: string;
-  };
-  query?: never;
-  url: "/runs/{run_id}/publish";
-};
-
-export type PublishRunErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Run not found
-   */
-  404: ErrorOutput;
-};
-
-export type PublishRunError = PublishRunErrors[keyof PublishRunErrors];
-
-export type PublishRunResponses = {
-  /**
-   * Run published
-   */
-  200: RunOutput;
-};
-
-export type PublishRunResponse = PublishRunResponses[keyof PublishRunResponses];
 
 export type GetSchemaData = {
   body?: never;
@@ -788,6 +729,10 @@ export type ApplySchemaErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
 };
 
 export type ApplySchemaError = ApplySchemaErrors[keyof ApplySchemaErrors];

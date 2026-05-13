@@ -23,13 +23,12 @@ import type {
   IngestRequest,
   IngestTableOutput,
   LoadMode,
+  ManifestConflictOutput,
   MergeConflictKindOutput,
   MergeConflictOutput,
   ReadOutput,
   ReadRequest,
   ReadTargetOutput,
-  RunListOutput,
-  RunOutput,
   SchemaApplyOutput,
   SchemaApplyRequest,
   SchemaOutput,
@@ -60,13 +59,12 @@ export type Ingest = Camelize<IngestOutput>;
 export type IngestTable = Camelize<IngestTableOutput>;
 export type Read = Camelize<ReadOutput>;
 export type ReadTarget = Camelize<ReadTargetOutput>;
-export type Run = Camelize<RunOutput>;
-export type RunList = Camelize<RunListOutput>;
 export type Schema = Camelize<SchemaOutput>;
 export type SchemaApply = Camelize<SchemaApplyOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
 export type SnapshotTable = Camelize<SnapshotTableOutput>;
 export type MergeConflict = Camelize<MergeConflictOutput>;
+export type ManifestConflict = Camelize<ManifestConflictOutput>;
 
 // Inputs (requests): camelCase from the caller, converted to snake_case on the wire.
 export type BranchCreateInput = Camelize<BranchCreateRequest>;

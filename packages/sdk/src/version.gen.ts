@@ -6,4 +6,4 @@
  * The SDK targets the corresponding OpenAPI spec exactly; behaviour against
  * a different server major.minor is undefined.
  */
-export const SERVER_VERSION = "0.3.0";
+export const SERVER_VERSION = "0.4.2";

@@ -103,14 +103,12 @@ const { schemaSource } = await og.schema.get();    // .pg source
 await og.schema.apply({ schemaSource: nextSchema }); // migrate
 ```
 
-### Snapshots, commits, runs
+### Snapshots and commits
 
 ```ts
 await og.snapshot({ branch: 'main' });
 await og.commits.list({ branch: 'main' });
 await og.commits.retrieve(commitId);
-await og.runs.list();
-await og.runs.publish(runId);
 ```
 
 ## Errors
@@ -176,7 +174,7 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 
 | Operation | Retry semantics |
 |---|---|
-| `og.health()`, `og.snapshot()`, `og.read()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.runs.list()`, `og.schema.get()` | Read-only — always safe. |
+| `og.health()`, `og.snapshot()`, `og.read()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()` | Read-only — always safe. |
 | `og.branches.create({ name })` | Throws `ConflictError` on retry (branch exists). Catch and treat as success. |
 | `og.branches.merge({ source, target })` | Idempotent — re-merge yields `outcome: 'already_up_to_date'`. |
 | `og.branches.delete(name)` | Idempotent — delete-of-deleted is a no-op. |
@@ -185,7 +183,6 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 | `og.ingest({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
 | `og.ingest({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
 | `og.change({ querySource })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
-| `og.runs.abort(id)`, `og.runs.publish(id)` | Idempotent on already-terminal runs. |
 
 If a `change` query isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
 

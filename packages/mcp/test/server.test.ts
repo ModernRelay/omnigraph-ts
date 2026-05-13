@@ -121,7 +121,7 @@ describe('omnigraph-mcp server', () => {
     const parsed = JSON.parse(block.text);
     expect(parsed.status).toBe('ok');
     expect(parsed.version).toBe('0.3.0');
-    expect(parsed.sdkServerVersion).toBe('0.3.0');
+    expect(parsed.sdkServerVersion).toBe('0.4.2');
   });
 
   it('calls the read tool and preserves opaque param keys', async () => {

@@ -1,4 +1,4 @@
-import type { ErrorCode, ErrorOutput, MergeConflict } from './types';
+import type { ErrorCode, ErrorOutput, ManifestConflict, MergeConflict } from './types';
 
 export interface OmnigraphErrorContext {
   status: number;
@@ -37,14 +37,22 @@ export class NotFoundError extends OmnigraphError {}
 
 export class ConflictError extends OmnigraphError {
   readonly mergeConflicts?: MergeConflict[];
+  /**
+   * Set when the conflict is a publisher OCC rejection: the caller's pre-write
+   * view of `tableKey` was at `expected`, but the manifest is now at `actual`.
+   * Refresh and retry.
+   */
+  readonly manifestConflict?: ManifestConflict;
 
   constructor(ctx: OmnigraphErrorContext) {
     super(ctx);
     const body = ctx.body as ErrorOutput | undefined;
     this.mergeConflicts = body?.mergeConflicts;
+    this.manifestConflict = body?.manifestConflict ?? undefined;
   }
 }
 
+export class TooManyRequestsError extends OmnigraphError {}
 export class InternalServerError extends OmnigraphError {}
 export class NetworkError extends OmnigraphError {}
 
@@ -54,6 +62,7 @@ const codeToClass: Record<ErrorCode, new (ctx: OmnigraphErrorContext) => Omnigra
   forbidden: ForbiddenError,
   not_found: NotFoundError,
   conflict: ConflictError,
+  too_many_requests: TooManyRequestsError,
   internal: InternalServerError,
 };
 
@@ -63,6 +72,7 @@ const statusToClass: Record<number, new (ctx: OmnigraphErrorContext) => Omnigrap
   403: ForbiddenError,
   404: NotFoundError,
   409: ConflictError,
+  429: TooManyRequestsError,
   500: InternalServerError,
 };
 
