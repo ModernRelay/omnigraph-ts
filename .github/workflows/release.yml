@@ -65,10 +65,16 @@ jobs:
 
       - name: Derive npm dist-tag
         id: tag
+        # SemVer 2.0: a `-` after the version is a prerelease, regardless of
+        # the label (`-alpha`, `-rc.1`, `-0`, `-next`, etc.). Any prerelease
+        # ships under `next`; only plain `X.Y.Z` (and `X.Y.Z+meta`) → `latest`.
+        # Strip build metadata first so a stray `+sha` doesn't confuse the
+        # check.
         run: |
           set -euo pipefail
           ver="${GITHUB_REF_NAME#v}"
-          if [[ "$ver" =~ -(alpha|beta|rc)\. ]]; then
+          ver_no_meta="${ver%%+*}"
+          if [[ "$ver_no_meta" == *-* ]]; then
             echo "dist=next" >> "$GITHUB_OUTPUT"
           else
             echo "dist=latest" >> "$GITHUB_OUTPUT"
