@@ -93,8 +93,18 @@ const remote = new Set(upstream);
 const unaccounted = upstream.filter((k) => !knownKeys.has(k));
 const staleExposed = [...exposedKeys].filter((k) => !remote.has(k));
 const staleSkipped = [...skippedKeys].filter((k) => !remote.has(k));
+// A file declared in both sections is a contradictory state: the union
+// hides it from the unaccounted check, then `exposed` silently wins at
+// fetch time and the `skipped` reason becomes dead config. Fail loud so
+// the maintainer picks one.
+const contradictory = [...exposedKeys].filter((k) => skippedKeys.has(k));
 
-if (unaccounted.length > 0 || staleExposed.length > 0 || staleSkipped.length > 0) {
+if (
+  unaccounted.length > 0 ||
+  staleExposed.length > 0 ||
+  staleSkipped.length > 0 ||
+  contradictory.length > 0
+) {
   const lines: string[] = ['cookbook-descriptions.json is out of sync with upstream:'];
   if (unaccounted.length > 0) {
     lines.push(
@@ -116,6 +126,15 @@ if (unaccounted.length > 0 || staleExposed.length > 0 || staleSkipped.length > 0
     for (const k of staleExposed) lines.push(`  - exposed.${k} (file gone)`);
     for (const k of staleSkipped) lines.push(`  - skipped.${k} (file gone)`);
     lines.push('', `  → remove these from ${DESCRIPTIONS_PATH}`);
+  }
+  if (contradictory.length > 0) {
+    lines.push(
+      '',
+      'Entries declared in BOTH "exposed" and "skipped":',
+      ...contradictory.map((k) => `  ! ${k}`),
+      '',
+      `  → in ${DESCRIPTIONS_PATH}, remove from one section.`,
+    );
   }
   throw new Error(lines.join('\n'));
 }
