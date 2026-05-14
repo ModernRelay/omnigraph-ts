@@ -89,10 +89,32 @@ jobs:
 
       # SDK first — MCP's workspace:* dependency resolves to the just-published
       # version once pnpm rewrites the manifest at publish time.
+      #
+      # Each step skips if `pkg@ver` is already on npm. Lets us re-run a tag
+      # after a partial-failure (e.g. SDK published, MCP rejected on a manifest
+      # issue) without npm rejecting the SDK with EPUBLISHCONFLICT.
       - name: Publish @modernrelay/omnigraph
         working-directory: packages/sdk
-        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.tag.outputs.dist }}
+        run: |
+          set -euo pipefail
+          pkg=$(node -p "require('./package.json').name")
+          ver=$(node -p "require('./package.json').version")
+          existing=$(npm view "${pkg}@${ver}" version 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            echo "${pkg}@${ver} already on npm — skipping"
+          else
+            pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.tag.outputs.dist }}
+          fi
 
       - name: Publish @modernrelay/omnigraph-mcp
         working-directory: packages/mcp
-        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.tag.outputs.dist }}
+        run: |
+          set -euo pipefail
+          pkg=$(node -p "require('./package.json').name")
+          ver=$(node -p "require('./package.json').version")
+          existing=$(npm view "${pkg}@${ver}" version 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            echo "${pkg}@${ver} already on npm — skipping"
+          else
+            pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.tag.outputs.dist }}
+          fi
