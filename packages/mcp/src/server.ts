@@ -44,7 +44,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
 
   const server = new McpServer({
     name: 'omnigraph-mcp',
-    version: '0.3.0',
+    version: '0.4.0',
   });
 
   // ---------- Tools: read-only -------------------------------------------

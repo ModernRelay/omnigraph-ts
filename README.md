@@ -25,7 +25,13 @@ TypeScript packages for the [Omnigraph](https://github.com/ModernRelay/omnigraph
 
 The SDK is built against a specific `omnigraph-server` release. The pin lives in **`package.json#omnigraph.serverVersion`** at the repo root and is the single source of truth — `scripts/sync-spec.ts` reads it to fetch the matching OpenAPI spec, and `scripts/gen-version.ts` writes it into `packages/sdk/src/version.gen.ts` so consumers can `import { SERVER_VERSION } from '@modernrelay/omnigraph'`.
 
-`@modernrelay/omnigraph@X.Y.Z` is generated from `omnigraph-server@X.Y.Z` and is expected to work against any `>=X.Y.0, <X.(Y+1).0`. CI enforces drift in two ways: a structural check that the bundled spec matches the upstream tag exactly, and an end-to-end suite that runs against a live `omnigraph-server` of the pinned release.
+CI enforces drift in two ways: a structural check that the bundled spec matches the upstream tag exactly, and an end-to-end suite that runs against a live `omnigraph-server` of the pinned release.
+
+### Versioning policy
+
+`@modernrelay/omnigraph` matches `omnigraph-server` on **major.minor**; the **patch** is independent. A published `@modernrelay/omnigraph@X.Y.*` is built against `omnigraph-server@X.Y.*` and is expected to work against any `>=X.Y.0, <X.(Y+1).0`. The exact server version the SDK was generated from is always available at runtime as `import { SERVER_VERSION } from '@modernrelay/omnigraph'`.
+
+In practice: server cuts `0.4.2`, SDK ships `0.4.0` (and `0.4.1`, `0.4.2`, … as SDK-side fixes land independently). When server cuts `0.5.0`, the SDK jumps to `0.5.0` regardless of where the `0.4.x` patch line ended. This keeps SDK release cadence decoupled from the server while still making major.minor compatibility self-documenting.
 
 ## Workflow when omnigraph cuts a new release
 
