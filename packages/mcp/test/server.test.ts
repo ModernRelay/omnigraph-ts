@@ -74,7 +74,7 @@ describe('omnigraph-mcp server', () => {
     const { client } = await setup();
     const info = client.getServerVersion();
     expect(info?.name).toBe('omnigraph-mcp');
-    expect(info?.version).toBe('0.4.0');
+    expect(info?.version).toBe('0.4.1');
   });
 
   it('lists every expected tool', async () => {
@@ -156,6 +156,47 @@ describe('omnigraph-mcp server', () => {
     const block = (r.contents as Array<{ uri: string; mimeType?: string; text?: string }>)[0]!;
     expect(block.mimeType).toBe('application/json');
     expect(JSON.parse(block.text!)).toEqual(['main', 'feature']);
+  });
+
+  it('exposes the vendored best-practices resources and the index', async () => {
+    const { client } = await setup();
+    const r = await client.listResources();
+    const uris = r.resources.map((res) => res.uri).sort();
+    expect(uris).toEqual(
+      [
+        'omnigraph://best-practices/data',
+        'omnigraph://best-practices/index',
+        'omnigraph://best-practices/queries',
+        'omnigraph://best-practices/remote-ops',
+        'omnigraph://best-practices/schema',
+        'omnigraph://best-practices/search',
+        'omnigraph://branches',
+        'omnigraph://schema',
+      ].sort(),
+    );
+
+    // Read one body to confirm it carries the upstream cookbook content
+    // through (smoke test for the build-time sync).
+    const q = await client.readResource({ uri: 'omnigraph://best-practices/queries' });
+    const body = (q.contents as Array<{ uri: string; mimeType?: string; text?: string }>)[0]!;
+    expect(body.mimeType).toBe('text/markdown');
+    expect(body.text?.length ?? 0).toBeGreaterThan(500);
+
+    // Index lists every cookbook entry.
+    const idx = await client.readResource({ uri: 'omnigraph://best-practices/index' });
+    const idxText = (idx.contents as Array<{ uri: string; text?: string }>)[0]!.text!;
+    for (const key of ['queries', 'data', 'schema', 'remote-ops', 'search']) {
+      expect(idxText).toContain(`omnigraph://best-practices/${key}`);
+    }
+  });
+
+  it('returns workflow instructions on initialize', async () => {
+    const { client } = await setup();
+    const instructions = client.getInstructions();
+    expect(instructions).toBeTruthy();
+    // Sentinel phrases the LLM-facing brief must keep.
+    expect(instructions).toMatch(/ALWAYS read .*schema.* FIRST/);
+    expect(instructions).toMatch(/best-practices/);
   });
 
 it('branches_create honours configured defaultBranch when `from` is omitted', async () => {

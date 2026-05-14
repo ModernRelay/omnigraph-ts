@@ -1,6 +1,6 @@
 {
   "name": "@modernrelay/omnigraph",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "TypeScript SDK for the Omnigraph HTTP API.",
   "license": "MIT",
   "repository": {
