@@ -18,6 +18,35 @@ import {
   SERVER_VERSION as SDK_SERVER_VERSION,
 } from '@modernrelay/omnigraph';
 import { z } from 'zod';
+import { COOKBOOK } from './best-practices.gen';
+
+const INSTRUCTIONS = `Omnigraph is a versioned property graph. Reads are typed GQ queries; writes are server-orchestrated and branchable.
+
+ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before any query, mutation, or ingest. Schema declares node/edge types, @key fields, non-nullable properties, edge directions, and casing. Writing without seeing the schema produces queries that lint-fail or silently corrupt data.
+
+After schema, consult the matching best-practices resource for the task at hand:
+  - omnigraph://best-practices/queries     — before .gq queries (read/change)
+  - omnigraph://best-practices/data        — before ingest (mode selection, branch loop)
+  - omnigraph://best-practices/schema      — before schema_apply
+  - omnigraph://best-practices/remote-ops  — after any 504 or unexpected error
+  - omnigraph://best-practices/search      — before nearest/bm25/rrf queries
+
+Workflow norms (violating these breaks things or silently corrupts data):
+
+1. .gq edges use lowerCamelCase even though the schema declares them PascalCase. No top-level \`mutation { }\` wrapper — every block is \`query name($p: T) { insert|update|delete ... }\`. Dispatch writes via \`change\`, not \`read\`.
+2. Parameterize. Pass values via \`params\`, never interpolate into the query body. Declare typed params: \`query foo($slug: String) { ... }\`.
+3. \`nearest\`, \`bm25\`, and \`rrf\` require a trailing \`limit N\` — they are ordering operators, not filters.
+4. \`ingest mode: "merge"\` upserts by @key (idempotent — use this for at-least-once pipelines). \`"overwrite"\` truncates the branch. \`"append"\` fails on key collision.
+5. Verify every write. \`commits_list\` head BEFORE and AFTER. If identical, the write did not land. 504s do not mean failure — the server may have committed after the proxy dropped the response.
+6. Append-only types (Signal, Claim, Decision, Event, Interaction, Policy, Outcome, MarketingElement) duplicate on blind retry. Pointer types (Org, Person, Opportunity, Channel, Actor, ActionItem, Artifact, Meeting, Technology, Campaign, UseCase) dedupe via @key.
+7. Risky/large writes: \`branches_create\` from main → \`ingest\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`. \`schema_apply\` skips branches: it is main-only and rejects open feature branches.
+8. \`schema_apply\` is destructive and has no undo. Use \`schema_get\` + a local diff first. Non-nullable property adds require add-optional → backfill → tighten in two applies.
+
+Date format: ISO strings on \`change\` params; integer days-since-epoch in ingest JSONL \`Date\` fields. \`DateTime\` is ISO on both.
+
+If you see \`sync_branch()\` in an error message, it is server-internal text, NOT a tool. Retry once; on persistent failure, fall back to \`ingest\` on a branch.
+
+Depth: https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices`;
 
 export interface CreateServerOptions {
   baseUrl: string;
@@ -42,10 +71,15 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   const og = new Omnigraph({ baseUrl: opts.baseUrl, token: opts.token, fetch: opts.fetch });
   const defaultBranch = opts.defaultBranch ?? 'main';
 
-  const server = new McpServer({
-    name: 'omnigraph-mcp',
-    version: '0.4.0',
-  });
+  const server = new McpServer(
+    {
+      name: 'omnigraph-mcp',
+      version: '0.4.1',
+    },
+    {
+      instructions: INSTRUCTIONS,
+    },
+  );
 
   // ---------- Tools: read-only -------------------------------------------
 
@@ -311,6 +345,58 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       const list = await og.branches.list();
       return {
         contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(list, null, 2) }],
+      };
+    },
+  );
+
+  // Best-practices references, vendored from omnigraph-cookbooks at build
+  // time. Agents pull these on demand; resource bodies stay out of the
+  // initial session context until `resources/read` is called.
+  for (const entry of COOKBOOK) {
+    server.registerResource(
+      `best-practices/${entry.key}`,
+      entry.uri,
+      {
+        title: entry.title,
+        description: entry.description,
+        mimeType: 'text/markdown',
+      },
+      async (uri) => ({
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'text/markdown',
+            text: entry.body,
+          },
+        ],
+      }),
+    );
+  }
+
+  // Index resource: a single small markdown that lists every cookbook
+  // reference + its purpose. An agent that has not yet decided which
+  // reference it needs can read this one cheap entry to orient.
+  server.registerResource(
+    'best-practices/index',
+    'omnigraph://best-practices/index',
+    {
+      title: 'Best-practices index',
+      description:
+        'Lists every omnigraph://best-practices/* resource and what topic each covers. Read this first if you are not sure which deeper reference applies.',
+      mimeType: 'text/markdown',
+    },
+    async (uri) => {
+      const lines = [
+        '# Omnigraph best-practices index',
+        '',
+        'Vendored from https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices.',
+        '',
+        '| Resource | Read before |',
+        '|---|---|',
+        ...COOKBOOK.map((e) => `| \`${e.uri}\` | ${e.description} |`),
+      ];
+      return {
+        contents: [{ uri: uri.href, mimeType: 'text/markdown', text: lines.join('\n') }],
       };
     },
   );
