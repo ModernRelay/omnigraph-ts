@@ -22,6 +22,11 @@ import type {
 // unchanged. Same for ReadOutput.rows / .columns: shapes are user-schema-driven.
 const OPAQUE_PARAMS = new Set(['params']);
 const OPAQUE_READ_RESPONSE = new Set(['rows', 'columns']);
+// Export NDJSON rows are `{ type, data }` (or `{ edge, from, to, data }`).
+// `data` contains the user-schema-driven properties whose keys must round-trip
+// through ingest unchanged — keep verbatim. The envelope keys (`type`, `edge`,
+// `from`, `to`) are SDK/wire-defined and already match in both cases.
+const OPAQUE_EXPORT_ROW = new Set(['data']);
 
 export interface OmnigraphOptions {
   /** Base URL of the omnigraph-server. e.g. `http://127.0.0.1:8080`. */
@@ -130,7 +135,7 @@ export default class Omnigraph {
           body: input,
           signal: opts.signal,
         });
-        yield* ndjsonIterator<T>(response);
+        yield* ndjsonIterator<T>(response, { opaqueKeys: OPAQUE_EXPORT_ROW });
       },
     };
   }

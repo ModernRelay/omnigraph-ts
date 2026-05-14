@@ -1,7 +1,9 @@
 import { snakeToCamel } from './case';
+import type { CaseOptions } from './case';
 
 export async function* ndjsonIterator<T = unknown>(
   response: Response,
+  caseOptions: CaseOptions = {},
 ): AsyncIterable<T> {
   if (!response.body) {
     throw new Error('Response has no body to stream');
@@ -19,13 +21,13 @@ export async function* ndjsonIterator<T = unknown>(
         const line = buffer.slice(0, nl).trim();
         buffer = buffer.slice(nl + 1);
         if (line.length === 0) continue;
-        yield snakeToCamel<T>(JSON.parse(line));
+        yield snakeToCamel<T>(JSON.parse(line), caseOptions);
       }
     }
     buffer += decoder.decode();
     const final = buffer.trim();
     if (final.length > 0) {
-      yield snakeToCamel<T>(JSON.parse(final));
+      yield snakeToCamel<T>(JSON.parse(final), caseOptions);
     }
   } finally {
     // Cancel propagates upstream (closes the network connection on early

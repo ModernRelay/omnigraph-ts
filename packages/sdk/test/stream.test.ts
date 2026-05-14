@@ -3,10 +3,13 @@ import Omnigraph from '../src';
 import { stubFetch } from './helpers';
 
 describe('export streaming', () => {
-  it('yields rows from NDJSON body', async () => {
+  it('yields rows from NDJSON body, preserving user-schema keys inside `data`', async () => {
+    // `data` is user-schema-controlled. Keys like `first_name` or `table_key`
+    // are caller-defined and must survive the snake/camel boundary unchanged,
+    // so that `og.ingest()` of the exported NDJSON round-trips byte-for-byte.
     const ndjson =
-      '{"type":"Person","data":{"name":"Alice","table_key":"a"}}\n' +
-      '{"type":"Person","data":{"name":"Bob","table_key":"b"}}\n';
+      '{"type":"Person","data":{"first_name":"Alice","is_active":true}}\n' +
+      '{"edge":"WorksAt","from":"Alice","to":"Acme","data":{"start_year":2020}}\n';
     const { fetch } = stubFetch({
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
@@ -17,8 +20,16 @@ describe('export streaming', () => {
       rows.push(r);
     }
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toEqual({ type: 'Person', data: { name: 'Alice', tableKey: 'a' } });
-    expect(rows[1]).toEqual({ type: 'Person', data: { name: 'Bob', tableKey: 'b' } });
+    expect(rows[0]).toEqual({
+      type: 'Person',
+      data: { first_name: 'Alice', is_active: true },
+    });
+    expect(rows[1]).toEqual({
+      edge: 'WorksAt',
+      from: 'Alice',
+      to: 'Acme',
+      data: { start_year: 2020 },
+    });
   });
 
   it('handles trailing line without newline', async () => {

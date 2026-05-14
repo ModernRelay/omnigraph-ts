@@ -100,11 +100,14 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ querySource, queryName, params, branch, snapshot }) => {
+      // `branch` and `snapshot` are mutually exclusive per the spec. Only
+      // apply the defaultBranch fallback when the caller has not pinned a
+      // snapshot — otherwise we'd send both and the server would reject.
       const r = await og.read({
         querySource,
         queryName,
         params,
-        branch: branch ?? defaultBranch,
+        branch: snapshot ? branch : (branch ?? defaultBranch),
         snapshot,
       });
       return { content: jsonText(r) };

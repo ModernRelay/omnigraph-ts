@@ -188,6 +188,45 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     expect(observedFrom).toBe('review-2026');
   });
 
+  it('read tool omits branch when snapshot is set (mutually exclusive)', async () => {
+    let observedBody: Record<string, unknown> | undefined;
+    const recordingFetch: typeof globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'POST' && path === '/read') {
+        observedBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        return new Response(
+          JSON.stringify({
+            query_name: 'q',
+            target: { branch: null, snapshot: 'snap-1' },
+            row_count: 0,
+            columns: [],
+            rows: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const server = createOmnigraphMcpServer({
+      baseUrl: 'http://x',
+      defaultBranch: 'main',
+      fetch: recordingFetch,
+    });
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+
+    await client.callTool({
+      name: 'read',
+      arguments: { querySource: 'query q { match { $p: Person } return { $p.name } }', snapshot: 'snap-1' },
+    });
+    expect(observedBody?.snapshot).toBe('snap-1');
+    expect(observedBody?.branch).toBeUndefined();
+  });
+
   it('rejects calls with missing required input', async () => {
     const { client } = await setup();
     // querySource is required on `read`.
