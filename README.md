@@ -34,7 +34,22 @@ The SDK is built against a specific `omnigraph-server` release. The pin lives in
 3. `pnpm run generate` — regenerates `packages/sdk/src/generated/` and `packages/sdk/src/version.gen.ts`.
 4. Commit `spec/openapi.json`, `packages/sdk/src/generated/`, `packages/sdk/src/version.gen.ts`, and the bumped `package.json`. The PR shows the full upstream change.
 5. Bump `packages/sdk/package.json#version` (and `packages/mcp/package.json#version`) to match.
-6. Tag `vX.Y.Z`. `release.yml` publishes both packages to npm.
+6. Tag `vX.Y.Z`. `release.yml` publishes both packages to npm (see [Releasing](#releasing)).
+
+## Releasing
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which runs the full gate (drift, coverage, build, typecheck, test) on the tag SHA and then publishes both `@modernrelay/omnigraph` and `@modernrelay/omnigraph-mcp` with npm provenance. The dist-tag is derived from the tag name: `v1.2.3-alpha.1`, `-beta.x`, `-rc.x` ship under `next`; everything else under `latest`.
+
+```sh
+pnpm --filter @modernrelay/omnigraph version 0.4.0-alpha.1
+pnpm --filter @modernrelay/omnigraph-mcp version 0.4.0-alpha.1
+git commit -am "Release 0.4.0-alpha.1"
+git tag v0.4.0-alpha.1
+git push --follow-tags
+# then approve the `release` environment in the Actions UI.
+```
+
+One-time setup: add an npm `NPM_TOKEN` repo secret (use an Automation token to bypass 2FA in CI) and create a `release` GitHub Environment with required reviewers so a stray tag push cannot ship.
 
 ## Local dev
 
