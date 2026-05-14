@@ -44,7 +44,7 @@ Pushing a `v*` tag triggers `.github/workflows/release.yml`, which runs the full
 pnpm --filter @modernrelay/omnigraph version 0.4.0-alpha.1
 pnpm --filter @modernrelay/omnigraph-mcp version 0.4.0-alpha.1
 git commit -am "Release 0.4.0-alpha.1"
-git tag v0.4.0-alpha.1
+git tag -a v0.4.0-alpha.1 -m "Release 0.4.0-alpha.1"
 git push --follow-tags
 # then approve the `release` environment in the Actions UI.
 ```

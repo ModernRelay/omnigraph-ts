@@ -12,10 +12,12 @@ name: release
 #   2. Repo Settings → Environments → create `release` → require manual
 #      approval. Without this gate, any push of a `v*` tag publishes.
 #
-# To cut a release:
+# To cut a release (note: the tag MUST be annotated so `git push --follow-tags`
+# actually pushes it — lightweight tags are skipped by --follow-tags):
 #   pnpm --filter @modernrelay/omnigraph version 0.4.0-alpha.1
 #   pnpm --filter @modernrelay/omnigraph-mcp version 0.4.0-alpha.1
-#   git commit -am "Release 0.4.0-alpha.1" && git tag v0.4.0-alpha.1
+#   git commit -am "Release 0.4.0-alpha.1"
+#   git tag -a v0.4.0-alpha.1 -m "Release 0.4.0-alpha.1"
 #   git push --follow-tags
 #   # then approve the `release` environment in the Actions UI.
 
