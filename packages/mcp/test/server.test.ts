@@ -57,12 +57,15 @@ function fakeFetch(): typeof globalThis.fetch {
         ],
       });
     }
+    if (method === 'GET' && path === '/queries') {
+      return respond(200, { queries: [] });
+    }
     return respond(404, { error: 'not found', code: 'not_found' });
   }) as unknown as typeof globalThis.fetch;
 }
 
-async function setup() {
-  const server = createOmnigraphMcpServer({ baseUrl: 'http://x', fetch: fakeFetch() });
+async function setup(fetchImpl: typeof globalThis.fetch = fakeFetch()) {
+  const server = await createOmnigraphMcpServer({ baseUrl: 'http://x', fetch: fetchImpl });
   const client = new Client({ name: 'test-client', version: '0.0.0' });
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverT), client.connect(clientT)]);
@@ -171,6 +174,7 @@ describe('omnigraph-mcp server', () => {
         'omnigraph://best-practices/schema',
         'omnigraph://best-practices/search',
         'omnigraph://branches',
+        'omnigraph://queries',
         'omnigraph://schema',
       ].sort(),
     );
@@ -216,7 +220,7 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof globalThis.fetch;
 
-    const server = createOmnigraphMcpServer({
+    const server = await createOmnigraphMcpServer({
       baseUrl: 'http://x',
       defaultBranch: 'review-2026',
       fetch: recordingFetch,
@@ -251,7 +255,7 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof globalThis.fetch;
 
-    const server = createOmnigraphMcpServer({
+    const server = await createOmnigraphMcpServer({
       baseUrl: 'http://x',
       defaultBranch: 'main',
       fetch: recordingFetch,
@@ -273,5 +277,137 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     // querySource is required on `read`.
     const r = await client.callTool({ name: 'read', arguments: {} });
     expect(r.isError).toBe(true);
+  });
+
+  it('registers one q_<name> tool per saved query and dispatches through /read', async () => {
+    let readBody: Record<string, unknown> | undefined;
+    const fetchWithSavedQuery: typeof globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && path === '/queries') {
+        return new Response(
+          JSON.stringify({
+            queries: [
+              {
+                name: 'find_person',
+                description: 'by name',
+                source:
+                  'query find_person($name: String) { match { $p: Person { name: $name } } return { $p.name } }',
+                params: [{ name: 'name', type_name: 'String', nullable: false }],
+                updated_at_us: '1747315200000000',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (method === 'POST' && path === '/read') {
+        readBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        return new Response(
+          JSON.stringify({
+            query_name: 'find_person',
+            target: { branch: 'main', snapshot: null },
+            row_count: 1,
+            columns: ['$p.name'],
+            rows: [{ '$p.name': 'Alice' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const { client } = await setup(fetchWithSavedQuery);
+    const tools = await client.listTools();
+    const names = tools.tools.map((t) => t.name);
+    expect(names).toContain('q_find_person');
+
+    const result = await client.callTool({
+      name: 'q_find_person',
+      arguments: { name: 'Alice' },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(readBody?.query_source).toContain('query find_person');
+    expect(readBody?.params).toEqual({ name: 'Alice' });
+    expect(readBody?.branch).toBe('main');
+  });
+
+  it('q_<name> tool routes to a snapshot when one is passed', async () => {
+    let readBody: Record<string, unknown> | undefined;
+    const fetchImpl: typeof globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && path === '/queries') {
+        return new Response(
+          JSON.stringify({
+            queries: [
+              {
+                name: 'all_people',
+                description: null,
+                source: 'query all_people() { match { $p: Person } return { $p.name } }',
+                params: [],
+                updated_at_us: '1747315200000000',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (method === 'POST' && path === '/read') {
+        readBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        return new Response(
+          JSON.stringify({
+            query_name: 'all_people',
+            target: { branch: null, snapshot: 'snap-1' },
+            row_count: 0,
+            columns: [],
+            rows: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const { client } = await setup(fetchImpl);
+    await client.callTool({ name: 'q_all_people', arguments: { snapshot: 'snap-1' } });
+    expect(readBody?.snapshot).toBe('snap-1');
+    expect(readBody?.branch).toBeUndefined();
+  });
+
+  it('continues to start when /queries returns 404 (older server)', async () => {
+    const fetchOldServer: typeof globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'GET' && path === '/queries') {
+        return new Response(JSON.stringify({ error: 'not found', code: 'not_found' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    // Should not throw; built-in tools still registered.
+    const { client } = await setup(fetchOldServer);
+    const tools = await client.listTools();
+    const names = tools.tools.map((t) => t.name);
+    expect(names).toContain('read');
+    expect(names.find((n) => n.startsWith('q_'))).toBeUndefined();
   });
 });

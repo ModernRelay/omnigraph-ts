@@ -36,6 +36,12 @@ export type {
   // Commits
   Commit,
   CommitList,
+  // Saved queries
+  SavedQuery,
+  SavedQueryParam,
+  SavedQueryList,
+  SavedQueryDelete,
+  SaveQueryInput,
   // Schema
   Schema,
   SchemaApply,

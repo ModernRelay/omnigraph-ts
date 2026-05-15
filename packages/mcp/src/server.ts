@@ -15,9 +15,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   Omnigraph,
   type FetchLike,
+  type SavedQuery,
+  type SavedQueryParam,
   SERVER_VERSION as SDK_SERVER_VERSION,
 } from '@modernrelay/omnigraph';
-import { z } from 'zod';
+import { z, type ZodTypeAny } from 'zod';
 import { COOKBOOK } from './best-practices.gen';
 
 const INSTRUCTIONS = `Omnigraph is a versioned property graph. Reads are typed GQ queries; writes are server-orchestrated and branchable.
@@ -44,6 +46,8 @@ Workflow norms (violating these breaks things or silently corrupts data):
 
 Date format: ISO strings on \`change\` params; integer days-since-epoch in ingest JSONL \`Date\` fields. \`DateTime\` is ISO on both.
 
+Saved queries: tools prefixed \`q_\` (e.g. \`q_find_person\`) are user-authored .gq queries the operator has persisted via \`PUT /queries/{name}\`. They dispatch through \`read\` with the saved source. Call them like any other tool, passing the declared params as named args. The list at session start is a snapshot — saved queries added or deleted after startup are not visible until the MCP reconnects. Browse \`omnigraph://queries\` for the full source if a tool description is not enough.
+
 If you see \`sync_branch()\` in an error message, it is server-internal text, NOT a tool. Retry once; on persistent failure, fall back to \`ingest\` on a branch.
 
 Depth: https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices`;
@@ -67,7 +71,67 @@ function plainText(text: string) {
   return [{ type: 'text' as const, text }];
 }
 
-export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
+// Prefix saved-query tools so they cannot shadow built-in tool names. The
+// server side also rejects reserved names like `read`, but the prefix is
+// the defence-in-depth and keeps the catalogue obviously partitioned for
+// human readers.
+const SAVED_QUERY_TOOL_PREFIX = 'q_';
+
+// Map an Omnigraph scalar/composite type name (as it appears in `.gq`
+// source — `String`, `I32`, `Vector(3072)`, etc.) onto a permissive zod
+// schema. The MCP boundary is only doing argument-shape validation; the
+// server still parses and typechecks the query against the live schema,
+// so any tighter checking here would be duplicative and could reject
+// future scalars we have not seen yet.
+function paramTypeToZod(typeName: string): ZodTypeAny {
+  switch (typeName) {
+    case 'String':
+      return z.string();
+    case 'Bool':
+      return z.boolean();
+    case 'I32':
+    case 'I64':
+    case 'U32':
+    case 'U64':
+      return z.number().int();
+    case 'F32':
+    case 'F64':
+      return z.number();
+    case 'Date':
+    case 'DateTime':
+      return z.string();
+    default:
+      // Vector(N), Blob, [String], future scalars — pass through opaque.
+      return z.unknown();
+  }
+}
+
+function savedQueryInputShape(params: SavedQueryParam[]): Record<string, ZodTypeAny> {
+  const shape: Record<string, ZodTypeAny> = {};
+  for (const p of params) {
+    const base = paramTypeToZod(p.typeName);
+    shape[p.name] = p.nullable ? base.optional() : base;
+  }
+  // Every saved query is dispatched through `/read`, so the caller may
+  // also pin a branch or a snapshot at invocation time without having
+  // to bake it into the saved source.
+  shape.branch = z.string().optional();
+  shape.snapshot = z.string().optional();
+  return shape;
+}
+
+function savedQueryDescription(q: SavedQuery): string {
+  const params =
+    q.params.length === 0
+      ? 'no parameters'
+      : q.params
+          .map((p) => `${p.name}: ${p.typeName}${p.nullable ? '?' : ''}`)
+          .join(', ');
+  const head = q.description ?? `Saved query \`${q.name}\``;
+  return `${head} — params: ${params}. Dispatched through \`read\`; pass values in the matching argument names, optionally override \`branch\` or pin \`snapshot\`.`;
+}
+
+export async function createOmnigraphMcpServer(opts: CreateServerOptions): Promise<McpServer> {
   const og = new Omnigraph({ baseUrl: opts.baseUrl, token: opts.token, fetch: opts.fetch });
   const defaultBranch = opts.defaultBranch ?? 'main';
 
@@ -372,6 +436,71 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       }),
     );
   }
+
+  // ---------- Saved queries -----------------------------------------------
+  // Pull whatever the user has saved server-side via `PUT /queries/{name}`
+  // and register one MCP tool per saved query, plus a list resource. This
+  // is best-effort: if the server is older than 0.4.3 the endpoint will
+  // 404, and if the network is flaky the list call will throw. In either
+  // case we keep the rest of the server intact rather than failing
+  // startup — operators get a stderr line so the absence is loud.
+  let savedQueries: SavedQuery[] = [];
+  try {
+    const listed = await og.queries.list();
+    if (Array.isArray(listed)) {
+      savedQueries = listed;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `omnigraph-mcp: failed to list saved queries (${message}); skipping per-query tool registration`,
+    );
+  }
+  for (const saved of savedQueries) {
+    const toolName = `${SAVED_QUERY_TOOL_PREFIX}${saved.name}`;
+    server.registerTool(
+      toolName,
+      {
+        title: saved.description ?? `Saved query: ${saved.name}`,
+        description: savedQueryDescription(saved),
+        inputSchema: savedQueryInputShape(saved.params),
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (input: Record<string, unknown>) => {
+        const { branch, snapshot, ...params } = input;
+        const target =
+          typeof snapshot === 'string'
+            ? { snapshot }
+            : { branch: (typeof branch === 'string' ? branch : undefined) ?? defaultBranch };
+        const r = await og.read({
+          querySource: saved.source,
+          queryName: saved.name,
+          params,
+          ...target,
+        });
+        return { content: jsonText(r) };
+      },
+    );
+  }
+  server.registerResource(
+    'queries',
+    'omnigraph://queries',
+    {
+      title: 'Saved queries',
+      description:
+        'JSON list of every saved query (name, description, source, params). Mirrors what is exposed as `q_<name>` tools — read this if you want to pick a query by description rather than scrolling the tool catalogue.',
+      mimeType: 'application/json',
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: JSON.stringify(savedQueries, null, 2),
+        },
+      ],
+    }),
+  );
 
   // Index resource: a single small markdown that lists every cookbook
   // reference + its purpose. An agent that has not yet decided which

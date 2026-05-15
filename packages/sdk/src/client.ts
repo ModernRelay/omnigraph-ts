@@ -4,6 +4,7 @@ import type { FetchLike } from './transport';
 import { BranchesResource } from './resources/branches';
 import type { CallOptions } from './internals';
 import { CommitsResource } from './resources/commits';
+import { QueriesResource } from './resources/queries';
 import { SchemaResource } from './resources/schema';
 import type {
   Change,
@@ -44,6 +45,7 @@ export interface SnapshotInput {
 export default class Omnigraph {
   readonly branches: BranchesResource;
   readonly commits: CommitsResource;
+  readonly queries: QueriesResource;
   readonly schema: SchemaResource;
 
   private readonly t: Transport;
@@ -52,6 +54,7 @@ export default class Omnigraph {
     this.t = new Transport(opts);
     this.branches = new BranchesResource(this.t);
     this.commits = new CommitsResource(this.t);
+    this.queries = new QueriesResource(this.t);
     this.schema = new SchemaResource(this.t);
   }
 

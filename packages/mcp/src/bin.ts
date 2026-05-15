@@ -12,7 +12,7 @@ if (!baseUrl) {
   process.exit(1);
 }
 
-const server = createOmnigraphMcpServer({
+const server = await createOmnigraphMcpServer({
   baseUrl,
   token: process.env.OMNIGRAPH_TOKEN,
   defaultBranch: process.env.OMNIGRAPH_DEFAULT_BRANCH,

@@ -684,6 +684,251 @@
         ]
       }
     },
+    "/queries": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "List every saved query.",
+        "description": "Each entry includes the full `.gq` source plus the declared parameter\nsignature, so a client can render or invoke them without a follow-up\nfetch.",
+        "operationId": "listQueries",
+        "responses": {
+          "200": {
+            "description": "All saved queries, ordered by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQueryListOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/queries/{name}": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Retrieve a saved query by name.",
+        "operationId": "getQuery",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Saved query name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQueryOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Save (insert or overwrite) a named query.",
+        "description": "`source` must declare exactly one `query <name>(...)` block whose name\nmatches the URL `{name}`. The server parses the source at save time and\npersists the declared parameter signature alongside it. The 1:1 mapping\nbetween URL name and `.gq` query name keeps the saved-query →\nMCP-tool mapping unambiguous.",
+        "operationId": "saveQuery",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Saved query name (must match the source's declared query name)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The saved query (insert or overwrite)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQueryOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — invalid name, source did not parse, or declared name does not match",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Delete a saved query. Idempotent — returns `deleted: false` if the\nquery did not exist.",
+        "operationId": "deleteQuery",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Saved query name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delete result. `deleted` is false if the query did not exist (idempotent).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedQueryDeleteOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/read": {
       "post": {
         "tags": [
@@ -1532,6 +1777,108 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SaveQueryRequest": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional human-readable description. Not used during execution; surfaced\nto clients so a saved query can carry its own help text."
+          },
+          "source": {
+            "type": "string",
+            "description": "Full `.gq` source. Must declare exactly one `query <name>(...)` block\nwhose declared name matches the URL `{name}`. The server parses the\nsource at save time and persists the extracted parameter signature\nalongside it; clients (MCP, future UIs) use that signature to build\ntyped inputs.",
+            "example": "query find_person($name: String) {\n    match {\n        $p: Person { name: $name }\n    }\n    return { $p.name, $p.age }\n}"
+          }
+        }
+      },
+      "SavedQueryDeleteOutput": {
+        "type": "object",
+        "required": [
+          "name",
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "description": "`true` if the saved query existed and was removed, `false` if it did\nnot exist (delete is idempotent)."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SavedQueryListOutput": {
+        "type": "object",
+        "required": [
+          "queries"
+        ],
+        "properties": {
+          "queries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedQueryOutput"
+            }
+          }
+        }
+      },
+      "SavedQueryOutput": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "params",
+          "updated_at_us"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedQueryParamOutput"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "updated_at_us": {
+            "type": "string",
+            "description": "Last write time as Unix epoch microseconds, encoded as a decimal string."
+          }
+        }
+      },
+      "SavedQueryParamOutput": {
+        "type": "object",
+        "required": [
+          "name",
+          "type_name",
+          "nullable"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "nullable": {
+            "type": "boolean"
+          },
+          "type_name": {
+            "type": "string"
           }
         }
       },

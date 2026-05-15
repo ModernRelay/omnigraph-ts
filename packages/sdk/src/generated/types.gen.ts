@@ -260,6 +260,52 @@ export type ReadTargetOutput = {
   snapshot?: string | null;
 };
 
+export type SaveQueryRequest = {
+  /**
+   * Optional human-readable description. Not used during execution; surfaced
+   * to clients so a saved query can carry its own help text.
+   */
+  description?: string | null;
+  /**
+   * Full `.gq` source. Must declare exactly one `query <name>(...)` block
+   * whose declared name matches the URL `{name}`. The server parses the
+   * source at save time and persists the extracted parameter signature
+   * alongside it; clients (MCP, future UIs) use that signature to build
+   * typed inputs.
+   */
+  source: string;
+};
+
+export type SavedQueryDeleteOutput = {
+  /**
+   * `true` if the saved query existed and was removed, `false` if it did
+   * not exist (delete is idempotent).
+   */
+  deleted: boolean;
+  name: string;
+};
+
+export type SavedQueryListOutput = {
+  queries: Array<SavedQueryOutput>;
+};
+
+export type SavedQueryOutput = {
+  description?: string | null;
+  name: string;
+  params: Array<SavedQueryParamOutput>;
+  source: string;
+  /**
+   * Last write time as Unix epoch microseconds, encoded as a decimal string.
+   */
+  updated_at_us: string;
+};
+
+export type SavedQueryParamOutput = {
+  name: string;
+  nullable: boolean;
+  type_name: string;
+};
+
 export type SchemaApplyOutput = {
   applied: boolean;
   manifest_version: number;
@@ -646,6 +692,147 @@ export type IngestResponses = {
 };
 
 export type IngestResponse = IngestResponses[keyof IngestResponses];
+
+export type ListQueriesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/queries";
+};
+
+export type ListQueriesErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type ListQueriesError = ListQueriesErrors[keyof ListQueriesErrors];
+
+export type ListQueriesResponses = {
+  /**
+   * All saved queries, ordered by name
+   */
+  200: SavedQueryListOutput;
+};
+
+export type ListQueriesResponse =
+  ListQueriesResponses[keyof ListQueriesResponses];
+
+export type DeleteQueryData = {
+  body?: never;
+  path: {
+    /**
+     * Saved query name
+     */
+    name: string;
+  };
+  query?: never;
+  url: "/queries/{name}";
+};
+
+export type DeleteQueryErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type DeleteQueryError = DeleteQueryErrors[keyof DeleteQueryErrors];
+
+export type DeleteQueryResponses = {
+  /**
+   * Delete result. `deleted` is false if the query did not exist (idempotent).
+   */
+  200: SavedQueryDeleteOutput;
+};
+
+export type DeleteQueryResponse =
+  DeleteQueryResponses[keyof DeleteQueryResponses];
+
+export type GetQueryData = {
+  body?: never;
+  path: {
+    /**
+     * Saved query name
+     */
+    name: string;
+  };
+  query?: never;
+  url: "/queries/{name}";
+};
+
+export type GetQueryErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Not found
+   */
+  404: ErrorOutput;
+};
+
+export type GetQueryError = GetQueryErrors[keyof GetQueryErrors];
+
+export type GetQueryResponses = {
+  /**
+   * The saved query
+   */
+  200: SavedQueryOutput;
+};
+
+export type GetQueryResponse = GetQueryResponses[keyof GetQueryResponses];
+
+export type SaveQueryData = {
+  body: SaveQueryRequest;
+  path: {
+    /**
+     * Saved query name (must match the source's declared query name)
+     */
+    name: string;
+  };
+  query?: never;
+  url: "/queries/{name}";
+};
+
+export type SaveQueryErrors = {
+  /**
+   * Bad request — invalid name, source did not parse, or declared name does not match
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type SaveQueryError = SaveQueryErrors[keyof SaveQueryErrors];
+
+export type SaveQueryResponses = {
+  /**
+   * The saved query (insert or overwrite)
+   */
+  200: SavedQueryOutput;
+};
+
+export type SaveQueryResponse = SaveQueryResponses[keyof SaveQueryResponses];
 
 export type ReadData = {
   body: ReadRequest;

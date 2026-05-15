@@ -29,6 +29,11 @@ import type {
   ReadOutput,
   ReadRequest,
   ReadTargetOutput,
+  SaveQueryRequest,
+  SavedQueryDeleteOutput,
+  SavedQueryListOutput,
+  SavedQueryOutput,
+  SavedQueryParamOutput,
   SchemaApplyOutput,
   SchemaApplyRequest,
   SchemaOutput,
@@ -59,6 +64,10 @@ export type Ingest = Camelize<IngestOutput>;
 export type IngestTable = Camelize<IngestTableOutput>;
 export type Read = Camelize<ReadOutput>;
 export type ReadTarget = Camelize<ReadTargetOutput>;
+export type SavedQuery = Camelize<SavedQueryOutput>;
+export type SavedQueryParam = Camelize<SavedQueryParamOutput>;
+export type SavedQueryList = Camelize<SavedQueryListOutput>;
+export type SavedQueryDelete = Camelize<SavedQueryDeleteOutput>;
 export type Schema = Camelize<SchemaOutput>;
 export type SchemaApply = Camelize<SchemaApplyOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
@@ -73,6 +82,7 @@ export type ChangeInput = Camelize<ChangeRequest>;
 export type ExportInput = Camelize<ExportRequest>;
 export type IngestInput = Camelize<IngestRequest>;
 export type ReadInput = Camelize<ReadRequest>;
+export type SaveQueryInput = Camelize<SaveQueryRequest>;
 export type SchemaApplyInput = Camelize<SchemaApplyRequest>;
 
 // Enums and discriminators are unchanged (no snake-case keys to convert).
