@@ -13,6 +13,7 @@ import type {
   Health,
   Ingest,
   IngestInput,
+  MutationInput,
   QueryInput,
   Read,
   ReadInput,
@@ -29,6 +30,30 @@ const OPAQUE_READ_RESPONSE = new Set(['rows', 'columns']);
 // through ingest unchanged — keep verbatim. The envelope keys (`type`, `edge`,
 // `from`, `to`) are SDK/wire-defined and already match in both cases.
 const OPAQUE_EXPORT_ROW = new Set(['data']);
+
+function normalizeChangeInput(input: ChangeInput): MutationInput {
+  const record = input as Record<string, unknown>;
+  const hasCanonical = record.query !== undefined || record.name !== undefined;
+  const hasLegacy = record.querySource !== undefined || record.queryName !== undefined;
+  if (hasCanonical && hasLegacy) {
+    throw new TypeError('og.change() accepts either query/name or querySource/queryName, not both');
+  }
+  if (hasLegacy) {
+    if (typeof record.querySource !== 'string' || record.querySource.length === 0) {
+      throw new TypeError('og.change() requires querySource when using legacy querySource/queryName fields');
+    }
+    return {
+      query: record.querySource,
+      name: record.queryName as string | null | undefined,
+      params: record.params,
+      branch: record.branch as string | null | undefined,
+    };
+  }
+  if (typeof record.query !== 'string' || record.query.length === 0) {
+    throw new TypeError('og.change() requires query when using canonical query/name fields');
+  }
+  return input as MutationInput;
+}
 
 export interface OmnigraphOptions {
   /** Base URL of the omnigraph-server. e.g. `http://127.0.0.1:8080`. */
@@ -117,7 +142,7 @@ export default class Omnigraph {
    * `update ... where` clauses to allow safe retry. Blind `insert` without
    * unique keys can duplicate on retry.
    */
-  mutate(input: ChangeInput, opts: CallOptions = {}): Promise<Change> {
+  mutate(input: MutationInput, opts: CallOptions = {}): Promise<Change> {
     return this.t.request<Change>('POST', '/mutate', {
       body: input,
       signal: opts.signal,
@@ -154,13 +179,13 @@ export default class Omnigraph {
    * @deprecated Server 0.6.0 introduces {@link Omnigraph.mutate} as the
    * canonical successor. `POST /change` still works but the server emits
    * `Deprecation: true` and `Link: </mutate>; rel="successor-version"`
-   * response headers. As of v0.6.0 the request body's field names also
-   * changed (`query` / `name` instead of `querySource` / `queryName`);
-   * both endpoints accept the canonical shape.
+   * response headers. Accepts both the old SDK fields (`querySource` /
+   * `queryName`) and the canonical fields (`query` / `name`); the wire request
+   * is normalized to the server 0.6 shape.
    */
   change(input: ChangeInput, opts: CallOptions = {}): Promise<Change> {
     return this.t.request<Change>('POST', '/change', {
-      body: input,
+      body: normalizeChangeInput(input),
       signal: opts.signal,
       opaqueBodyKeys: OPAQUE_PARAMS,
     });

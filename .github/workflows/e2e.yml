@@ -81,11 +81,11 @@ jobs:
                   - branch_merge
           YAML
           cat > /tmp/og/omnigraph.yaml <<'YAML'
+          policy:
+            file: /tmp/og/policy.yaml
           graphs:
             e2e:
               uri: /tmp/og/repo.omni
-              policy:
-                file: /tmp/og/policy.yaml
           cli:
             graph: e2e
             branch: main

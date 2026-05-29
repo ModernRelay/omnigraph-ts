@@ -35,7 +35,7 @@ console.log(rows); // → [{ '$p.name': 'Alice', '$p.age': 30 }]
 
 That's the whole pattern: instantiate once, call methods, get typed responses.
 
-> **Migrating from `og.read` / `og.change` (server 0.6.0)** — `POST /query` and `POST /mutate` are the canonical successors. On `mutate`/`change` the request body's field names are now `query` / `name` (was `querySource` / `queryName`); `read` keeps the legacy names. `og.read()` and `og.change()` still work — the server emits `Deprecation: true` and `Link: rel="successor-version"` response headers but otherwise behaves the same.
+> **Migrating from `og.read` / `og.change` (server 0.6.0)** — `POST /query` and `POST /mutate` are the canonical successors. New mutation calls should use `og.mutate({ query, name })`. Deprecated `og.change()` remains source-compatible with both old `{ querySource, queryName }` callers and canonical `{ query, name }` callers; the SDK normalizes either shape to the server 0.6 wire body. `og.read()` keeps the legacy `{ querySource, queryName }` shape.
 
 ## What you can do
 
@@ -193,11 +193,11 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 | `og.ingest({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
 | `og.ingest({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
 | `og.ingest({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
-| `og.mutate({ query })`, `og.change({ query })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
+| `og.mutate({ query })`, `og.change({ query })`, `og.change({ querySource })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
 
 If a mutation isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
 
-`og.read()` and `og.change()` are deprecated aliases of `og.query()` and `og.mutate()` (server 0.6.0). They're kept for byte-stable compatibility — `change`'s body fields now match `mutate` (`query` / `name` instead of `querySource` / `queryName`); `read`'s body still uses `querySource` / `queryName`.
+`og.read()` and `og.change()` are deprecated aliases of `og.query()` and `og.mutate()` (server 0.6.0). `og.change()` accepts both the old SDK fields (`querySource` / `queryName`) and the canonical mutation fields (`query` / `name`), then sends the canonical wire body. `og.read()` still uses `querySource` / `queryName`.
 
 ## Multi-graph clusters
 

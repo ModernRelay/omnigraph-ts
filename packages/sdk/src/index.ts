@@ -47,6 +47,8 @@ export type {
   // Operations
   Change,
   ChangeInput,
+  LegacyChangeInput,
+  MutationInput,
   ExportInput,
   Health,
   Ingest,

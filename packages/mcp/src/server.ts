@@ -19,6 +19,7 @@ import {
 } from '@modernrelay/omnigraph';
 import { z } from 'zod';
 import { COOKBOOK } from './best-practices.gen';
+import { MCP_PACKAGE_VERSION } from './version.gen';
 
 const INSTRUCTIONS = `Omnigraph is a versioned property graph. Reads are typed GQ queries; writes are server-orchestrated and branchable.
 
@@ -64,6 +65,25 @@ export interface CreateServerOptions {
 }
 
 const LoadModeEnum = z.enum(['overwrite', 'append', 'merge']);
+const McpCanonicalChangeSchema = z
+  .object({
+    query: z.string().min(1),
+    name: z.string().optional(),
+    params: z.record(z.unknown()).optional(),
+    branch: z.string().optional(),
+  })
+  .strict();
+const McpLegacyChangeSchema = z
+  .object({
+    querySource: z.string().min(1),
+    queryName: z.string().optional(),
+    params: z.record(z.unknown()).optional(),
+    branch: z.string().optional(),
+  })
+  .strict();
+const McpChangeSchema = z.union([McpCanonicalChangeSchema, McpLegacyChangeSchema]);
+
+type McpChangeInput = z.infer<typeof McpChangeSchema>;
 
 function jsonText(value: unknown) {
   return [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }];
@@ -71,6 +91,23 @@ function jsonText(value: unknown) {
 
 function plainText(text: string) {
   return [{ type: 'text' as const, text }];
+}
+
+function normalizeMcpChangeInput(input: McpChangeInput) {
+  if ('querySource' in input) {
+    return {
+      query: input.querySource,
+      name: input.queryName,
+      params: input.params,
+      branch: input.branch,
+    };
+  }
+  return {
+    query: input.query,
+    name: input.name,
+    params: input.params,
+    branch: input.branch,
+  };
 }
 
 export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
@@ -85,7 +122,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   const server = new McpServer(
     {
       name: 'omnigraph-mcp',
-      version: '0.4.1',
+      version: MCP_PACKAGE_VERSION,
     },
     {
       instructions: INSTRUCTIONS,
@@ -302,25 +339,15 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       description:
         'Legacy alias for `mutate` — prefer `mutate` for new callers. Same behavior, ' +
         'sent to `POST /change` instead of `POST /mutate`; server responds with ' +
-        '`Deprecation: true` and a `Link: rel="successor-version"` header. As of ' +
-        'server 0.6.0 the field names match the canonical `mutate` tool (`query` / ' +
-        '`name`); the legacy `querySource` / `queryName` wire fields are still accepted ' +
-        'server-side but the canonical names are required at the tool boundary.',
-      inputSchema: {
-        query: z.string().min(1),
-        name: z.string().optional(),
-        params: z.record(z.unknown()).optional(),
-        branch: z.string().optional(),
-      },
+        '`Deprecation: true` and a `Link: rel="successor-version"` header. Accepts ' +
+        'both legacy `querySource` / `queryName` and canonical `query` / `name`; ' +
+        'mixed field families are rejected.',
+      inputSchema: McpChangeSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
-    async ({ query, name, params, branch }) => {
-      const r = await og.change({
-        query,
-        name,
-        params,
-        branch: branch ?? defaultBranch,
-      });
+    async (input) => {
+      const normalized = normalizeMcpChangeInput(input);
+      const r = await og.change({ ...normalized, branch: normalized.branch ?? defaultBranch });
       return { content: jsonText(r) };
     },
   );
@@ -397,12 +424,13 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'Apply schema migration',
       description:
-        'Apply a new .pg schema as a migration. Idempotent: applying an unchanged schema returns applied=false.',
-      inputSchema: { schemaSource: z.string().min(1) },
+        'Apply a new .pg schema as a migration. Idempotent: applying an unchanged schema returns applied=false. ' +
+        '`allowDataLoss` hard-drops column data for destructive migration steps; leave false unless the plan was reviewed.',
+      inputSchema: { schemaSource: z.string().min(1), allowDataLoss: z.boolean().optional() },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ schemaSource }) => {
-      const r = await og.schema.apply({ schemaSource });
+    async ({ schemaSource, allowDataLoss }) => {
+      const r = await og.schema.apply({ schemaSource, allowDataLoss });
       return { content: jsonText(r) };
     },
   );

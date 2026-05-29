@@ -136,7 +136,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     expect(r.affectedNodes).toBe(1);
   });
 
-  it('og.change wire body uses canonical query/name fields (PR #110 rename)', async () => {
+  it('og.change accepts canonical query/name fields and emits canonical wire fields', async () => {
     const { fetch, calls } = stubFetch({
       body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
     });
@@ -147,6 +147,37 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     expect(body.name).toBe('q');
     expect('query_source' in body).toBe(false);
     expect('query_name' in body).toBe(false);
+  });
+
+  it('og.change accepts legacy querySource/queryName fields and normalizes to canonical wire fields', async () => {
+    const { fetch, calls } = stubFetch({
+      body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    await og.change({
+      querySource: 'query q() { insert X {} }',
+      queryName: 'q',
+      branch: 'main',
+    });
+    const body = JSON.parse(calls[0]?.body ?? '{}');
+    expect(calls[0]?.url).toBe('http://x/change');
+    expect(body.query).toBe('query q() { insert X {} }');
+    expect(body.name).toBe('q');
+    expect('query_source' in body).toBe(false);
+    expect('query_name' in body).toBe(false);
+  });
+
+  it('og.change rejects mixed canonical and legacy mutation field families', async () => {
+    const { fetch } = stubFetch({
+      body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    expect(() =>
+      og.change({
+        query: 'query q() { insert X {} }',
+        querySource: 'query q() { insert X {} }',
+      } as never),
+    ).toThrow(/either query\/name or querySource\/queryName/);
   });
 });
 

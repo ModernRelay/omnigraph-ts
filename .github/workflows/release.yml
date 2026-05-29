@@ -45,6 +45,7 @@ jobs:
 
       # Gates — same bar as ci.yml, run again on the exact tag SHA so a stale
       # CI run cannot bless a release.
+      - run: pnpm run check-versions
       - run: pnpm run check-drift
       - run: pnpm run check-coverage
       - run: pnpm run build

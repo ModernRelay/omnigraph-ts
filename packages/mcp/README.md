@@ -69,12 +69,12 @@ Mutating (`destructiveHint: true` where appropriate — hosts should surface con
 | Tool | Purpose |
 |---|---|
 | `mutate` | Run a `.gq` mutation (canonical; successor to `change`) |
-| `change` | Legacy alias for `mutate`. Field names are now `query` / `name` (PR #110 rename); prefer `mutate`. |
+| `change` | Legacy alias for `mutate`. Accepts either legacy `querySource` / `queryName` or canonical `query` / `name`; mixed field families are rejected. Prefer `mutate`. |
 | `ingest` | Bulk-ingest NDJSON (`mode: 'merge'` for idempotency) |
 | `branches_create` | Create a new branch |
 | `branches_delete` | Delete a branch |
 | `branches_merge` | Merge `source` into `target` |
-| `schema_apply` | Apply a schema migration |
+| `schema_apply` | Apply a schema migration. Optional `allowDataLoss: true` hard-drops column data for destructive steps; leave unset unless the plan was reviewed. |
 
 ### Resources
 
