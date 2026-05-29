@@ -33,13 +33,22 @@ function fakeFetch(): typeof globalThis.fetch {
     if (method === 'GET' && path === '/schema') {
       return respond(200, { schema_source: 'node Person { name: String @key }' });
     }
-    if (method === 'POST' && path === '/read') {
+    if (method === 'POST' && (path === '/read' || path === '/query')) {
       return respond(200, {
         query_name: 'q',
         target: { branch: 'main', snapshot: null },
         row_count: 1,
         columns: ['$p.name'],
         rows: [{ '$p.name': 'Alice' }],
+      });
+    }
+    if (method === 'POST' && (path === '/change' || path === '/mutate')) {
+      return respond(200, {
+        actor_id: null,
+        affected_edges: 0,
+        affected_nodes: 1,
+        branch: 'main',
+        query_name: 'q',
       });
     }
     if (method === 'GET' && path === '/commits') {
@@ -90,8 +99,11 @@ describe('omnigraph-mcp server', () => {
         'change',
         'commits_get',
         'commits_list',
+        'graphs_list',
         'health',
         'ingest',
+        'mutate',
+        'query',
         'read',
         'schema_apply',
         'schema_get',
@@ -121,7 +133,7 @@ describe('omnigraph-mcp server', () => {
     const parsed = JSON.parse(block.text);
     expect(parsed.status).toBe('ok');
     expect(parsed.version).toBe('0.3.0');
-    expect(parsed.sdkServerVersion).toBe('0.4.2');
+    expect(parsed.sdkServerVersion).toBe('0.6.0');
   });
 
   it('calls the read tool and preserves opaque param keys', async () => {
@@ -171,6 +183,7 @@ describe('omnigraph-mcp server', () => {
         'omnigraph://best-practices/schema',
         'omnigraph://best-practices/search',
         'omnigraph://branches',
+        'omnigraph://graphs',
         'omnigraph://schema',
       ].sort(),
     );

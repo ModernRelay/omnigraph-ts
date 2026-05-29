@@ -53,6 +53,12 @@ export interface CreateServerOptions {
   token?: string;
   /** Default branch when a tool input omits one. */
   defaultBranch?: string;
+  /**
+   * Multi-graph cluster: target graph id. Threaded into the underlying
+   * `Omnigraph` client so every tool call routes under `/graphs/${graphId}/...`.
+   * Leave undefined for single-graph servers.
+   */
+  graphId?: string;
   /** Custom fetch (for testing). */
   fetch?: FetchLike;
 }
@@ -68,7 +74,12 @@ function plainText(text: string) {
 }
 
 export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
-  const og = new Omnigraph({ baseUrl: opts.baseUrl, token: opts.token, fetch: opts.fetch });
+  const og = new Omnigraph({
+    baseUrl: opts.baseUrl,
+    token: opts.token,
+    fetch: opts.fetch,
+    graphId: opts.graphId,
+  });
   const defaultBranch = opts.defaultBranch ?? 'main';
 
   const server = new McpServer(
@@ -116,14 +127,48 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   );
 
   server.registerTool(
-    'read',
+    'query',
     {
       title: 'Run GQ read query',
       description:
         'Run a parameterized .gq read query against a branch. Read-only. ' +
-        '`querySource` is the full query text. `params` is a free-form map matched ' +
+        'Canonical read endpoint as of server 0.6.0 (successor to `read`). ' +
+        '`query` is the full query text. `params` is a free-form map matched ' +
         'by name to `$varName` placeholders in the query. Returns rows + columns; ' +
         'row keys are caller-defined and not transformed.',
+      inputSchema: {
+        query: z.string().min(1),
+        name: z.string().optional(),
+        params: z.record(z.unknown()).optional(),
+        branch: z.string().optional(),
+        snapshot: z.string().optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ query, name, params, branch, snapshot }) => {
+      // `branch` and `snapshot` are mutually exclusive per the spec. Only
+      // apply the defaultBranch fallback when the caller has not pinned a
+      // snapshot — otherwise we'd send both and the server would reject.
+      const r = await og.query({
+        query,
+        name,
+        params,
+        branch: snapshot ? branch : (branch ?? defaultBranch),
+        snapshot,
+      });
+      return { content: jsonText(r) };
+    },
+  );
+
+  server.registerTool(
+    'read',
+    {
+      title: 'Run GQ read query (legacy)',
+      description:
+        'Legacy alias for `query` — prefer `query` for new callers. Runs the same ' +
+        '.gq read against `POST /read` instead of `POST /query`; server responds ' +
+        'with `Deprecation: true` and a `Link: rel="successor-version"` header. ' +
+        'Field names here are the legacy `querySource` / `queryName`.',
       inputSchema: {
         querySource: z.string().min(1),
         queryName: z.string().optional(),
@@ -134,9 +179,6 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ querySource, queryName, params, branch, snapshot }) => {
-      // `branch` and `snapshot` are mutually exclusive per the spec. Only
-      // apply the defaultBranch fallback when the caller has not pinned a
-      // snapshot — otherwise we'd send both and the server would reject.
       const r = await og.read({
         querySource,
         queryName,
@@ -179,6 +221,24 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   );
 
   server.registerTool(
+    'graphs_list',
+    {
+      title: 'List registered graphs',
+      description:
+        'Return every graph the server exposes, alphabetically by graphId. ' +
+        'Multi-graph servers only — a single-graph server returns 405 ' +
+        '(MethodNotAllowedError). When a token is configured the server-level ' +
+        'Cedar policy must authorize the `graph_list` action.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async () => {
+      const graphs = await og.graphs.list();
+      return { content: jsonText({ graphs }) };
+    },
+  );
+
+  server.registerTool(
     'commits_list',
     {
       title: 'List commits',
@@ -209,24 +269,55 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   // ---------- Tools: mutating --------------------------------------------
 
   server.registerTool(
-    'change',
+    'mutate',
     {
       title: 'Run GQ mutation',
       description:
-        'Run a .gq mutation (insert/update/delete) against a branch. Multi-statement mutations ' +
+        'Run a .gq mutation (insert/update/delete) against a branch. Canonical write ' +
+        'endpoint as of server 0.6.0 (successor to `change`). Multi-statement mutations ' +
         'are atomic at the commit boundary. Returns affectedNodes / affectedEdges counts.',
       inputSchema: {
-        querySource: z.string().min(1),
-        queryName: z.string().optional(),
+        query: z.string().min(1),
+        name: z.string().optional(),
         params: z.record(z.unknown()).optional(),
         branch: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
-    async ({ querySource, queryName, params, branch }) => {
+    async ({ query, name, params, branch }) => {
+      const r = await og.mutate({
+        query,
+        name,
+        params,
+        branch: branch ?? defaultBranch,
+      });
+      return { content: jsonText(r) };
+    },
+  );
+
+  server.registerTool(
+    'change',
+    {
+      title: 'Run GQ mutation (legacy)',
+      description:
+        'Legacy alias for `mutate` — prefer `mutate` for new callers. Same behavior, ' +
+        'sent to `POST /change` instead of `POST /mutate`; server responds with ' +
+        '`Deprecation: true` and a `Link: rel="successor-version"` header. As of ' +
+        'server 0.6.0 the field names match the canonical `mutate` tool (`query` / ' +
+        '`name`); the legacy `querySource` / `queryName` wire fields are still accepted ' +
+        'server-side but the canonical names are required at the tool boundary.',
+      inputSchema: {
+        query: z.string().min(1),
+        name: z.string().optional(),
+        params: z.record(z.unknown()).optional(),
+        branch: z.string().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ query, name, params, branch }) => {
       const r = await og.change({
-        querySource,
-        queryName,
+        query,
+        name,
         params,
         branch: branch ?? defaultBranch,
       });
@@ -345,6 +436,26 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       const list = await og.branches.list();
       return {
         contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(list, null, 2) }],
+      };
+    },
+  );
+
+  server.registerResource(
+    'graphs',
+    'omnigraph://graphs',
+    {
+      title: 'Graphs',
+      description:
+        'JSON array of registered graphs, each `{ graphId, uri }`. Multi-graph ' +
+        'servers only — single-graph servers return 405 on `GET /graphs`.',
+      mimeType: 'application/json',
+    },
+    async (uri) => {
+      const graphs = await og.graphs.list();
+      return {
+        contents: [
+          { uri: uri.href, mimeType: 'application/json', text: JSON.stringify(graphs, null, 2) },
+        ],
       };
     },
   );

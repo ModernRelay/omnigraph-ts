@@ -4,6 +4,7 @@ import Omnigraph, {
   ConflictError,
   ForbiddenError,
   InternalServerError,
+  MethodNotAllowedError,
   NotFoundError,
   TooManyRequestsError,
   UnauthorizedError,
@@ -15,6 +16,7 @@ const cases: Array<[number, string, unknown]> = [
   [401, 'unauthorized', UnauthorizedError],
   [403, 'forbidden', ForbiddenError],
   [404, 'not_found', NotFoundError],
+  [405, 'method_not_allowed', MethodNotAllowedError],
   [409, 'conflict', ConflictError],
   [429, 'too_many_requests', TooManyRequestsError],
   [500, 'internal', InternalServerError],
@@ -35,6 +37,12 @@ describe('error dispatcher', () => {
     await expect(og.health()).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it('maps 405 without a body to MethodNotAllowedError', async () => {
+    const { fetch } = stubFetch({ status: 405, body: '' });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    await expect(og.graphs.list()).rejects.toBeInstanceOf(MethodNotAllowedError);
+  });
+
   it('ConflictError exposes manifestConflict when present', async () => {
     const { fetch } = stubFetch({
       status: 409,
@@ -46,7 +54,7 @@ describe('error dispatcher', () => {
     });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
     try {
-      await og.change({ querySource: 'insert Person { name: "x" }' });
+      await og.change({ query: 'insert Person { name: "x" }' });
       throw new Error('should have thrown');
     } catch (e) {
       expect(e).toBeInstanceOf(ConflictError);

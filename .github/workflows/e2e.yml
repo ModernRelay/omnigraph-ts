@@ -58,11 +58,44 @@ jobs:
           omnigraph init --schema packages/sdk/test/fixtures/schema.pg /tmp/og/repo.omni
           omnigraph load --data packages/sdk/test/fixtures/data.jsonl --mode overwrite /tmp/og/repo.omni
 
-      - name: Start omnigraph-server in background
+      - name: Write Cedar policy + omnigraph.yaml (single-graph)
+        run: |
+          # v0.6 default-denies non-read actions when a token is configured but
+          # no policy is set. Authorize the implicit `default` actor (used by
+          # OMNIGRAPH_SERVER_BEARER_TOKEN) for every action this e2e exercises.
+          cat > /tmp/og/policy.yaml <<'YAML'
+          version: 1
+          groups:
+            ci: [default]
+          rules:
+            - id: ci-all-actions
+              allow:
+                actors: { group: ci }
+                actions:
+                  - read
+                  - export
+                  - change
+                  - schema_apply
+                  - branch_create
+                  - branch_delete
+                  - branch_merge
+          YAML
+          cat > /tmp/og/omnigraph.yaml <<'YAML'
+          graphs:
+            e2e:
+              uri: /tmp/og/repo.omni
+              policy:
+                file: /tmp/og/policy.yaml
+          cli:
+            graph: e2e
+            branch: main
+          YAML
+
+      - name: Start omnigraph-server in background (single-graph)
         run: |
           set -euo pipefail
           OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token \
-            nohup omnigraph-server /tmp/og/repo.omni --bind 127.0.0.1:18080 \
+            nohup omnigraph-server --target e2e --config /tmp/og/omnigraph.yaml --bind 127.0.0.1:18080 \
             > /tmp/og/server.log 2>&1 &
           echo $! > /tmp/og/server.pid
           for i in $(seq 1 30); do
@@ -73,7 +106,7 @@ jobs:
           done
           echo "server failed to start within 30s"; cat /tmp/og/server.log; exit 1
 
-      - name: Run e2e tests
+      - name: Run single-graph e2e tests
         env:
           OMNIGRAPH_E2E: '1'
           OMNIGRAPH_BASE_URL: http://127.0.0.1:18080
@@ -93,3 +126,132 @@ jobs:
         with:
           name: omnigraph-server-log
           path: /tmp/og/server.log
+
+  e2e-multigraph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Read pinned server version
+        id: ver
+        run: |
+          v=$(node -p "require('./package.json').omnigraph.serverVersion")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Download omnigraph-server binary
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          asset="omnigraph-linux-x86_64.tar.gz"
+          checksum="omnigraph-linux-x86_64.sha256"
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "/tmp/${asset}" \
+            "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/${asset}"
+          curl -fsSL -o "/tmp/${checksum}" \
+            "https://github.com/ModernRelay/omnigraph/releases/download/v${v}/${checksum}"
+          (cd /tmp && sha256sum -c "${checksum}")
+          tar -C "$HOME/.local/bin" -xzf "/tmp/${asset}"
+          chmod +x "$HOME/.local/bin/omnigraph" "$HOME/.local/bin/omnigraph-server"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Init two graphs (alpha, beta) from the same fixture
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ogm
+          for g in alpha beta; do
+            omnigraph init --schema packages/sdk/test/fixtures/schema.pg "/tmp/ogm/${g}.omni"
+            omnigraph load --data packages/sdk/test/fixtures/data.jsonl --mode overwrite "/tmp/ogm/${g}.omni"
+          done
+
+      - name: Write server + per-graph policy files
+        run: |
+          # Server-scoped policy: authorize `graph_list` for the default actor.
+          # /graphs is closed by default in every state — even unauthenticated.
+          cat > /tmp/ogm/server-policy.yaml <<'YAML'
+          version: 1
+          groups:
+            ci: [default]
+          rules:
+            - id: ci-can-list-graphs
+              allow:
+                actors: { group: ci }
+                actions: [graph_list]
+          YAML
+          # Per-graph policy for alpha: authorize every per-graph action the
+          # SDK e2e exercises. beta gets the same so `og.graph("beta")` works.
+          cat > /tmp/ogm/per-graph-policy.yaml <<'YAML'
+          version: 1
+          groups:
+            ci: [default]
+          rules:
+            - id: ci-all-actions
+              allow:
+                actors: { group: ci }
+                actions:
+                  - read
+                  - export
+                  - change
+                  - schema_apply
+                  - branch_create
+                  - branch_delete
+                  - branch_merge
+          YAML
+          cat > /tmp/ogm/omnigraph.yaml <<'YAML'
+          server:
+            policy:
+              file: /tmp/ogm/server-policy.yaml
+          graphs:
+            alpha:
+              uri: /tmp/ogm/alpha.omni
+              policy:
+                file: /tmp/ogm/per-graph-policy.yaml
+            beta:
+              uri: /tmp/ogm/beta.omni
+              policy:
+                file: /tmp/ogm/per-graph-policy.yaml
+          YAML
+
+      - name: Start omnigraph-server in multi-graph mode
+        run: |
+          set -euo pipefail
+          OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token \
+            nohup omnigraph-server --config /tmp/ogm/omnigraph.yaml --bind 127.0.0.1:18081 \
+            > /tmp/ogm/server.log 2>&1 &
+          echo $! > /tmp/ogm/server.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18081/healthz > /dev/null; then
+              echo "server up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server failed to start within 30s"; cat /tmp/ogm/server.log; exit 1
+
+      - name: Run multi-graph e2e tests
+        env:
+          OMNIGRAPH_E2E: '1'
+          OMNIGRAPH_E2E_MULTIGRAPH: '1'
+          OMNIGRAPH_BASE_URL: http://127.0.0.1:18081
+          OMNIGRAPH_TOKEN: ci-token
+          OMNIGRAPH_GRAPH_ID: alpha
+        run: pnpm --filter @modernrelay/omnigraph run test
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f /tmp/ogm/server.pid ]; then
+            kill "$(cat /tmp/ogm/server.pid)" || true
+          fi
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnigraph-server-multigraph-log
+          path: /tmp/ogm/server.log

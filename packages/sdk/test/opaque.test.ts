@@ -56,7 +56,7 @@ describe('opaque keys (GQ params, rows, columns)', () => {
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
     await og.change({
       branch: 'feat',
-      querySource: 'mutation m($keyName: String) { ... }',
+      query: 'mutation m($keyName: String) { ... }',
       params: { keyName: 'value' },
     });
     const body = JSON.parse(calls[0]?.body ?? '{}');

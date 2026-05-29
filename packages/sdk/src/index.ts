@@ -18,6 +18,7 @@ export {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
+  MethodNotAllowedError,
   ConflictError,
   TooManyRequestsError,
   InternalServerError,
@@ -36,6 +37,9 @@ export type {
   // Commits
   Commit,
   CommitList,
+  // Graphs
+  GraphInfo,
+  GraphList,
   // Schema
   Schema,
   SchemaApply,
@@ -48,6 +52,7 @@ export type {
   Ingest,
   IngestInput,
   IngestTable,
+  QueryInput,
   Read,
   ReadInput,
   ReadTarget,

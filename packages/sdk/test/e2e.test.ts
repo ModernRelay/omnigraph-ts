@@ -17,14 +17,17 @@ import Omnigraph, {
   BadRequestError,
   BranchMergeOutcome,
   LoadMode,
+  MethodNotAllowedError,
   NotFoundError,
   SERVER_VERSION,
   UnauthorizedError,
 } from '../src';
 
 const E2E_ENABLED = process.env.OMNIGRAPH_E2E === '1';
+const E2E_MULTIGRAPH = process.env.OMNIGRAPH_E2E_MULTIGRAPH === '1';
 const BASE_URL = process.env.OMNIGRAPH_BASE_URL ?? 'http://127.0.0.1:18080';
 const TOKEN = process.env.OMNIGRAPH_TOKEN;
+const GRAPH_ID = process.env.OMNIGRAPH_GRAPH_ID;
 
 // Track branches to clean up after the suite — best-effort, since a recent
 // merge can leave a branch flagged 'active' transiently. See MR-811 family.
@@ -33,7 +36,7 @@ let og: Omnigraph;
 
 describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   beforeAll(() => {
-    og = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN });
+    og = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID });
   });
 
   afterAll(async () => {
@@ -141,9 +144,9 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       branchesToCleanup.push(branch);
       await og.branches.create({ name: branch, from: 'main' });
       const ch = await og.change({
-        querySource:
+        query:
           'query addPerson($name: String, $age: I32) { insert Person { name: $name, age: $age } }',
-        queryName: 'addPerson',
+        name: 'addPerson',
         params: { name: `e2e-frank-${Date.now()}`, age: 50 },
         branch,
       });
@@ -222,7 +225,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
     it('bad token surfaces UnauthorizedError', async () => {
       // Skip when the server is unauthenticated (no token configured).
       if (!TOKEN) return;
-      const bad = new Omnigraph({ baseUrl: BASE_URL, token: 'wrong-token' });
+      const bad = new Omnigraph({ baseUrl: BASE_URL, token: 'wrong-token', graphId: GRAPH_ID });
       await expect(bad.snapshot({ branch: 'main' })).rejects.toBeInstanceOf(UnauthorizedError);
     });
 
@@ -231,5 +234,61 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
         og.read({ querySource: 'this is not gq', queryName: 'broken', branch: 'main' }),
       ).rejects.toBeInstanceOf(BadRequestError);
     });
+  });
+
+  // Single-graph servers return 405 on /graphs; multi-graph servers don't run
+  // this block (see the multi-graph describe further down).
+  describe.skipIf(E2E_MULTIGRAPH)('graphs.list (single-graph)', () => {
+    it('throws MethodNotAllowedError', async () => {
+      await expect(og.graphs.list()).rejects.toBeInstanceOf(MethodNotAllowedError);
+    });
+  });
+});
+
+// Multi-graph mode: an `omnigraph-server --config omnigraph.yaml` with a
+// non-empty `graphs:` map (e.g. alpha + beta). Requires both:
+//   OMNIGRAPH_E2E=1 OMNIGRAPH_E2E_MULTIGRAPH=1
+//   OMNIGRAPH_BASE_URL, OMNIGRAPH_TOKEN, OMNIGRAPH_GRAPH_ID (= "alpha")
+// and a server-level Cedar policy granting the test actor `graph_list` plus
+// per-graph policies granting the per-graph actions exercised below.
+describe.skipIf(!E2E_ENABLED || !E2E_MULTIGRAPH)('e2e multigraph: cluster routing', () => {
+  let mg: Omnigraph;
+
+  beforeAll(() => {
+    if (!GRAPH_ID) {
+      throw new Error('OMNIGRAPH_E2E_MULTIGRAPH=1 requires OMNIGRAPH_GRAPH_ID');
+    }
+    mg = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID });
+  });
+
+  it('graphs.list returns alpha and beta', async () => {
+    const graphs = await mg.graphs.list();
+    const ids = graphs.map((g) => g.graphId).sort();
+    expect(ids).toContain('alpha');
+    expect(ids).toContain('beta');
+  });
+
+  it('snapshot on the configured graph returns tables', async () => {
+    const s = await mg.snapshot({ branch: 'main' });
+    expect(s.branch).toBe('main');
+    expect(s.tables.length).toBeGreaterThan(0);
+  });
+
+  it('read on the configured graph returns the expected row', async () => {
+    const r = await mg.read({
+      querySource:
+        'query find($name: String) { match { $p: Person { name: $name } } return { $p.name } }',
+      queryName: 'find',
+      params: { name: 'Alice' },
+      branch: 'main',
+    });
+    expect((r.rows as unknown[]).length).toBe(1);
+  });
+
+  it('og.graph("beta") routes under /graphs/beta and returns a snapshot', async () => {
+    const beta = mg.graph('beta');
+    const s = await beta.snapshot({ branch: 'main' });
+    expect(s.branch).toBe('main');
+    expect(s.tables.length).toBeGreaterThan(0);
   });
 });

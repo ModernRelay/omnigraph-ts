@@ -34,6 +34,7 @@ export class BadRequestError extends OmnigraphError {}
 export class UnauthorizedError extends OmnigraphError {}
 export class ForbiddenError extends OmnigraphError {}
 export class NotFoundError extends OmnigraphError {}
+export class MethodNotAllowedError extends OmnigraphError {}
 
 export class ConflictError extends OmnigraphError {
   readonly mergeConflicts?: MergeConflict[];
@@ -61,6 +62,7 @@ const codeToClass: Record<ErrorCode, new (ctx: OmnigraphErrorContext) => Omnigra
   unauthorized: UnauthorizedError,
   forbidden: ForbiddenError,
   not_found: NotFoundError,
+  method_not_allowed: MethodNotAllowedError,
   conflict: ConflictError,
   too_many_requests: TooManyRequestsError,
   internal: InternalServerError,
@@ -71,6 +73,7 @@ const statusToClass: Record<number, new (ctx: OmnigraphErrorContext) => Omnigrap
   401: UnauthorizedError,
   403: ForbiddenError,
   404: NotFoundError,
+  405: MethodNotAllowedError,
   409: ConflictError,
   429: TooManyRequestsError,
   500: InternalServerError,

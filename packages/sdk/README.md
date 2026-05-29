@@ -23,10 +23,10 @@ const og = new Omnigraph({
   token: process.env.OMNIGRAPH_TOKEN, // optional; omit for unauthenticated dev
 });
 
-const { rows } = await og.read({
+const { rows } = await og.query({
   branch: 'main',
-  querySource: 'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
-  queryName: 'find',
+  query: 'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
+  name: 'find',
   params: { name: 'Alice' },
 });
 
@@ -35,15 +35,17 @@ console.log(rows); // → [{ '$p.name': 'Alice', '$p.age': 30 }]
 
 That's the whole pattern: instantiate once, call methods, get typed responses.
 
+> **Migrating from `og.read` / `og.change` (server 0.6.0)** — `POST /query` and `POST /mutate` are the canonical successors. On `mutate`/`change` the request body's field names are now `query` / `name` (was `querySource` / `queryName`); `read` keeps the legacy names. `og.read()` and `og.change()` still work — the server emits `Deprecation: true` and `Link: rel="successor-version"` response headers but otherwise behaves the same.
+
 ## What you can do
 
 ### Read
 
 ```ts
-const { rows, columns, rowCount } = await og.read({
+const { rows, columns, rowCount } = await og.query({
   branch: 'main',
-  querySource: 'query top($limit: I32) { ... order by $p.score desc limit $limit }',
-  queryName: 'top',
+  query: 'query top($limit: I32) { ... order by $p.score desc limit $limit }',
+  name: 'top',
   params: { limit: 10 },
 });
 ```
@@ -53,10 +55,10 @@ const { rows, columns, rowCount } = await og.read({
 ### Mutate
 
 ```ts
-const { affectedNodes, affectedEdges } = await og.change({
+const { affectedNodes, affectedEdges } = await og.mutate({
   branch: 'feature',
-  querySource: 'query addPerson($name: String, $age: I32) { insert Person { name: $name, age: $age } }',
-  queryName: 'addPerson',
+  query: 'query addPerson($name: String, $age: I32) { insert Person { name: $name, age: $age } }',
+  name: 'addPerson',
   params: { name: 'Alice', age: 30 },
 });
 ```
@@ -101,6 +103,12 @@ The iterator lazily issues `POST /export` on first iteration and cancels the ups
 ```ts
 const { schemaSource } = await og.schema.get();    // .pg source
 await og.schema.apply({ schemaSource: nextSchema }); // migrate
+
+// Hard-drop column data instead of soft-dropping it (defaults to false; matches
+// the CLI's --allow-data-loss). Soft drops remain reversible via time travel;
+// hard drops are not. Use only when the migration plan includes intentional
+// data deletions you've already reviewed.
+await og.schema.apply({ schemaSource: nextSchema, allowDataLoss: true });
 ```
 
 ### Snapshots and commits
@@ -119,6 +127,7 @@ Every method throws a typed error subclass on non-2xx. Catch the specific class 
 import {
   Omnigraph,
   ConflictError,
+  MethodNotAllowedError,
   NotFoundError,
   UnauthorizedError,
   BadRequestError,
@@ -132,6 +141,8 @@ try {
     e.mergeConflicts; // typed MergeConflict[] when applicable
   } else if (e instanceof NotFoundError) {
     // 404
+  } else if (e instanceof MethodNotAllowedError) {
+    // 405 — typically from `og.graphs.list()` on a single-graph server
   } else throw e;
 }
 ```
@@ -146,7 +157,7 @@ Every method accepts an `AbortSignal`:
 const ac = new AbortController();
 setTimeout(() => ac.abort(), 5_000);
 
-await og.read({ branch: 'main', querySource: '...' }, { signal: ac.signal });
+await og.query({ branch: 'main', query: '...' }, { signal: ac.signal });
 ```
 
 ## Server compatibility
@@ -174,7 +185,7 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 
 | Operation | Retry semantics |
 |---|---|
-| `og.health()`, `og.snapshot()`, `og.read()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()` | Read-only — always safe. |
+| `og.health()`, `og.snapshot()`, `og.query()`, `og.read()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()` | Read-only — always safe. |
 | `og.branches.create({ name })` | Throws `ConflictError` on retry (branch exists). Catch and treat as success. |
 | `og.branches.merge({ source, target })` | Idempotent — re-merge yields `outcome: 'already_up_to_date'`. |
 | `og.branches.delete(name)` | Idempotent — delete-of-deleted is a no-op. |
@@ -182,9 +193,51 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 | `og.ingest({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
 | `og.ingest({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
 | `og.ingest({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
-| `og.change({ querySource })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
+| `og.mutate({ query })`, `og.change({ query })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
 
-If a `change` query isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
+If a mutation isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
+
+`og.read()` and `og.change()` are deprecated aliases of `og.query()` and `og.mutate()` (server 0.6.0). They're kept for byte-stable compatibility — `change`'s body fields now match `mutate` (`query` / `name` instead of `querySource` / `queryName`); `read`'s body still uses `querySource` / `queryName`.
+
+## Multi-graph clusters
+
+A single `omnigraph-server` can host multiple graphs side-by-side under `/graphs/{graphId}/...` (configured via `omnigraph.yaml`). The same `Omnigraph` class talks to either flavor — single-graph (the default) or multi-graph — by setting `graphId`:
+
+```ts
+const og = new Omnigraph({
+  baseUrl: 'http://127.0.0.1:8080',
+  graphId: 'alpha',          // every graph-scoped call routes under /graphs/alpha/...
+  token: process.env.OMNIGRAPH_TOKEN,
+});
+
+await og.snapshot();         // → GET /graphs/alpha/snapshot
+await og.read({ /* … */ });  // → POST /graphs/alpha/read
+```
+
+Use `og.graph(id)` to fan out across graphs from one parent client. It returns a new client that shares `baseUrl`, `token`, and `fetch`; the parent is untouched:
+
+```ts
+await Promise.all([
+  og.graph('alpha').snapshot(),
+  og.graph('beta').snapshot(),
+]);
+```
+
+Don't fold the id into `baseUrl` (e.g. `http://host/graphs/alpha`) — that breaks the flat endpoints `og.health()` and `og.graphs.list()`, which the SDK intentionally never prefixes.
+
+### Listing graphs
+
+```ts
+const graphs = await og.graphs.list();
+// → [{ graphId: 'alpha', uri: '…' }, { graphId: 'beta', uri: '…' }]
+```
+
+`GET /graphs` exists only in multi-graph mode. On a single-graph server it returns 405, which the SDK surfaces as `MethodNotAllowedError`. When a token is configured, the server-level Cedar policy must authorize the `graph_list` action against `Omnigraph::Server::"root"` — without that grant, the call fails 403 even in multi-graph mode.
+
+### Auth changes in server 0.6
+
+- **Unauthenticated mode must be explicit on the server.** A server with no token configured no longer accepts arbitrary requests by default; the operator must enable unauthenticated mode in `omnigraph.yaml`.
+- **Token without policy default-denies non-read actions.** If a token is configured but the Cedar policy doesn't grant a given action, the server returns 403 — including for actions that the 0.4-series treated as implicit reads. Pair every token with a policy that authorizes exactly the actions the SDK caller will issue (`read`, `export`, `change`, `schema_apply`, `branch_create`, `branch_delete`, `branch_merge`, `graph_list`, etc.).
 
 ## Multiple clients in one process
 
