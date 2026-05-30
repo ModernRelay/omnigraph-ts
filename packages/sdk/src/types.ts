@@ -18,6 +18,8 @@ import type {
   CommitOutput,
   ErrorCode,
   ExportRequest,
+  GraphInfo as GraphInfoOutput,
+  GraphListResponse,
   HealthOutput,
   IngestOutput,
   IngestRequest,
@@ -26,6 +28,7 @@ import type {
   ManifestConflictOutput,
   MergeConflictKindOutput,
   MergeConflictOutput,
+  QueryRequest,
   ReadOutput,
   ReadRequest,
   ReadTargetOutput,
@@ -54,6 +57,8 @@ export type BranchMerge = Camelize<BranchMergeOutput>;
 export type Change = Camelize<ChangeOutput>;
 export type Commit = Camelize<CommitOutput>;
 export type CommitList = Camelize<CommitListOutput>;
+export type GraphInfo = Camelize<GraphInfoOutput>;
+export type GraphList = Camelize<GraphListResponse>;
 export type Health = Camelize<HealthOutput>;
 export type Ingest = Camelize<IngestOutput>;
 export type IngestTable = Camelize<IngestTableOutput>;
@@ -69,9 +74,25 @@ export type ManifestConflict = Camelize<ManifestConflictOutput>;
 // Inputs (requests): camelCase from the caller, converted to snake_case on the wire.
 export type BranchCreateInput = Camelize<BranchCreateRequest>;
 export type BranchMergeInput = Camelize<BranchMergeRequest>;
-export type ChangeInput = Camelize<ChangeRequest>;
+export type MutationInput = Camelize<ChangeRequest>;
+export type LegacyChangeInput = {
+  /** Target branch. Defaults to `main`. */
+  branch?: string | null;
+  /** Name of the mutation to run when `querySource` declares multiple. */
+  queryName?: string | null;
+  /** JSON object whose keys match the mutation's declared parameters. */
+  params?: unknown;
+  /** Legacy GQ mutation source field accepted by deprecated `og.change()`. */
+  querySource: string;
+  query?: never;
+  name?: never;
+};
+export type ChangeInput =
+  | (MutationInput & { querySource?: never; queryName?: never })
+  | LegacyChangeInput;
 export type ExportInput = Camelize<ExportRequest>;
 export type IngestInput = Camelize<IngestRequest>;
+export type QueryInput = Camelize<QueryRequest>;
 export type ReadInput = Camelize<ReadRequest>;
 export type SchemaApplyInput = Camelize<SchemaApplyRequest>;
 

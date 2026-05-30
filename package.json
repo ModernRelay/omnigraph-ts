@@ -11,11 +11,12 @@
   },
   "packageManager": "pnpm@9.15.0",
   "omnigraph": {
-    "serverVersion": "0.4.2"
+    "serverVersion": "0.6.0"
   },
   "scripts": {
     "sync-spec": "tsx scripts/sync-spec.ts",
     "check-drift": "tsx scripts/check-drift.ts",
+    "check-versions": "tsx scripts/check-versions.ts",
     "gen-version": "tsx scripts/gen-version.ts",
     "generate": "tsx scripts/gen-version.ts && pnpm --filter @modernrelay/omnigraph run generate",
     "build": "pnpm -r run build",

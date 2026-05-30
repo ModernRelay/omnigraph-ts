@@ -4,6 +4,7 @@ import type { FetchLike } from './transport';
 import { BranchesResource } from './resources/branches';
 import type { CallOptions } from './internals';
 import { CommitsResource } from './resources/commits';
+import { GraphsResource } from './resources/graphs';
 import { SchemaResource } from './resources/schema';
 import type {
   Change,
@@ -12,6 +13,8 @@ import type {
   Health,
   Ingest,
   IngestInput,
+  MutationInput,
+  QueryInput,
   Read,
   ReadInput,
   Snapshot,
@@ -28,6 +31,30 @@ const OPAQUE_READ_RESPONSE = new Set(['rows', 'columns']);
 // `from`, `to`) are SDK/wire-defined and already match in both cases.
 const OPAQUE_EXPORT_ROW = new Set(['data']);
 
+function normalizeChangeInput(input: ChangeInput): MutationInput {
+  const record = input as Record<string, unknown>;
+  const hasCanonical = record.query !== undefined || record.name !== undefined;
+  const hasLegacy = record.querySource !== undefined || record.queryName !== undefined;
+  if (hasCanonical && hasLegacy) {
+    throw new TypeError('og.change() accepts either query/name or querySource/queryName, not both');
+  }
+  if (hasLegacy) {
+    if (typeof record.querySource !== 'string' || record.querySource.length === 0) {
+      throw new TypeError('og.change() requires querySource when using legacy querySource/queryName fields');
+    }
+    return {
+      query: record.querySource,
+      name: record.queryName as string | null | undefined,
+      params: record.params,
+      branch: record.branch as string | null | undefined,
+    };
+  }
+  if (typeof record.query !== 'string' || record.query.length === 0) {
+    throw new TypeError('og.change() requires query when using canonical query/name fields');
+  }
+  return input as MutationInput;
+}
+
 export interface OmnigraphOptions {
   /** Base URL of the omnigraph-server. e.g. `http://127.0.0.1:8080`. */
   baseUrl: string;
@@ -35,6 +62,19 @@ export interface OmnigraphOptions {
   token?: string;
   /** Inject a custom fetch (testing, tracing, polyfills). */
   fetch?: FetchLike;
+  /**
+   * Target a specific graph in a multi-graph cluster. When set, every
+   * graph-scoped call is sent under `/graphs/${graphId}/...`. Flat paths
+   * (`/healthz`, `/graphs`) are never prefixed.
+   *
+   * Leave undefined when talking to a single-graph server — the routes
+   * remain flat and behaviour is unchanged from earlier SDK versions.
+   *
+   * Don't fold the id into `baseUrl` (e.g. `http://host/graphs/alpha`):
+   * that breaks `og.health()` and `og.graphs.list()`. Use this option,
+   * or `og.graph(id)` for a scoped clone.
+   */
+  graphId?: string;
 }
 
 export interface SnapshotInput {
@@ -44,15 +84,31 @@ export interface SnapshotInput {
 export default class Omnigraph {
   readonly branches: BranchesResource;
   readonly commits: CommitsResource;
+  readonly graphs: GraphsResource;
   readonly schema: SchemaResource;
 
   private readonly t: Transport;
+  private readonly opts: OmnigraphOptions;
 
   constructor(opts: OmnigraphOptions) {
+    this.opts = opts;
     this.t = new Transport(opts);
     this.branches = new BranchesResource(this.t);
     this.commits = new CommitsResource(this.t);
+    this.graphs = new GraphsResource(this.t);
     this.schema = new SchemaResource(this.t);
+  }
+
+  /**
+   * Return a new client scoped to `graphId`, sharing this client's
+   * `baseUrl`, `token`, and `fetch`. The original client is untouched —
+   * use this to fan out across graphs in a multi-graph cluster:
+   *
+   *     await og.graph('alpha').snapshot();
+   *     await og.graph('beta').query({ query: '...' });
+   */
+  graph(graphId: string): Omnigraph {
+    return new Omnigraph({ ...this.opts, graphId });
   }
 
   /**
@@ -63,7 +119,45 @@ export default class Omnigraph {
   }
 
   /**
+   * Run a GQ read query. Canonical read endpoint as of server 0.6.0
+   * (successor to `read`). Read-only.
+   *
+   * Identical response shape to `og.read()`; the canonical field names are
+   * `query` / `name` (vs. legacy `querySource` / `queryName`).
+   */
+  query(input: QueryInput, opts: CallOptions = {}): Promise<Read> {
+    return this.t.request<Read>('POST', '/query', {
+      body: input,
+      signal: opts.signal,
+      opaqueBodyKeys: OPAQUE_PARAMS,
+      opaqueResponseKeys: OPAQUE_READ_RESPONSE,
+    });
+  }
+
+  /**
+   * Run a GQ mutation. Canonical write endpoint as of server 0.6.0
+   * (successor to `change`). **Destructive** — branch is updated atomically.
+   *
+   * **Idempotency**: design queries with `@unique` constraints or
+   * `update ... where` clauses to allow safe retry. Blind `insert` without
+   * unique keys can duplicate on retry.
+   */
+  mutate(input: MutationInput, opts: CallOptions = {}): Promise<Change> {
+    return this.t.request<Change>('POST', '/mutate', {
+      body: input,
+      signal: opts.signal,
+      opaqueBodyKeys: OPAQUE_PARAMS,
+    });
+  }
+
+  /**
    * Run a GQ read query. Read-only.
+   *
+   * @deprecated Server 0.6.0 introduces {@link Omnigraph.query} as the
+   * canonical successor. `POST /read` still works but the server emits
+   * `Deprecation: true` and `Link: </query>; rel="successor-version"`
+   * response headers. Migrate to `og.query()`; the field names there are
+   * `query` / `name` instead of `querySource` / `queryName`.
    */
   read(input: ReadInput, opts: CallOptions = {}): Promise<Read> {
     return this.t.request<Read>('POST', '/read', {
@@ -81,10 +175,17 @@ export default class Omnigraph {
    * **Idempotency**: design queries with `@unique` constraints or
    * `update ... where` clauses to allow safe retry. Blind `insert` without
    * unique keys can duplicate on retry.
+   *
+   * @deprecated Server 0.6.0 introduces {@link Omnigraph.mutate} as the
+   * canonical successor. `POST /change` still works but the server emits
+   * `Deprecation: true` and `Link: </mutate>; rel="successor-version"`
+   * response headers. Accepts both the old SDK fields (`querySource` /
+   * `queryName`) and the canonical fields (`query` / `name`); the wire request
+   * is normalized to the server 0.6 shape.
    */
   change(input: ChangeInput, opts: CallOptions = {}): Promise<Change> {
     return this.t.request<Change>('POST', '/change', {
-      body: input,
+      body: normalizeChangeInput(input),
       signal: opts.signal,
       opaqueBodyKeys: OPAQUE_PARAMS,
     });

@@ -33,13 +33,22 @@ function fakeFetch(): typeof globalThis.fetch {
     if (method === 'GET' && path === '/schema') {
       return respond(200, { schema_source: 'node Person { name: String @key }' });
     }
-    if (method === 'POST' && path === '/read') {
+    if (method === 'POST' && (path === '/read' || path === '/query')) {
       return respond(200, {
         query_name: 'q',
         target: { branch: 'main', snapshot: null },
         row_count: 1,
         columns: ['$p.name'],
         rows: [{ '$p.name': 'Alice' }],
+      });
+    }
+    if (method === 'POST' && (path === '/change' || path === '/mutate')) {
+      return respond(200, {
+        actor_id: null,
+        affected_edges: 0,
+        affected_nodes: 1,
+        branch: 'main',
+        query_name: 'q',
       });
     }
     if (method === 'GET' && path === '/commits') {
@@ -74,7 +83,7 @@ describe('omnigraph-mcp server', () => {
     const { client } = await setup();
     const info = client.getServerVersion();
     expect(info?.name).toBe('omnigraph-mcp');
-    expect(info?.version).toBe('0.4.1');
+    expect(info?.version).toBe('0.6.0');
   });
 
   it('lists every expected tool', async () => {
@@ -90,8 +99,11 @@ describe('omnigraph-mcp server', () => {
         'change',
         'commits_get',
         'commits_list',
+        'graphs_list',
         'health',
         'ingest',
+        'mutate',
+        'query',
         'read',
         'schema_apply',
         'schema_get',
@@ -121,7 +133,7 @@ describe('omnigraph-mcp server', () => {
     const parsed = JSON.parse(block.text);
     expect(parsed.status).toBe('ok');
     expect(parsed.version).toBe('0.3.0');
-    expect(parsed.sdkServerVersion).toBe('0.4.2');
+    expect(parsed.sdkServerVersion).toBe('0.6.0');
   });
 
   it('calls the read tool and preserves opaque param keys', async () => {
@@ -140,6 +152,90 @@ describe('omnigraph-mcp server', () => {
     expect(parsed.queryName).toBe('q');
     expect(parsed.rowCount).toBe(1);
     expect(parsed.rows[0]['$p.name']).toBe('Alice');
+  });
+
+  it('change tool accepts legacy querySource/queryName and emits canonical wire fields', async () => {
+    let observedBody: Record<string, unknown> | undefined;
+    const recordingFetch: typeof globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'POST' && path === '/change') {
+        observedBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        return new Response(
+          JSON.stringify({ actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const server = createOmnigraphMcpServer({ baseUrl: 'http://x', fetch: recordingFetch });
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+
+    await client.callTool({
+      name: 'change',
+      arguments: {
+        querySource: 'query q() { insert X {} }',
+        queryName: 'q',
+        branch: 'main',
+      },
+    });
+    expect(observedBody).toEqual({
+      query: 'query q() { insert X {} }',
+      name: 'q',
+      branch: 'main',
+    });
+  });
+
+  it('change tool accepts canonical query/name fields', async () => {
+    let observedBody: Record<string, unknown> | undefined;
+    const recordingFetch: typeof globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'POST' && path === '/change') {
+        observedBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        return new Response(
+          JSON.stringify({ actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const server = createOmnigraphMcpServer({ baseUrl: 'http://x', fetch: recordingFetch });
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+
+    await client.callTool({
+      name: 'change',
+      arguments: {
+        query: 'query q() { insert X {} }',
+        name: 'q',
+        branch: 'main',
+      },
+    });
+    expect(observedBody).toEqual({
+      query: 'query q() { insert X {} }',
+      name: 'q',
+      branch: 'main',
+    });
+  });
+
+  it('change tool rejects mixed canonical and legacy fields', async () => {
+    const { client } = await setup();
+    const r = await client.callTool({
+      name: 'change',
+      arguments: {
+        query: 'query q() { insert X {} }',
+        querySource: 'query q() { insert X {} }',
+      },
+    });
+    expect(r.isError).toBe(true);
   });
 
   it('serves the schema resource with .pg source as text/plain', async () => {
@@ -171,6 +267,7 @@ describe('omnigraph-mcp server', () => {
         'omnigraph://best-practices/schema',
         'omnigraph://best-practices/search',
         'omnigraph://branches',
+        'omnigraph://graphs',
         'omnigraph://schema',
       ].sort(),
     );
@@ -266,6 +363,40 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     });
     expect(observedBody?.snapshot).toBe('snap-1');
     expect(observedBody?.branch).toBeUndefined();
+  });
+
+  it('schema_apply forwards allowDataLoss as allow_data_loss', async () => {
+    let observedBody: Record<string, unknown> | undefined;
+    const recordingFetch: typeof globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const path = new URL(url).pathname;
+      const method = init?.method ?? 'GET';
+      if (method === 'POST' && path === '/schema/apply') {
+        observedBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        return new Response(
+          JSON.stringify({ applied: true, manifest_version: 2, step_count: 1, steps: [], supported: true, uri: 's3://x' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof globalThis.fetch;
+
+    const server = createOmnigraphMcpServer({ baseUrl: 'http://x', fetch: recordingFetch });
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+
+    await client.callTool({
+      name: 'schema_apply',
+      arguments: {
+        schemaSource: 'node Foo { id: String @key }',
+        allowDataLoss: true,
+      },
+    });
+    expect(observedBody).toEqual({
+      schema_source: 'node Foo { id: String @key }',
+      allow_data_loss: true,
+    });
   });
 
   it('rejects calls with missing required input', async () => {

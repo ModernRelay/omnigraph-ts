@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Stdio MCP server entrypoint. Reads OMNIGRAPH_BASE_URL / OMNIGRAPH_TOKEN /
-// OMNIGRAPH_DEFAULT_BRANCH from the environment; clients invoke this binary
-// as a subprocess and speak JSON-RPC over stdin/stdout.
+// OMNIGRAPH_DEFAULT_BRANCH / OMNIGRAPH_GRAPH_ID from the environment;
+// clients invoke this binary as a subprocess and speak JSON-RPC over
+// stdin/stdout.
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createOmnigraphMcpServer } from './server';
@@ -16,6 +17,7 @@ const server = createOmnigraphMcpServer({
   baseUrl,
   token: process.env.OMNIGRAPH_TOKEN,
   defaultBranch: process.env.OMNIGRAPH_DEFAULT_BRANCH,
+  graphId: process.env.OMNIGRAPH_GRAPH_ID,
 });
 
 await server.connect(new StdioServerTransport());

@@ -10,7 +10,19 @@ export interface TransportOptions {
   baseUrl: string;
   token?: string;
   fetch?: FetchLike;
+  /**
+   * Cluster-mode graph id. When set, all graph-scoped paths are rewritten to
+   * `/graphs/${encodeURIComponent(graphId)}${path}` before being sent. Flat
+   * management paths (`/healthz`, `/graphs`) are exempt.
+   */
+  graphId?: string;
 }
+
+// Paths that are flat management endpoints in every server mode. They must
+// never be rewritten under a `graphId` prefix, even when one is configured.
+//   - `/healthz` is unauthenticated and graph-independent.
+//   - `/graphs`  is the registry endpoint that lists graphs themselves.
+const FLAT_PATHS: ReadonlySet<string> = new Set(['/healthz', '/graphs']);
 
 export interface RequestOptions {
   body?: unknown;
@@ -36,11 +48,13 @@ export class Transport {
   private readonly baseUrl: string;
   private readonly token?: string;
   private readonly fetchImpl: FetchLike;
+  private readonly graphId?: string;
 
   constructor(opts: TransportOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.graphId = opts.graphId;
   }
 
   /**
@@ -132,7 +146,14 @@ export class Transport {
     if (!path.startsWith('/')) {
       throw new Error(`Transport path must start with '/': got ${JSON.stringify(path)}`);
     }
-    const url = new URL(this.baseUrl + path);
+    // Rewrite graph-scoped paths under the configured `graphId`. Flat paths
+    // (`/healthz`, `/graphs`) are exempt: prefixing them would break health
+    // probes and the graph-registry endpoint that returns the prefix list.
+    const resolvedPath =
+      this.graphId && !FLAT_PATHS.has(path)
+        ? `/graphs/${encodeURIComponent(this.graphId)}${path}`
+        : path;
+    const url = new URL(this.baseUrl + resolvedPath);
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v === undefined || v === null) continue;

@@ -73,18 +73,22 @@ export type ChangeRequest = {
    */
   branch?: string | null;
   /**
+   * Name of the mutation to run when `query` declares multiple.
+   *
+   * Accepts the legacy field name `query_name` as a deserialization alias.
+   */
+  name?: string | null;
+  /**
    * JSON object whose keys match the mutation's declared parameters.
    */
   params?: unknown;
   /**
-   * Name of the mutation to run when `query_source` declares multiple.
-   */
-  query_name?: string | null;
-  /**
    * GQ mutation source containing `insert`, `update`, or `delete` statements.
-   * May declare multiple named mutations; pick one with `query_name`.
+   * May declare multiple named mutations; pick one with `name`.
+   *
+   * Accepts the legacy field name `query_source` as a deserialization alias.
    */
-  query_source: string;
+  query: string;
 };
 
 export type CommitListOutput = {
@@ -109,6 +113,7 @@ export const ErrorCode = {
   FORBIDDEN: "forbidden",
   BAD_REQUEST: "bad_request",
   NOT_FOUND: "not_found",
+  METHOD_NOT_ALLOWED: "method_not_allowed",
   CONFLICT: "conflict",
   TOO_MANY_REQUESTS: "too_many_requests",
   INTERNAL: "internal",
@@ -136,6 +141,26 @@ export type ExportRequest = {
    * Restrict the export to these node/edge type names. Empty exports all types.
    */
   type_names?: Array<string>;
+};
+
+/**
+ * One entry in the response from `GET /graphs`. Cluster operators
+ * consume this list to discover which graphs the server is currently
+ * serving. The shape is intentionally minimal — `graph_id` and `uri`
+ * are the only fields a routing client needs.
+ */
+export type GraphInfo = {
+  graph_id: string;
+  uri: string;
+};
+
+/**
+ * Response from `GET /graphs`. Lists every graph registered with the
+ * server in alphabetical order by `graph_id` (sorted server-side so
+ * clients get deterministic output across requests).
+ */
+export type GraphListResponse = {
+  graphs: Array<GraphInfo>;
 };
 
 export type HealthOutput = {
@@ -222,6 +247,42 @@ export type MergeConflictOutput = {
   table_key: string;
 };
 
+/**
+ * Inline read-query request for `POST /query`.
+ *
+ * Friendlier-named alternative to [`ReadRequest`] for ad-hoc reads and
+ * AI-agent integration. Mutations are rejected with 400 — use `POST
+ * /mutate` (or its deprecated alias `POST /change`) for write queries.
+ * Field names are deliberately short (`query`, `name`) to match the GQ
+ * keyword and the CLI `-e` flag.
+ */
+export type QueryRequest = {
+  /**
+   * Branch to read from. Mutually exclusive with `snapshot`. Defaults to `main`.
+   */
+  branch?: string | null;
+  /**
+   * Name of the query to run when `query` declares multiple. Optional when
+   * only one query is declared.
+   */
+  name?: string | null;
+  /**
+   * JSON object whose keys match the query's declared parameters.
+   */
+  params?: unknown;
+  /**
+   * GQ read-query source. May declare one or more named queries; pick one
+   * with `name` when more than one is declared. Mutations
+   * (`insert`/`update`/`delete`) get 400 — use `POST /mutate` (or its
+   * deprecated alias `POST /change`) instead.
+   */
+  query: string;
+  /**
+   * Snapshot id to read from. Mutually exclusive with `branch`.
+   */
+  snapshot?: string | null;
+};
+
 export type ReadOutput = {
   columns?: Array<string>;
   query_name: string;
@@ -270,6 +331,13 @@ export type SchemaApplyOutput = {
 };
 
 export type SchemaApplyRequest = {
+  /**
+   * When true, promote every `DropMode::Soft` step in the plan to
+   * `DropMode::Hard`, making the prior column data unreachable
+   * after the apply. Matches the CLI's `--allow-data-loss` flag.
+   * Defaults to `false` (drops remain reversible via time travel).
+   */
+  allow_data_loss?: boolean;
   /**
    * Project schema in `.pg` source form. The diff against the current
    * schema produces the migration steps that will be applied.
@@ -486,7 +554,7 @@ export type ChangeError = ChangeErrors[keyof ChangeErrors];
 
 export type ChangeResponses = {
   /**
-   * Mutation results
+   * Mutation results (response includes `Deprecation: true` + `Link: </mutate>; rel="successor-version"`)
    */
   200: ChangeOutput;
 };
@@ -594,6 +662,39 @@ export type ExportResponses = {
   200: unknown;
 };
 
+export type ListGraphsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/graphs";
+};
+
+export type ListGraphsErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Method not allowed (single-graph mode)
+   */
+  405: ErrorOutput;
+};
+
+export type ListGraphsError = ListGraphsErrors[keyof ListGraphsErrors];
+
+export type ListGraphsResponses = {
+  /**
+   * List of registered graphs
+   */
+  200: GraphListResponse;
+};
+
+export type ListGraphsResponse = ListGraphsResponses[keyof ListGraphsResponses];
+
 export type HealthData = {
   body?: never;
   path?: never;
@@ -647,6 +748,80 @@ export type IngestResponses = {
 
 export type IngestResponse = IngestResponses[keyof IngestResponses];
 
+export type MutateData = {
+  body: ChangeRequest;
+  path?: never;
+  query?: never;
+  url: "/mutate";
+};
+
+export type MutateErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Merge conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+};
+
+export type MutateError = MutateErrors[keyof MutateErrors];
+
+export type MutateResponses = {
+  /**
+   * Mutation results
+   */
+  200: ChangeOutput;
+};
+
+export type MutateResponse = MutateResponses[keyof MutateResponses];
+
+export type QueryData = {
+  body: QueryRequest;
+  path?: never;
+  query?: never;
+  url: "/query";
+};
+
+export type QueryErrors = {
+  /**
+   * Bad request - also returned when the query body contains mutations; use POST /mutate (or its deprecated alias POST /change) for write queries
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type QueryError = QueryErrors[keyof QueryErrors];
+
+export type QueryResponses = {
+  /**
+   * Query results
+   */
+  200: ReadOutput;
+};
+
+export type QueryResponse = QueryResponses[keyof QueryResponses];
+
 export type ReadData = {
   body: ReadRequest;
   path?: never;
@@ -673,7 +848,7 @@ export type ReadError = ReadErrors[keyof ReadErrors];
 
 export type ReadResponses = {
   /**
-   * Query results
+   * Query results (response includes `Deprecation: true` + `Link: </query>; rel="successor-version"`)
    */
   200: ReadOutput;
 };

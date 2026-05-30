@@ -20,7 +20,9 @@ describe('runtime enum constants', () => {
     expect(ErrorCode.FORBIDDEN).toBe('forbidden');
     expect(ErrorCode.BAD_REQUEST).toBe('bad_request');
     expect(ErrorCode.NOT_FOUND).toBe('not_found');
+    expect(ErrorCode.METHOD_NOT_ALLOWED).toBe('method_not_allowed');
     expect(ErrorCode.CONFLICT).toBe('conflict');
+    expect(ErrorCode.TOO_MANY_REQUESTS).toBe('too_many_requests');
     expect(ErrorCode.INTERNAL).toBe('internal');
   });
 

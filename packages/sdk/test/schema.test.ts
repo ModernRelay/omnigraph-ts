@@ -42,4 +42,30 @@ describe('schema resource', () => {
     const r = await og.schema.apply({ schemaSource: 'node Foo { id: String @key }' });
     expect(r.applied).toBe(false);
   });
+
+  it('apply serializes allowDataLoss → allow_data_loss on the wire', async () => {
+    const { fetch, calls } = stubFetch({
+      body: { applied: true, manifest_version: 6, steps: [], supported: true },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    await og.schema.apply({
+      schemaSource: 'node Foo { id: String @key }',
+      allowDataLoss: true,
+    });
+    expect(JSON.parse(calls[0]?.body ?? '{}')).toEqual({
+      schema_source: 'node Foo { id: String @key }',
+      allow_data_loss: true,
+    });
+  });
+
+  it('apply omits allow_data_loss when allowDataLoss is unset', async () => {
+    const { fetch, calls } = stubFetch({
+      body: { applied: true, manifest_version: 6, steps: [], supported: true },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    await og.schema.apply({ schemaSource: 'node Foo { id: String @key }' });
+    const body = JSON.parse(calls[0]?.body ?? '{}');
+    expect(body).toEqual({ schema_source: 'node Foo { id: String @key }' });
+    expect('allow_data_loss' in body).toBe(false);
+  });
 });
