@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      contents: read
+      contents: write  # create the GitHub Release for the tag
       id-token: write  # npm provenance attestation
     steps:
       - uses: actions/checkout@v4
@@ -119,3 +119,26 @@ jobs:
           else
             pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.tag.outputs.dist }}
           fi
+
+      # Create the GitHub Release for this tag so the Releases tab tracks every
+      # published version with notes — the npm publish above leaves no GitHub
+      # Release on its own. Prereleases (dist-tag `next`) are flagged as such.
+      # Idempotent: skip if a Release already exists for the tag (re-run safety,
+      # mirroring the publish steps' EPUBLISHCONFLICT guard).
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists — skipping"
+            exit 0
+          fi
+          prerelease_flag=""
+          if [ "${{ steps.tag.outputs.dist }}" = "next" ]; then
+            prerelease_flag="--prerelease"
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            $prerelease_flag
