@@ -60,6 +60,12 @@ export type {
   ReadTarget,
   Snapshot,
   SnapshotTable,
+  // Stored queries
+  Queries,
+  QueryCatalogEntry,
+  ParamDescriptor,
+  InvokeQuery,
+  InvokeQueryInput,
   // Conflict / errors / shared
   MergeConflict,
   ManifestConflict,
@@ -76,4 +82,5 @@ export {
   ErrorCode,
   LoadMode,
   MergeConflictKindOutput,
+  ParamKind,
 } from './types';

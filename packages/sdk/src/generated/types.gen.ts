@@ -202,6 +202,37 @@ export type IngestTableOutput = {
 };
 
 /**
+ * Body for `POST /queries/{name}` — invokes the server-side stored query
+ * named in the path. The query source and name come from the registry,
+ * never the body; only the runtime inputs are supplied here.
+ */
+export type InvokeStoredQueryRequest = {
+  /**
+   * Branch to run against. Defaults to `main`; for a stored mutation the
+   * write targets this branch.
+   */
+  branch?: string | null;
+  /**
+   * JSON object whose keys match the stored query's declared parameters.
+   */
+  params?: unknown;
+  /**
+   * Snapshot id to read from (read queries only — rejected for a stored
+   * mutation). Mutually exclusive with `branch`.
+   */
+  snapshot?: string | null;
+};
+
+/**
+ * Response for `POST /queries/{name}`: the read envelope for a stored
+ * read, or the mutation envelope for a stored mutation. Serialized
+ * **untagged**, so the wire shape is exactly [`ReadOutput`] or
+ * [`ChangeOutput`] — classification follows the stored query, not a
+ * wrapper field.
+ */
+export type InvokeStoredQueryResponse = ReadOutput | ChangeOutput;
+
+/**
  * Shadow enum for documenting [`LoadMode`] in the OpenAPI schema.
  */
 export const LoadMode = {
@@ -245,6 +276,83 @@ export type MergeConflictOutput = {
   message: string;
   row_id?: string | null;
   table_key: string;
+};
+
+/**
+ * One declared parameter of a stored query, projected for the catalog.
+ */
+export type ParamDescriptor = {
+  item_kind?: null | ParamKind;
+  kind: ParamKind;
+  name: string;
+  /**
+   * `false` → the caller must supply it; `true` → optional.
+   */
+  nullable: boolean;
+  /**
+   * Dimension when `kind == vector`.
+   */
+  vector_dim?: number | null;
+};
+
+/**
+ * The kind of a stored-query parameter, decomposed so a client (e.g. an
+ * MCP server) can build a typed input schema with a closed `match` and
+ * never re-parse omnigraph's type spelling. `bigint`/`date`/`datetime`/
+ * `blob` are carried as JSON strings on the wire: a 64-bit integer past
+ * 2^53 loses precision as a JSON number, and Date/DateTime are ISO
+ * strings, Blob a blob-URI string.
+ */
+export const ParamKind = {
+  STRING: "string",
+  BOOL: "bool",
+  INT: "int",
+  BIGINT: "bigint",
+  FLOAT: "float",
+  DATE: "date",
+  DATETIME: "datetime",
+  BLOB: "blob",
+  VECTOR: "vector",
+  LIST: "list",
+} as const;
+
+/**
+ * The kind of a stored-query parameter, decomposed so a client (e.g. an
+ * MCP server) can build a typed input schema with a closed `match` and
+ * never re-parse omnigraph's type spelling. `bigint`/`date`/`datetime`/
+ * `blob` are carried as JSON strings on the wire: a 64-bit integer past
+ * 2^53 loses precision as a JSON number, and Date/DateTime are ISO
+ * strings, Blob a blob-URI string.
+ */
+export type ParamKind = (typeof ParamKind)[keyof typeof ParamKind];
+
+/**
+ * Response for `GET /queries`: the `mcp.expose` subset of a graph's
+ * stored-query registry, each with typed parameters.
+ */
+export type QueriesCatalogOutput = {
+  queries: Array<QueryCatalogEntry>;
+};
+
+/**
+ * One entry in the stored-query catalog (`GET /queries`).
+ */
+export type QueryCatalogEntry = {
+  description?: string | null;
+  instruction?: string | null;
+  /**
+   * `true` for a stored mutation → an MCP read-only hint of `false`.
+   */
+  mutation: boolean;
+  /**
+   * Registry key / invoke path segment (`POST /queries/{name}`).
+   */
+  name: string;
+  params: Array<ParamDescriptor>;
+  /**
+   * MCP tool id (the `tool_name` override, else `name`).
+   */
+  tool_name: string;
 };
 
 /**
@@ -788,6 +896,91 @@ export type MutateResponses = {
 };
 
 export type MutateResponse = MutateResponses[keyof MutateResponses];
+
+export type ListQueriesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/queries";
+};
+
+export type ListQueriesErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type ListQueriesError = ListQueriesErrors[keyof ListQueriesErrors];
+
+export type ListQueriesResponses = {
+  /**
+   * Stored-query catalog (the mcp.expose subset, with typed params)
+   */
+  200: QueriesCatalogOutput;
+};
+
+export type ListQueriesResponse =
+  ListQueriesResponses[keyof ListQueriesResponses];
+
+export type InvokeQueryData = {
+  body?: null | InvokeStoredQueryRequest;
+  path: {
+    /**
+     * Stored query name (the registry key)
+     */
+    name: string;
+  };
+  query?: never;
+  url: "/queries/{name}";
+};
+
+export type InvokeQueryErrors = {
+  /**
+   * Bad request (param type error; snapshot on a stored mutation)
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden (the inner `change` gate for a stored mutation)
+   */
+  403: ErrorOutput;
+  /**
+   * Unknown stored query, or `invoke_query` denied — indistinguishable to a caller without the grant
+   */
+  404: ErrorOutput;
+  /**
+   * Merge conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+  /**
+   * Policy evaluation error (a denial is reported as 404, not 500)
+   */
+  500: ErrorOutput;
+};
+
+export type InvokeQueryError = InvokeQueryErrors[keyof InvokeQueryErrors];
+
+export type InvokeQueryResponses = {
+  /**
+   * Read envelope (ReadOutput) or mutation envelope (ChangeOutput), serialized untagged
+   */
+  200: InvokeStoredQueryResponse;
+};
+
+export type InvokeQueryResponse =
+  InvokeQueryResponses[keyof InvokeQueryResponses];
 
 export type QueryData = {
   body: QueryRequest;

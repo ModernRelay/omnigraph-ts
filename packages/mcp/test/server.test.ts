@@ -83,7 +83,7 @@ describe('omnigraph-mcp server', () => {
     const { client } = await setup();
     const info = client.getServerVersion();
     expect(info?.name).toBe('omnigraph-mcp');
-    expect(info?.version).toBe('0.6.0');
+    expect(info?.version).toBe('0.6.1');
   });
 
   it('lists every expected tool', async () => {
@@ -133,7 +133,7 @@ describe('omnigraph-mcp server', () => {
     const parsed = JSON.parse(block.text);
     expect(parsed.status).toBe('ok');
     expect(parsed.version).toBe('0.3.0');
-    expect(parsed.sdkServerVersion).toBe('0.6.0');
+    expect(parsed.sdkServerVersion).toBe('0.6.1');
   });
 
   it('calls the read tool and preserves opaque param keys', async () => {

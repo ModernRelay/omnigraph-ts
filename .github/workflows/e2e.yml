@@ -81,11 +81,14 @@ jobs:
                   - branch_merge
           YAML
           cat > /tmp/og/omnigraph.yaml <<'YAML'
-          policy:
-            file: /tmp/og/policy.yaml
           graphs:
             e2e:
               uri: /tmp/og/repo.omni
+              # Per-graph policy: server 0.6.1+ rejects a top-level `policy.file`
+              # alongside a named graph (it would be silently ignored), so the
+              # policy must live under the graph it applies to.
+              policy:
+                file: /tmp/og/policy.yaml
           cli:
             graph: e2e
             branch: main

@@ -24,10 +24,15 @@ import type {
   IngestOutput,
   IngestRequest,
   IngestTableOutput,
+  InvokeStoredQueryRequest,
+  InvokeStoredQueryResponse,
   LoadMode,
   ManifestConflictOutput,
   MergeConflictKindOutput,
   MergeConflictOutput,
+  ParamDescriptor as ParamDescriptorOutput,
+  QueriesCatalogOutput,
+  QueryCatalogEntry as QueryCatalogEntryOutput,
   QueryRequest,
   ReadOutput,
   ReadRequest,
@@ -64,6 +69,13 @@ export type Ingest = Camelize<IngestOutput>;
 export type IngestTable = Camelize<IngestTableOutput>;
 export type Read = Camelize<ReadOutput>;
 export type ReadTarget = Camelize<ReadTargetOutput>;
+// Stored queries (GET /queries, POST /queries/{name}).
+export type Queries = Camelize<QueriesCatalogOutput>;
+export type QueryCatalogEntry = Camelize<QueryCatalogEntryOutput>;
+export type ParamDescriptor = Camelize<ParamDescriptorOutput>;
+// A stored query is read or mutation; the wire response is untagged
+// (ReadOutput | ChangeOutput), so this camelizes to `Read | Change`.
+export type InvokeQuery = Camelize<InvokeStoredQueryResponse>;
 export type Schema = Camelize<SchemaOutput>;
 export type SchemaApply = Camelize<SchemaApplyOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
@@ -93,6 +105,7 @@ export type ChangeInput =
 export type ExportInput = Camelize<ExportRequest>;
 export type IngestInput = Camelize<IngestRequest>;
 export type QueryInput = Camelize<QueryRequest>;
+export type InvokeQueryInput = Camelize<InvokeStoredQueryRequest>;
 export type ReadInput = Camelize<ReadRequest>;
 export type SchemaApplyInput = Camelize<SchemaApplyRequest>;
 
@@ -104,6 +117,7 @@ export {
   BranchMergeOutcome,
   LoadMode,
   MergeConflictKindOutput,
+  ParamKind,
 } from './generated/types.gen';
 
 // CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.

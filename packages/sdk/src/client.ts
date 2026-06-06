@@ -5,6 +5,7 @@ import { BranchesResource } from './resources/branches';
 import type { CallOptions } from './internals';
 import { CommitsResource } from './resources/commits';
 import { GraphsResource } from './resources/graphs';
+import { QueriesResource } from './resources/queries';
 import { SchemaResource } from './resources/schema';
 import type {
   Change,
@@ -85,6 +86,7 @@ export default class Omnigraph {
   readonly branches: BranchesResource;
   readonly commits: CommitsResource;
   readonly graphs: GraphsResource;
+  readonly queries: QueriesResource;
   readonly schema: SchemaResource;
 
   private readonly t: Transport;
@@ -96,6 +98,7 @@ export default class Omnigraph {
     this.branches = new BranchesResource(this.t);
     this.commits = new CommitsResource(this.t);
     this.graphs = new GraphsResource(this.t);
+    this.queries = new QueriesResource(this.t);
     this.schema = new SchemaResource(this.t);
   }
 
