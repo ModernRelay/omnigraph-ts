@@ -9,7 +9,6 @@ import { QueriesResource } from './resources/queries';
 import { SchemaResource } from './resources/schema';
 import type {
   Change,
-  ChangeInput,
   ExportInput,
   Health,
   Ingest,
@@ -17,7 +16,6 @@ import type {
   MutationInput,
   QueryInput,
   Read,
-  ReadInput,
   Snapshot,
 } from './types';
 
@@ -28,33 +26,9 @@ const OPAQUE_PARAMS = new Set(['params']);
 const OPAQUE_READ_RESPONSE = new Set(['rows', 'columns']);
 // Export NDJSON rows are `{ type, data }` (or `{ edge, from, to, data }`).
 // `data` contains the user-schema-driven properties whose keys must round-trip
-// through ingest unchanged — keep verbatim. The envelope keys (`type`, `edge`,
+// through load unchanged — keep verbatim. The envelope keys (`type`, `edge`,
 // `from`, `to`) are SDK/wire-defined and already match in both cases.
 const OPAQUE_EXPORT_ROW = new Set(['data']);
-
-function normalizeChangeInput(input: ChangeInput): MutationInput {
-  const record = input as Record<string, unknown>;
-  const hasCanonical = record.query !== undefined || record.name !== undefined;
-  const hasLegacy = record.querySource !== undefined || record.queryName !== undefined;
-  if (hasCanonical && hasLegacy) {
-    throw new TypeError('og.change() accepts either query/name or querySource/queryName, not both');
-  }
-  if (hasLegacy) {
-    if (typeof record.querySource !== 'string' || record.querySource.length === 0) {
-      throw new TypeError('og.change() requires querySource when using legacy querySource/queryName fields');
-    }
-    return {
-      query: record.querySource,
-      name: record.queryName as string | null | undefined,
-      params: record.params,
-      branch: record.branch as string | null | undefined,
-    };
-  }
-  if (typeof record.query !== 'string' || record.query.length === 0) {
-    throw new TypeError('og.change() requires query when using canonical query/name fields');
-  }
-  return input as MutationInput;
-}
 
 export interface OmnigraphOptions {
   /** Base URL of the omnigraph-server. e.g. `http://127.0.0.1:8080`. */
@@ -124,11 +98,9 @@ export default class Omnigraph {
   }
 
   /**
-   * Run a GQ read query. Canonical read endpoint as of server 0.6.0
-   * (successor to `read`). Read-only.
-   *
-   * Identical response shape to `og.read()`; the canonical field names are
-   * `query` / `name` (vs. legacy `querySource` / `queryName`).
+   * Run a GQ read query (`POST /query`). Read-only. Field names are
+   * `query` / `name`; `params` is a free-form map matched to `$var`
+   * placeholders in the query source.
    */
   query(input: QueryInput, opts: CallOptions = {}): Promise<Read> {
     return this.t.request<Read>('POST', '/query', {
@@ -140,8 +112,8 @@ export default class Omnigraph {
   }
 
   /**
-   * Run a GQ mutation. Canonical write endpoint as of server 0.6.0
-   * (successor to `change`). **Destructive** — branch is updated atomically.
+   * Run a GQ mutation (`POST /mutate`). **Destructive** — branch is updated
+   * atomically.
    *
    * **Idempotency**: design queries with `@unique` constraints or
    * `update ... where` clauses to allow safe retry. Blind `insert` without
@@ -156,51 +128,9 @@ export default class Omnigraph {
   }
 
   /**
-   * Run a GQ read query. Read-only.
-   *
-   * @deprecated Server 0.6.0 introduces {@link Omnigraph.query} as the
-   * canonical successor. `POST /read` still works but the server emits
-   * `Deprecation: true` and `Link: </query>; rel="successor-version"`
-   * response headers. Migrate to `og.query()`; the field names there are
-   * `query` / `name` instead of `querySource` / `queryName`.
-   */
-  read(input: ReadInput, opts: CallOptions = {}): Promise<Read> {
-    return this.t.request<Read>('POST', '/read', {
-      body: input,
-      signal: opts.signal,
-      opaqueBodyKeys: OPAQUE_PARAMS,
-      opaqueResponseKeys: OPAQUE_READ_RESPONSE,
-    });
-  }
-
-  /**
-   * Run a GQ mutation. Returns counts of nodes/edges affected and produces
-   * a new commit on success. **Destructive** — branch is updated atomically.
-   *
-   * **Idempotency**: design queries with `@unique` constraints or
-   * `update ... where` clauses to allow safe retry. Blind `insert` without
-   * unique keys can duplicate on retry.
-   *
-   * @deprecated Server 0.6.0 introduces {@link Omnigraph.mutate} as the
-   * canonical successor. `POST /change` still works but the server emits
-   * `Deprecation: true` and `Link: </mutate>; rel="successor-version"`
-   * response headers. Accepts both the old SDK fields (`querySource` /
-   * `queryName`) and the canonical fields (`query` / `name`); the wire request
-   * is normalized to the server 0.6 shape.
-   */
-  change(input: ChangeInput, opts: CallOptions = {}): Promise<Change> {
-    return this.t.request<Change>('POST', '/change', {
-      body: normalizeChangeInput(input),
-      signal: opts.signal,
-      opaqueBodyKeys: OPAQUE_PARAMS,
-    });
-  }
-
-  /**
-   * Bulk-load NDJSON into a branch. Canonical write-load endpoint as of
-   * server 0.7.0 (successor to `ingest`). **Use `mode: 'merge'` for
-   * at-least-once safety** — retries upsert by `@key` instead of duplicating
-   * rows.
+   * Bulk-load NDJSON into a branch. The canonical write-load endpoint.
+   * **Use `mode: 'merge'` for at-least-once safety** — retries upsert by
+   * `@key` instead of duplicating rows.
    *
    * **Branch creation is opt-in.** Without `from`, the target `branch` must
    * already exist — a missing branch is a {@link NotFoundError} (404), never an
@@ -208,18 +138,6 @@ export default class Omnigraph {
    */
   load(input: IngestInput, opts: CallOptions = {}): Promise<Ingest> {
     return this.t.request<Ingest>('POST', '/load', { body: input, signal: opts.signal });
-  }
-
-  /**
-   * Bulk-ingest NDJSON. Identical request/response shape to {@link Omnigraph.load}.
-   *
-   * @deprecated Server 0.7.0 introduces {@link Omnigraph.load} as the canonical
-   * successor. `POST /ingest` still works (kept indefinitely as a shim) but the
-   * server emits `Deprecation: true` and `Link: </load>; rel="successor-version"`
-   * response headers. Migrate to `og.load()`; the shapes are identical.
-   */
-  ingest(input: IngestInput, opts: CallOptions = {}): Promise<Ingest> {
-    return this.t.request<Ingest>('POST', '/ingest', { body: input, signal: opts.signal });
   }
 
   /**

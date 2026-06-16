@@ -56,8 +56,7 @@ Read-only (`readOnlyHint: true`):
 |---|---|
 | `health` | Server liveness + version |
 | `snapshot` | Snapshot of a branch (table list + row counts) |
-| `query` | Run a `.gq` read query (canonical; successor to `read`) |
-| `read` | Legacy alias for `query`. Field names are still `querySource` / `queryName`; prefer `query`. |
+| `query` | Run a `.gq` read query |
 | `schema_get` | Active `.pg` schema source |
 | `branches_list` | List user-visible branches |
 | `commits_list` | List commits on a branch |
@@ -68,10 +67,8 @@ Mutating (`destructiveHint: true` where appropriate — hosts should surface con
 
 | Tool | Purpose |
 |---|---|
-| `mutate` | Run a `.gq` mutation (canonical; successor to `change`) |
-| `change` | Legacy alias for `mutate`. Accepts either legacy `querySource` / `queryName` or canonical `query` / `name`; mixed field families are rejected. Prefer `mutate`. |
-| `load` | Bulk-load NDJSON (canonical; `mode: 'merge'` for idempotency). Without `from`, a missing branch is a 404. |
-| `ingest` | Deprecated alias of `load` (kept as a shim). Identical behavior; prefer `load`. |
+| `mutate` | Run a `.gq` mutation |
+| `load` | Bulk-load NDJSON (`mode: 'merge'` for idempotency). Without `from`, a missing branch is a 404. |
 | `branches_create` | Create a new branch |
 | `branches_delete` | Delete a branch |
 | `branches_merge` | Merge `source` into `target` |

@@ -139,8 +139,8 @@ describe('transport graphId prefixing', () => {
     expect(calls[1]?.url).toBe('http://x/graphs/alpha/schema/apply');
   });
 
-  it('prefixes /read, /query, /change, /mutate, /load, /ingest, /snapshot, /export under /graphs/{graphId}', async () => {
-    const ingestBody = {
+  it('prefixes /query, /mutate, /load, /snapshot, /export under /graphs/{graphId}', async () => {
+    const loadBody = {
       actor_id: null,
       base_branch: 'main',
       branch: 'main',
@@ -151,31 +151,22 @@ describe('transport graphId prefixing', () => {
     };
     const { fetch, calls } = stubFetch([
       { body: { rows: [], columns: [] } },
-      { body: { rows: [], columns: [] } },
       { body: { affected_nodes: 0, affected_edges: 0 } },
-      { body: { affected_nodes: 0, affected_edges: 0 } },
-      { body: ingestBody },
-      { body: ingestBody },
+      { body: loadBody },
       { body: { branch: 'main', tables: [] } },
       { body: '', headers: { 'content-type': 'application/x-ndjson' } },
     ]);
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'alpha', fetch });
-    await og.read({ querySource: 'query q() {}' });
     await og.query({ query: 'query q() {}' });
-    await og.change({ query: 'query q() {}' });
     await og.mutate({ query: 'query q() {}' });
     await og.load({ branch: 'main', mode: 'merge', data: '{}\n' });
-    await og.ingest({ branch: 'main', mode: 'merge', data: '{}\n' });
     await og.snapshot();
     for await (const _ of og.export({ branch: 'main' })) void _;
-    expect(calls[0]?.url).toBe('http://x/graphs/alpha/read');
-    expect(calls[1]?.url).toBe('http://x/graphs/alpha/query');
-    expect(calls[2]?.url).toBe('http://x/graphs/alpha/change');
-    expect(calls[3]?.url).toBe('http://x/graphs/alpha/mutate');
-    expect(calls[4]?.url).toBe('http://x/graphs/alpha/load');
-    expect(calls[5]?.url).toBe('http://x/graphs/alpha/ingest');
-    expect(calls[6]?.url).toBe('http://x/graphs/alpha/snapshot');
-    expect(calls[7]?.url).toBe('http://x/graphs/alpha/export');
+    expect(calls[0]?.url).toBe('http://x/graphs/alpha/query');
+    expect(calls[1]?.url).toBe('http://x/graphs/alpha/mutate');
+    expect(calls[2]?.url).toBe('http://x/graphs/alpha/load');
+    expect(calls[3]?.url).toBe('http://x/graphs/alpha/snapshot');
+    expect(calls[4]?.url).toBe('http://x/graphs/alpha/export');
   });
 
   it('never prefixes /healthz', async () => {

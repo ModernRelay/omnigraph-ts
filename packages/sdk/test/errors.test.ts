@@ -54,7 +54,7 @@ describe('error dispatcher', () => {
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     try {
-      await og.change({ query: 'insert Person { name: "x" }' });
+      await og.mutate({ query: 'insert Person { name: "x" }' });
       throw new Error('should have thrown');
     } catch (e) {
       expect(e).toBeInstanceOf(ConflictError);

@@ -23,7 +23,7 @@ describe('opaque keys (GQ params, rows, columns)', () => {
     expect(out).toEqual({ rowCount: 1, rows: { user_id: 1 } });
   });
 
-  it('og.read sends params with caller-supplied keys verbatim', async () => {
+  it('og.query sends params with caller-supplied keys verbatim', async () => {
     const { fetch, calls } = stubFetch({
       body: {
         query_name: 'q',
@@ -34,16 +34,17 @@ describe('opaque keys (GQ params, rows, columns)', () => {
       },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    await og.read({
+    await og.query({
       branch: 'main',
-      querySource: 'query q($userId: I32) { match { $u: User { id: $userId } } return { $u.name } }',
+      query: 'query q($userId: I32) { match { $u: User { id: $userId } } return { $u.name } }',
       params: { userId: 42, $extraName: 'x' },
     });
     const body = JSON.parse(calls[0]?.body ?? '{}');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/query');
     expect(body.params).toEqual({ userId: 42, $extraName: 'x' });
   });
 
-  it('og.change sends params with caller-supplied keys verbatim', async () => {
+  it('og.mutate sends params with caller-supplied keys verbatim', async () => {
     const { fetch, calls } = stubFetch({
       body: {
         actor_id: null,
@@ -54,16 +55,17 @@ describe('opaque keys (GQ params, rows, columns)', () => {
       },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    await og.change({
+    await og.mutate({
       branch: 'feat',
       query: 'mutation m($keyName: String) { ... }',
       params: { keyName: 'value' },
     });
     const body = JSON.parse(calls[0]?.body ?? '{}');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/mutate');
     expect(body.params).toEqual({ keyName: 'value' });
   });
 
-  it('og.read preserves rows shape on response (no camelization)', async () => {
+  it('og.query preserves rows shape on response (no camelization)', async () => {
     const { fetch } = stubFetch({
       body: {
         query_name: 'q',
@@ -77,7 +79,7 @@ describe('opaque keys (GQ params, rows, columns)', () => {
       },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    const r = await og.read({ branch: 'main', querySource: 'query q() { ... }' });
+    const r = await og.query({ branch: 'main', query: 'query q() { ... }' });
     expect(r.queryName).toBe('q');         // top-level keys still camelCased
     expect(r.rowCount).toBe(2);
     expect(r.columns).toEqual(['user_id', 'full_name']);  // opaque

@@ -38,7 +38,7 @@ That's the whole pattern: instantiate once (with a `graphId`), call methods, get
 
 > **`graphId` is required (server 0.7.0).** `omnigraph-server` is cluster-only: every graph-scoped operation is served under `/graphs/{graphId}/…`. A graph-scoped call without a `graphId` throws `ConfigurationError` before hitting the network. Only `og.health()` and `og.graphs.list()` work without one — use the latter to discover ids, then [`og.graph(id)`](#multi-graph-clusters). This SDK major.minor targets a 0.7.x server; for a 0.6.x (flat-route) server, stay on `@modernrelay/omnigraph@0.6.x`.
 
-> **Migrating from `og.read` / `og.change` (server 0.6.0)** — `POST /query` and `POST /mutate` are the canonical successors. New mutation calls should use `og.mutate({ query, name })`. Deprecated `og.change()` remains source-compatible with both old `{ querySource, queryName }` callers and canonical `{ query, name }` callers; the SDK normalizes either shape to the server 0.6 wire body. `og.read()` keeps the legacy `{ querySource, queryName }` shape.
+> **Removed in this release: `og.read`, `og.change`, `og.ingest`.** This major release drops the deprecated aliases for a single canonical surface — use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk-load). Field names are `query` / `name` (not `querySource` / `queryName`). The server still serves the old `/read`, `/change`, `/ingest` routes as shims, so a 0.6.x-era SDK keeps working — but this SDK no longer calls them.
 
 ## What you can do
 
@@ -91,7 +91,7 @@ await og.load({
 });
 ```
 
-`og.load()` is the canonical bulk-load endpoint (server 0.7.0). `og.ingest()` is a deprecated alias kept for back-compat — identical request/response shape; the server emits `Deprecation`/`Link` headers. **Loading into a branch that doesn't exist requires `from`** (the base to fork from); without it the server returns `NotFoundError` (404) rather than implicitly forking from `main`.
+`og.load()` is the canonical (and only) bulk-load method. **Loading into a branch that doesn't exist requires `from`** (the base to fork from); without it the server returns `NotFoundError` (404) rather than implicitly forking from `main`.
 
 ### Stream a branch as NDJSON
 
@@ -192,19 +192,17 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 
 | Operation | Retry semantics |
 |---|---|
-| `og.health()`, `og.snapshot()`, `og.query()`, `og.read()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()` | Read-only — always safe. |
+| `og.health()`, `og.snapshot()`, `og.query()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()`, `og.graphs.list()` | Read-only — always safe. |
 | `og.branches.create({ name })` | Throws `ConflictError` on retry (branch exists). Catch and treat as success. |
 | `og.branches.merge({ source, target })` | Idempotent — re-merge yields `outcome: 'already_up_to_date'`. |
 | `og.branches.delete(name)` | Idempotent — delete-of-deleted is a no-op. |
 | `og.schema.apply({ schemaSource })` | Idempotent — unchanged schema returns `applied: false`. |
-| `og.load({ data, mode: 'merge' })` (or the deprecated `og.ingest`) | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
+| `og.load({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
 | `og.load({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
 | `og.load({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
-| `og.mutate({ query })`, `og.change({ query })`, `og.change({ querySource })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
+| `og.mutate({ query })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
 
 If a mutation isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
-
-`og.read()` and `og.change()` are deprecated aliases of `og.query()` and `og.mutate()` (server 0.6.0). `og.change()` accepts both the old SDK fields (`querySource` / `queryName`) and the canonical mutation fields (`query` / `name`), then sends the canonical wire body. `og.read()` still uses `querySource` / `queryName`.
 
 ## Cluster graphs
 
@@ -218,7 +216,7 @@ const og = new Omnigraph({
 });
 
 await og.snapshot();         // → GET /graphs/alpha/snapshot
-await og.read({ /* … */ });  // → POST /graphs/alpha/read
+await og.query({ /* … */ }); // → POST /graphs/alpha/query
 ```
 
 Use `og.graph(id)` to fan out across graphs from one parent client. It returns a new client that shares `baseUrl`, `token`, and `fetch`; the parent is untouched:

@@ -33,39 +33,6 @@ describe('top-level client operations', () => {
     expect(calls[0]?.url).toBe('http://x/graphs/g/snapshot');
   });
 
-  it('ingest sends NDJSON data via JSON body and camelCases the response', async () => {
-    const { fetch, calls } = stubFetch({
-      body: {
-        actor_id: null,
-        base_branch: 'main',
-        branch: 'feat',
-        branch_created: true,
-        mode: 'merge',
-        tables: [
-          { table_key: 'node:Person', rows_loaded: 2 },
-        ],
-        uri: 's3://x',
-      },
-    });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    const r = await og.ingest({
-      branch: 'feat',
-      from: 'main',
-      mode: 'merge',
-      data: '{"type":"Person","data":{"name":"A"}}\n',
-    });
-    expect(calls[0]?.method).toBe('POST');
-    expect(calls[0]?.url).toBe('http://x/graphs/g/ingest');
-    const body = JSON.parse(calls[0]?.body ?? '{}');
-    expect(body.branch).toBe('feat');
-    expect(body.from).toBe('main');
-    expect(body.mode).toBe('merge');
-    expect(body.data).toContain('Person');
-    expect(r.branchCreated).toBe(true);
-    expect(r.tables[0]?.tableKey).toBe('node:Person');
-    expect(r.tables[0]?.rowsLoaded).toBe(2);
-  });
-
   it('load sends POST /load and tolerates a null base_branch', async () => {
     const { fetch, calls } = stubFetch({
       body: {
@@ -158,50 +125,6 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     expect(body.branch).toBe('feature');
     expect(body.params).toEqual({ name: 'Frank' });
     expect(r.affectedNodes).toBe(1);
-  });
-
-  it('og.change accepts canonical query/name fields and emits canonical wire fields', async () => {
-    const { fetch, calls } = stubFetch({
-      body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
-    });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    await og.change({ query: 'query q() { insert X {} }', name: 'q', branch: 'main' });
-    const body = JSON.parse(calls[0]?.body ?? '{}');
-    expect(body.query).toBe('query q() { insert X {} }');
-    expect(body.name).toBe('q');
-    expect('query_source' in body).toBe(false);
-    expect('query_name' in body).toBe(false);
-  });
-
-  it('og.change accepts legacy querySource/queryName fields and normalizes to canonical wire fields', async () => {
-    const { fetch, calls } = stubFetch({
-      body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
-    });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    await og.change({
-      querySource: 'query q() { insert X {} }',
-      queryName: 'q',
-      branch: 'main',
-    });
-    const body = JSON.parse(calls[0]?.body ?? '{}');
-    expect(calls[0]?.url).toBe('http://x/graphs/g/change');
-    expect(body.query).toBe('query q() { insert X {} }');
-    expect(body.name).toBe('q');
-    expect('query_source' in body).toBe(false);
-    expect('query_name' in body).toBe(false);
-  });
-
-  it('og.change rejects mixed canonical and legacy mutation field families', async () => {
-    const { fetch } = stubFetch({
-      body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
-    });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
-    expect(() =>
-      og.change({
-        query: 'query q() { insert X {} }',
-        querySource: 'query q() { insert X {} }',
-      } as never),
-    ).toThrow(/either query\/name or querySource\/queryName/);
   });
 });
 

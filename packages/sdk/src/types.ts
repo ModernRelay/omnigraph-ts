@@ -35,7 +35,6 @@ import type {
   QueryCatalogEntry as QueryCatalogEntryOutput,
   QueryRequest,
   ReadOutput,
-  ReadRequest,
   ReadTargetOutput,
   SchemaApplyOutput,
   SchemaApplyRequest,
@@ -87,26 +86,10 @@ export type ManifestConflict = Camelize<ManifestConflictOutput>;
 export type BranchCreateInput = Camelize<BranchCreateRequest>;
 export type BranchMergeInput = Camelize<BranchMergeRequest>;
 export type MutationInput = Camelize<ChangeRequest>;
-export type LegacyChangeInput = {
-  /** Target branch. Defaults to `main`. */
-  branch?: string | null;
-  /** Name of the mutation to run when `querySource` declares multiple. */
-  queryName?: string | null;
-  /** JSON object whose keys match the mutation's declared parameters. */
-  params?: unknown;
-  /** Legacy GQ mutation source field accepted by deprecated `og.change()`. */
-  querySource: string;
-  query?: never;
-  name?: never;
-};
-export type ChangeInput =
-  | (MutationInput & { querySource?: never; queryName?: never })
-  | LegacyChangeInput;
 export type ExportInput = Camelize<ExportRequest>;
 export type IngestInput = Camelize<IngestRequest>;
 export type QueryInput = Camelize<QueryRequest>;
 export type InvokeQueryInput = Camelize<InvokeStoredQueryRequest>;
-export type ReadInput = Camelize<ReadRequest>;
 export type SchemaApplyInput = Camelize<SchemaApplyRequest>;
 
 // Enums and discriminators are unchanged (no snake-case keys to convert).

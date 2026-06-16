@@ -53,7 +53,7 @@ describe('runtime enum constants', () => {
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     // Mode accepts LoadModeType; LoadMode.MERGE is the value.
     const mode: LoadModeType = LoadMode.MERGE;
-    await og.ingest({ branch: 'feat', data: '{}\n', mode });
+    await og.load({ branch: 'feat', data: '{}\n', mode });
     const body = JSON.parse(calls[0]?.body ?? '{}');
     expect(body.mode).toBe('merge');
   });

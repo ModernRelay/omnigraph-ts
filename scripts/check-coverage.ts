@@ -162,7 +162,19 @@ function flattenSpecPath(p: string): string {
   return m ? m[1]! : p;
 }
 
+// Spec operations the SDK intentionally does NOT bind. The server still serves
+// these (deprecated shims kept indefinitely), but the SDK dropped the
+// deprecated aliases in the 0.7.0 clean break — `query` / `mutate` / `load` are
+// the canonical surface. Listed explicitly (and logged below, never silently)
+// so the check stays honest: a NON-allowlisted missing binding still fails.
+const INTENTIONALLY_UNBOUND = new Map<string, string>([
+  ['POST /read', 'removed alias — use og.query() (POST /query)'],
+  ['POST /change', 'removed alias — use og.mutate() (POST /mutate)'],
+  ['POST /ingest', 'removed alias — use og.load() (POST /load)'],
+]);
+
 const errors: string[] = [];
+const intentionallyUnbound: string[] = [];
 
 const expectedByKey = new Map<string, SpecEndpoint>();
 for (const e of expected) {
@@ -194,9 +206,24 @@ for (const c of calls) {
 
 for (const e of expected) {
   const key = `${e.method} ${normalizePath(flattenSpecPath(e.path))}`;
-  if (!seenInSdk.has(key)) {
-    errors.push(`No SDK binding for spec operation ${e.method} ${e.path}`);
+  if (seenInSdk.has(key)) continue;
+  const reason = INTENTIONALLY_UNBOUND.get(key);
+  if (reason) {
+    intentionallyUnbound.push(`${e.method} ${e.path} — ${reason}`);
+    continue;
   }
+  errors.push(`No SDK binding for spec operation ${e.method} ${e.path}`);
+}
+
+// Surface the intentionally-unbound deprecated shims loudly so dropping a
+// binding is never silent. Fail if the allowlist is stale (an entry no longer
+// in the spec) — the spec dropping a shim should prompt removing the allowlist.
+const staleAllow = [...INTENTIONALLY_UNBOUND.keys()].filter((key) => {
+  const [method, flat] = key.split(' ');
+  return !expected.some((e) => `${e.method} ${flattenSpecPath(e.path)}` === `${method} ${flat}`);
+});
+for (const key of staleAllow) {
+  errors.push(`INTENTIONALLY_UNBOUND lists '${key}', but the spec no longer defines it — remove it from check-coverage.ts`);
 }
 
 if (errors.length > 0) {
@@ -209,6 +236,11 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
+if (intentionallyUnbound.length > 0) {
+  console.log('Intentionally unbound (deprecated server shims, not exposed by the SDK):');
+  for (const u of intentionallyUnbound) console.log(`  · ${u}`);
+}
+
 console.log(
-  `Coverage check passed: ${calls.length} call sites bound to ${expected.length} spec operations; query params validated.`,
+  `Coverage check passed: ${calls.length} call sites bound to ${expected.length - intentionallyUnbound.length} of ${expected.length} spec operations (${intentionallyUnbound.length} intentionally unbound); query params validated.`,
 );

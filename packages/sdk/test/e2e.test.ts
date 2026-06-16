@@ -150,11 +150,11 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   });
 
   describe('queries', () => {
-    it('parameterized read returns matching row with camelCased fields', async () => {
-      const r = await og.read({
-        querySource:
+    it('parameterized query returns matching row with camelCased fields', async () => {
+      const r = await og.query({
+        query:
           'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
-        queryName: 'find',
+        name: 'find',
         params: { name: 'Alice' },
         branch: 'main',
       });
@@ -166,21 +166,21 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(nameField).toBe('Alice');
     });
 
-    it('parameterless read returns multiple rows', async () => {
-      const r = await og.read({
-        querySource:
+    it('parameterless query returns multiple rows', async () => {
+      const r = await og.query({
+        query:
           'query adults() { match { $p: Person\n$p.age > 25 } return { $p.name, $p.age } }',
-        queryName: 'adults',
+        name: 'adults',
         branch: 'main',
       });
       expect((r.rows as unknown[]).length).toBeGreaterThanOrEqual(2);
     });
 
-    it('change inserts a row on a fresh branch', async () => {
-      const branch = `e2e-change-${Date.now()}`;
+    it('mutate inserts a row on a fresh branch', async () => {
+      const branch = `e2e-mutate-${Date.now()}`;
       branchesToCleanup.push(branch);
       await og.branches.create({ name: branch, from: 'main' });
-      const ch = await og.change({
+      const ch = await og.mutate({
         query:
           'query addPerson($name: String, $age: I32) { insert Person { name: $name, age: $age } }',
         name: 'addPerson',
@@ -191,10 +191,10 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
     });
   });
 
-  describe('load / ingest', () => {
+  describe('load', () => {
     // `from` is mandatory for a missing branch under 0.7.0 — without it the
-    // server returns 404 (no implicit fork). Both tests pass `from: 'main'`.
-    it('load (canonical) merge-mode forks a branch and writes rows', async () => {
+    // server returns 404 (no implicit fork). This test passes `from: 'main'`.
+    it('merge-mode forks a branch and writes rows', async () => {
       const branch = `e2e-load-${Date.now()}`;
       const name = `e2e-Carol-${Date.now()}`;
       branchesToCleanup.push(branch);
@@ -207,34 +207,11 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(result.branch).toBe(branch);
       expect(result.tables.length).toBeGreaterThan(0);
 
-      const r = await og.read({
-        querySource:
+      const r = await og.query({
+        query:
           'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
-        queryName: 'find',
+        name: 'find',
         params: { name },
-        branch,
-      });
-      expect((r.rows as unknown[]).length).toBe(1);
-    });
-
-    it('ingest (deprecated alias) merge mode creates branch and writes rows', async () => {
-      const branch = `e2e-ingest-${Date.now()}`;
-      const dianaName = `e2e-Diana-${Date.now()}`;
-      branchesToCleanup.push(branch);
-      const result = await og.ingest({
-        branch,
-        from: 'main',
-        mode: LoadMode.MERGE,
-        data: JSON.stringify({ type: 'Person', data: { name: dianaName, age: 40 } }) + '\n',
-      });
-      expect(result.branch).toBe(branch);
-      expect(result.tables.length).toBeGreaterThan(0);
-
-      const r = await og.read({
-        querySource:
-          'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
-        queryName: 'find',
-        params: { name: dianaName },
         branch,
       });
       expect((r.rows as unknown[]).length).toBe(1);
@@ -293,7 +270,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
 
     it('malformed query surfaces BadRequestError', async () => {
       await expect(
-        og.read({ querySource: 'this is not gq', queryName: 'broken', branch: 'main' }),
+        og.query({ query: 'this is not gq', name: 'broken', branch: 'main' }),
       ).rejects.toBeInstanceOf(BadRequestError);
     });
   });

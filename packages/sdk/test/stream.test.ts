@@ -6,7 +6,7 @@ describe('export streaming', () => {
   it('yields rows from NDJSON body, preserving user-schema keys inside `data`', async () => {
     // `data` is user-schema-controlled. Keys like `first_name` or `table_key`
     // are caller-defined and must survive the snake/camel boundary unchanged,
-    // so that `og.ingest()` of the exported NDJSON round-trips byte-for-byte.
+    // so that `og.load()` of the exported NDJSON round-trips byte-for-byte.
     const ndjson =
       '{"type":"Person","data":{"first_name":"Alice","is_active":true}}\n' +
       '{"edge":"WorksAt","from":"Alice","to":"Acme","data":{"start_year":2020}}\n';
