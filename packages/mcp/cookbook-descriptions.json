@@ -22,8 +22,11 @@
     }
   },
   "skipped": {
-    "aliases": "CLI-only — omnigraph.yaml + --alias mechanics, not actionable through the HTTP API the MCP wraps.",
+    "aliases": "CLI-only — operator aliases + --alias mechanics, not actionable through the HTTP API the MCP wraps.",
     "commands": "CLI-only — the omnigraph binary's command surface, not the HTTP API.",
-    "server-policy": "Server-deployment concerns (Cedar policy, auth tokens), out of scope for an MCP client."
+    "server-policy": "Server-deployment concerns (Cedar policy, auth tokens), out of scope for an MCP client.",
+    "cluster": "Operator/CLI concern — declaring and converging a deployment via cluster.yaml + `omnigraph cluster apply`. The MCP wraps the data-plane HTTP API, which cannot apply cluster config.",
+    "migrations": "Pre-0.7.0 → 0.7.0 migration reference for config files, CLI flags, and command spellings — a CLI/operator guide, not actionable through the HTTP API the MCP wraps.",
+    "stored-queries": "Stored-query declaration is a cluster/operator concern (cluster.yaml); the MCP wraps the data-plane HTTP API and does not currently expose a stored-query invoke tool."
   }
 }

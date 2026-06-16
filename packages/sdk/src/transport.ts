@@ -1,5 +1,5 @@
 import { camelToSnake, snakeToCamel } from './case';
-import { fromResponse, NetworkError } from './errors';
+import { ConfigurationError, fromResponse, NetworkError } from './errors';
 
 export type FetchLike = (
   input: string | URL | Request,
@@ -11,9 +11,13 @@ export interface TransportOptions {
   token?: string;
   fetch?: FetchLike;
   /**
-   * Cluster-mode graph id. When set, all graph-scoped paths are rewritten to
+   * Cluster graph id. All graph-scoped paths are rewritten to
    * `/graphs/${encodeURIComponent(graphId)}${path}` before being sent. Flat
    * management paths (`/healthz`, `/graphs`) are exempt.
+   *
+   * Required when targeting omnigraph-server 0.7.0+ (cluster-only): a
+   * graph-scoped request issued without a `graphId` throws
+   * {@link ConfigurationError} before hitting the network.
    */
   graphId?: string;
 }
@@ -90,6 +94,20 @@ export class Transport {
     path: string,
     opts: RequestOptions,
   ): Promise<Response> {
+    // Cluster-only servers (0.7.0+) serve every graph-scoped operation under
+    // `/graphs/{graphId}/…`. Refuse a graph-scoped call without a configured
+    // graphId here, with an actionable message, instead of letting it hit a
+    // non-existent flat route and surface as an opaque 404.
+    if (!this.graphId && !FLAT_PATHS.has(path)) {
+      throw new ConfigurationError({
+        status: 0,
+        message:
+          `graphId is required for graph-scoped operations on omnigraph-server 0.7.0+ ` +
+          `(attempted ${method} ${path}). Pass { graphId } to new Omnigraph(...) or use ` +
+          `og.graph(id). Only health() and graphs.list() work without one.`,
+        request: { method, url: this.baseUrl + path },
+      });
+    }
     const url = this.buildUrl(path, opts.query);
     const headers = new Headers();
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);

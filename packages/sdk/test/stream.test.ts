@@ -14,7 +14,7 @@ describe('export streaming', () => {
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const rows: unknown[] = [];
     for await (const r of og.export({ branch: 'main' })) {
       rows.push(r);
@@ -38,7 +38,7 @@ describe('export streaming', () => {
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const rows: unknown[] = [];
     for await (const r of og.export()) rows.push(r);
     expect(rows).toEqual([{ a: 1 }, { b: 2 }]);
@@ -50,7 +50,7 @@ describe('export streaming', () => {
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const rows: unknown[] = [];
     for await (const r of og.export()) rows.push(r);
     expect(rows).toEqual([{ a: 1 }, { b: 2 }]);

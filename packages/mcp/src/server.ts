@@ -47,7 +47,7 @@ Date format: ISO strings on \`change\` params; integer days-since-epoch in inges
 
 If you see \`sync_branch()\` in an error message, it is server-internal text, NOT a tool. Retry once; on persistent failure, fall back to \`ingest\` on a branch.
 
-Depth: https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices`;
+Depth: https://github.com/ModernRelay/omnigraph/tree/main/skills/omnigraph`;
 
 export interface CreateServerOptions {
   baseUrl: string;
@@ -55,9 +55,10 @@ export interface CreateServerOptions {
   /** Default branch when a tool input omits one. */
   defaultBranch?: string;
   /**
-   * Multi-graph cluster: target graph id. Threaded into the underlying
-   * `Omnigraph` client so every tool call routes under `/graphs/${graphId}/...`.
-   * Leave undefined for single-graph servers.
+   * Target graph id. Threaded into the underlying `Omnigraph` client so every
+   * graph-scoped tool call routes under `/graphs/${graphId}/...`. Required
+   * against omnigraph-server 0.7.0+ (cluster-only); the `bin` entrypoint
+   * refuses to start without `OMNIGRAPH_GRAPH_ID`.
    */
   graphId?: string;
   /** Custom fetch (for testing). */
@@ -262,10 +263,10 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'List registered graphs',
       description:
-        'Return every graph the server exposes, alphabetically by graphId. ' +
-        'Multi-graph servers only — a single-graph server returns 405 ' +
-        '(MethodNotAllowedError). When a token is configured the server-level ' +
-        'Cedar policy must authorize the `graph_list` action.',
+        'Return every graph the cluster exposes, alphabetically by graphId. ' +
+        'The `/graphs` management surface is closed by default — the cluster ' +
+        'must grant the `graph_list` action (a `cluster`-scoped policy bundle) ' +
+        'or this returns 403 (ForbiddenError).',
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -353,11 +354,34 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   );
 
   server.registerTool(
+    'load',
+    {
+      title: 'Bulk-load NDJSON',
+      description:
+        'Bulk-load NDJSON data into a branch (canonical, server 0.7.0+). `mode: "merge"` upserts by @key (idempotent). ' +
+        '`mode: "append"` is strict insert (errors on duplicate). `mode: "overwrite"` replaces all data. ' +
+        'Without `from`, the target branch must already exist (a missing branch is a 404); pass `from` to fork-if-missing.',
+      inputSchema: {
+        branch: z.string().min(1),
+        from: z.string().optional(),
+        mode: LoadModeEnum,
+        data: z.string().min(1),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ branch, from, mode, data }) => {
+      const r = await og.load({ branch, from, mode, data });
+      return { content: jsonText(r) };
+    },
+  );
+
+  server.registerTool(
     'ingest',
     {
-      title: 'Bulk-ingest NDJSON',
+      title: 'Bulk-ingest NDJSON (deprecated alias of load)',
       description:
-        'Bulk-load NDJSON data into a branch. `mode: "merge"` upserts by @key (idempotent). ' +
+        'Deprecated alias of `load` (kept indefinitely as a shim). Identical behavior; prefer `load`. ' +
+        '`mode: "merge"` upserts by @key (idempotent). ' +
         '`mode: "append"` is strict insert (errors on duplicate). `mode: "overwrite"` replaces all data.',
       inputSchema: {
         branch: z.string().min(1),
@@ -474,8 +498,8 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'Graphs',
       description:
-        'JSON array of registered graphs, each `{ graphId, uri }`. Multi-graph ' +
-        'servers only — single-graph servers return 405 on `GET /graphs`.',
+        'JSON array of registered graphs, each `{ graphId, uri }`. The `/graphs` ' +
+        'management surface is closed by default — requires a `graph_list` policy grant.',
       mimeType: 'application/json',
     },
     async (uri) => {
@@ -528,7 +552,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       const lines = [
         '# Omnigraph best-practices index',
         '',
-        'Vendored from https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices.',
+        'Vendored from https://github.com/ModernRelay/omnigraph/tree/main/skills/omnigraph.',
         '',
         '| Resource | Read before |',
         '|---|---|',

@@ -33,7 +33,7 @@ describe('opaque keys (GQ params, rows, columns)', () => {
         rows: [],
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.read({
       branch: 'main',
       querySource: 'query q($userId: I32) { match { $u: User { id: $userId } } return { $u.name } }',
@@ -53,7 +53,7 @@ describe('opaque keys (GQ params, rows, columns)', () => {
         query_name: 'm',
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.change({
       branch: 'feat',
       query: 'mutation m($keyName: String) { ... }',
@@ -76,7 +76,7 @@ describe('opaque keys (GQ params, rows, columns)', () => {
         ],
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const r = await og.read({ branch: 'main', querySource: 'query q() { ... }' });
     expect(r.queryName).toBe('q');         // top-level keys still camelCased
     expect(r.rowCount).toBe(2);

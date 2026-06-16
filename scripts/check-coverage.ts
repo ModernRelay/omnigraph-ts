@@ -150,11 +150,23 @@ function normalizePath(p: string): string {
   return p.replace(/\{[^}]+\}/g, '{}').replace(/\$\{[^}]*\}/g, '{}');
 }
 
+// Mirror packages/sdk/src/transport.ts: a cluster-only server (0.7.0+) serves
+// every graph-scoped operation under `/graphs/{graph_id}/…`, while the SDK call
+// sites pass the flat path (e.g. `/branches`) and let the Transport add the
+// prefix at runtime. Strip that prefix off spec paths before matching, exempting
+// the same flat management paths the Transport never rewrites.
+const FLAT_SPEC_PATHS = new Set(['/healthz', '/graphs']);
+function flattenSpecPath(p: string): string {
+  if (FLAT_SPEC_PATHS.has(p)) return p;
+  const m = /^\/graphs\/\{[^}]+\}(\/.*)$/.exec(p);
+  return m ? m[1]! : p;
+}
+
 const errors: string[] = [];
 
 const expectedByKey = new Map<string, SpecEndpoint>();
 for (const e of expected) {
-  expectedByKey.set(`${e.method} ${normalizePath(e.path)}`, e);
+  expectedByKey.set(`${e.method} ${normalizePath(flattenSpecPath(e.path))}`, e);
 }
 
 const seenInSdk = new Set<string>();
@@ -181,7 +193,7 @@ for (const c of calls) {
 }
 
 for (const e of expected) {
-  const key = `${e.method} ${normalizePath(e.path)}`;
+  const key = `${e.method} ${normalizePath(flattenSpecPath(e.path))}`;
   if (!seenInSdk.has(key)) {
     errors.push(`No SDK binding for spec operation ${e.method} ${e.path}`);
   }

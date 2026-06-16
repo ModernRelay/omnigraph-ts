@@ -64,12 +64,14 @@ export interface OmnigraphOptions {
   /** Inject a custom fetch (testing, tracing, polyfills). */
   fetch?: FetchLike;
   /**
-   * Target a specific graph in a multi-graph cluster. When set, every
-   * graph-scoped call is sent under `/graphs/${graphId}/...`. Flat paths
-   * (`/healthz`, `/graphs`) are never prefixed.
+   * Target a specific graph in the cluster. Every graph-scoped call is sent
+   * under `/graphs/${graphId}/...`. Flat paths (`/healthz`, `/graphs`) are
+   * never prefixed.
    *
-   * Leave undefined when talking to a single-graph server — the routes
-   * remain flat and behaviour is unchanged from earlier SDK versions.
+   * **Required** against omnigraph-server 0.7.0+ (cluster-only): a graph-scoped
+   * call without a `graphId` throws {@link ConfigurationError}. Only
+   * `og.health()` and `og.graphs.list()` work without one — use the latter to
+   * discover graph ids, then `og.graph(id)`.
    *
    * Don't fold the id into `baseUrl` (e.g. `http://host/graphs/alpha`):
    * that breaks `og.health()` and `og.graphs.list()`. Use this option,
@@ -195,8 +197,26 @@ export default class Omnigraph {
   }
 
   /**
-   * Bulk-ingest NDJSON. **Use `mode: 'merge'` for at-least-once safety** —
-   * ensures retries upsert by `@key` instead of duplicating rows.
+   * Bulk-load NDJSON into a branch. Canonical write-load endpoint as of
+   * server 0.7.0 (successor to `ingest`). **Use `mode: 'merge'` for
+   * at-least-once safety** — retries upsert by `@key` instead of duplicating
+   * rows.
+   *
+   * **Branch creation is opt-in.** Without `from`, the target `branch` must
+   * already exist — a missing branch is a {@link NotFoundError} (404), never an
+   * implicit fork. Pass `from` to fork-if-missing.
+   */
+  load(input: IngestInput, opts: CallOptions = {}): Promise<Ingest> {
+    return this.t.request<Ingest>('POST', '/load', { body: input, signal: opts.signal });
+  }
+
+  /**
+   * Bulk-ingest NDJSON. Identical request/response shape to {@link Omnigraph.load}.
+   *
+   * @deprecated Server 0.7.0 introduces {@link Omnigraph.load} as the canonical
+   * successor. `POST /ingest` still works (kept indefinitely as a shim) but the
+   * server emits `Deprecation: true` and `Link: </load>; rel="successor-version"`
+   * response headers. Migrate to `og.load()`; the shapes are identical.
    */
   ingest(input: IngestInput, opts: CallOptions = {}): Promise<Ingest> {
     return this.t.request<Ingest>('POST', '/ingest', { body: input, signal: opts.signal });

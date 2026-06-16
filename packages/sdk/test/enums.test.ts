@@ -50,7 +50,7 @@ describe('runtime enum constants', () => {
         uri: 's3://x',
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     // Mode accepts LoadModeType; LoadMode.MERGE is the value.
     const mode: LoadModeType = LoadMode.MERGE;
     await og.ingest({ branch: 'feat', data: '{}\n', mode });

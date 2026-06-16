@@ -17,10 +17,10 @@ describe('top-level client operations', () => {
     const { fetch, calls } = stubFetch({
       body: { branch: 'main', tables: [], snapshot_id: 'snap-1' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const s = await og.snapshot({ branch: 'main' });
     expect(calls[0]?.method).toBe('GET');
-    expect(calls[0]?.url).toBe('http://x/snapshot?branch=main');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/snapshot?branch=main');
     expect(s.branch).toBe('main');
   });
 
@@ -28,9 +28,9 @@ describe('top-level client operations', () => {
     const { fetch, calls } = stubFetch({
       body: { branch: 'main', tables: [], snapshot_id: 'snap-1' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.snapshot();
-    expect(calls[0]?.url).toBe('http://x/snapshot');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/snapshot');
   });
 
   it('ingest sends NDJSON data via JSON body and camelCases the response', async () => {
@@ -47,7 +47,7 @@ describe('top-level client operations', () => {
         uri: 's3://x',
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const r = await og.ingest({
       branch: 'feat',
       from: 'main',
@@ -55,7 +55,7 @@ describe('top-level client operations', () => {
       data: '{"type":"Person","data":{"name":"A"}}\n',
     });
     expect(calls[0]?.method).toBe('POST');
-    expect(calls[0]?.url).toBe('http://x/ingest');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/ingest');
     const body = JSON.parse(calls[0]?.body ?? '{}');
     expect(body.branch).toBe('feat');
     expect(body.from).toBe('main');
@@ -64,6 +64,30 @@ describe('top-level client operations', () => {
     expect(r.branchCreated).toBe(true);
     expect(r.tables[0]?.tableKey).toBe('node:Person');
     expect(r.tables[0]?.rowsLoaded).toBe(2);
+  });
+
+  it('load sends POST /load and tolerates a null base_branch', async () => {
+    const { fetch, calls } = stubFetch({
+      body: {
+        actor_id: null,
+        base_branch: null,
+        branch: 'main',
+        branch_created: false,
+        mode: 'merge',
+        tables: [],
+        uri: 's3://x',
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const r = await og.load({
+      branch: 'main',
+      mode: 'merge',
+      data: '{"type":"Person","data":{"name":"A"}}\n',
+    });
+    expect(calls[0]?.method).toBe('POST');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/load');
+    expect(r.baseBranch).toBeNull();
+    expect(r.branchCreated).toBe(false);
   });
 });
 
@@ -78,7 +102,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
         rows: [{ '$p.name': 'Alice' }],
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const r = await og.query({
       query: 'query find($name: String) { match { $p: Person { name: $name } } return { $p.name } }',
       name: 'find',
@@ -86,7 +110,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
       branch: 'main',
     });
     expect(calls[0]?.method).toBe('POST');
-    expect(calls[0]?.url).toBe('http://x/query');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/query');
     const body = JSON.parse(calls[0]?.body ?? '{}');
     expect(body.query).toContain('match');
     expect(body.name).toBe('find');
@@ -100,7 +124,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     const { fetch, calls } = stubFetch({
       body: { query_name: 'q', target: { branch: 'main', snapshot: null }, row_count: 0, columns: [], rows: [] },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.query({
       query: 'query q($keyName: String) { match { $u: User { id: $keyName } } return { $u.name } }',
       params: { keyName: 'value', $internal: 1 },
@@ -119,7 +143,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
         query_name: 'addPerson',
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const r = await og.mutate({
       query: 'query addPerson($name: String) { insert Person { name: $name } }',
       name: 'addPerson',
@@ -127,7 +151,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
       branch: 'feature',
     });
     expect(calls[0]?.method).toBe('POST');
-    expect(calls[0]?.url).toBe('http://x/mutate');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/mutate');
     const body = JSON.parse(calls[0]?.body ?? '{}');
     expect(body.query).toContain('insert Person');
     expect(body.name).toBe('addPerson');
@@ -140,7 +164,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     const { fetch, calls } = stubFetch({
       body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.change({ query: 'query q() { insert X {} }', name: 'q', branch: 'main' });
     const body = JSON.parse(calls[0]?.body ?? '{}');
     expect(body.query).toBe('query q() { insert X {} }');
@@ -153,14 +177,14 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     const { fetch, calls } = stubFetch({
       body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.change({
       querySource: 'query q() { insert X {} }',
       queryName: 'q',
       branch: 'main',
     });
     const body = JSON.parse(calls[0]?.body ?? '{}');
-    expect(calls[0]?.url).toBe('http://x/change');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/change');
     expect(body.query).toBe('query q() { insert X {} }');
     expect(body.name).toBe('q');
     expect('query_source' in body).toBe(false);
@@ -171,7 +195,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     const { fetch } = stubFetch({
       body: { actor_id: null, affected_edges: 0, affected_nodes: 1, branch: 'main', query_name: 'q' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     expect(() =>
       og.change({
         query: 'query q() { insert X {} }',
@@ -187,13 +211,13 @@ describe('og.graph(id)', () => {
       { body: { branches: [] } },
       { body: { branches: [] } },
     ]);
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'orig', fetch });
     const scoped = og.graph('alpha');
     expect(scoped).not.toBe(og);
     await scoped.branches.list();
     await og.branches.list();
     expect(calls[0]?.url).toBe('http://x/graphs/alpha/branches');
-    expect(calls[1]?.url).toBe('http://x/branches');
+    expect(calls[1]?.url).toBe('http://x/graphs/orig/branches');
   });
 
   it('inherits token and fetch from the parent client', async () => {
@@ -222,7 +246,7 @@ describe('export streaming options', () => {
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const rows: PersonRow[] = [];
     for await (const row of og.export<PersonRow>({ branch: 'main' })) {
       rows.push(row);
@@ -256,6 +280,7 @@ describe('export streaming options', () => {
     };
     const og = new Omnigraph({
       baseUrl: 'http://x',
+      graphId: 'g',
       fetch: abortablefetch as unknown as typeof globalThis.fetch,
     });
     const rows: unknown[] = [];

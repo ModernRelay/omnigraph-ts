@@ -171,7 +171,11 @@ export type HealthOutput = {
 
 export type IngestOutput = {
   actor_id?: string | null;
-  base_branch: string;
+  /**
+   * Base branch a fork was requested from (the request's `from`), echoed
+   * even when the branch already existed. `null` when `from` was absent.
+   */
+  base_branch?: string | null;
   branch: string;
   branch_created: boolean;
   mode: LoadMode;
@@ -181,7 +185,8 @@ export type IngestOutput = {
 
 export type IngestRequest = {
   /**
-   * Target branch. Created from `from` if it does not yet exist. Defaults to `main`.
+   * Target branch. Defaults to `main`. Without `from`, the branch must
+   * already exist — a missing branch is a 404, never an implicit fork.
    */
   branch?: string | null;
   /**
@@ -190,7 +195,9 @@ export type IngestRequest = {
    */
   data: string;
   /**
-   * Parent branch used to create `branch` if it does not exist. Defaults to `main`.
+   * Parent branch used to create `branch` if it does not exist. Branch
+   * creation is opt-in by presence of this field; omit it to require an
+   * existing branch.
    */
   from?: string | null;
   mode?: null | LoadMode;
@@ -212,6 +219,14 @@ export type InvokeStoredQueryRequest = {
    * write targets this branch.
    */
   branch?: string | null;
+  /**
+   * The kind the caller expects (RFC-011 Decision 3): `Some(false)` for
+   * `omnigraph query <name>`, `Some(true)` for `omnigraph mutate <name>`.
+   * When set and it disagrees with the stored query's actual kind, the
+   * server rejects the call (400) so the verb asserts the kind. `None`
+   * (the default) skips the check — preserving older clients and aliases.
+   */
+  expect_mutation?: boolean | null;
   /**
    * JSON object whose keys match the stored query's declared parameters.
    */
@@ -471,305 +486,6 @@ export type SnapshotTableOutput = {
   table_version: number;
 };
 
-export type ListBranchesData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: "/branches";
-};
-
-export type ListBranchesErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-};
-
-export type ListBranchesError = ListBranchesErrors[keyof ListBranchesErrors];
-
-export type ListBranchesResponses = {
-  /**
-   * List of branches
-   */
-  200: BranchListOutput;
-};
-
-export type ListBranchesResponse =
-  ListBranchesResponses[keyof ListBranchesResponses];
-
-export type CreateBranchData = {
-  body: BranchCreateRequest;
-  path?: never;
-  query?: never;
-  url: "/branches";
-};
-
-export type CreateBranchErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Branch already exists
-   */
-  409: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-};
-
-export type CreateBranchError = CreateBranchErrors[keyof CreateBranchErrors];
-
-export type CreateBranchResponses = {
-  /**
-   * Branch created
-   */
-  200: BranchCreateOutput;
-};
-
-export type CreateBranchResponse =
-  CreateBranchResponses[keyof CreateBranchResponses];
-
-export type MergeBranchesData = {
-  body: BranchMergeRequest;
-  path?: never;
-  query?: never;
-  url: "/branches/merge";
-};
-
-export type MergeBranchesErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Merge conflict
-   */
-  409: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-};
-
-export type MergeBranchesError = MergeBranchesErrors[keyof MergeBranchesErrors];
-
-export type MergeBranchesResponses = {
-  /**
-   * Branches merged
-   */
-  200: BranchMergeOutput;
-};
-
-export type MergeBranchesResponse =
-  MergeBranchesResponses[keyof MergeBranchesResponses];
-
-export type DeleteBranchData = {
-  body?: never;
-  path: {
-    /**
-     * Branch name to delete
-     */
-    branch: string;
-  };
-  query?: never;
-  url: "/branches/{branch}";
-};
-
-export type DeleteBranchErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Branch not found
-   */
-  404: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-};
-
-export type DeleteBranchError = DeleteBranchErrors[keyof DeleteBranchErrors];
-
-export type DeleteBranchResponses = {
-  /**
-   * Branch deleted
-   */
-  200: BranchDeleteOutput;
-};
-
-export type DeleteBranchResponse =
-  DeleteBranchResponses[keyof DeleteBranchResponses];
-
-export type ChangeData = {
-  body: ChangeRequest;
-  path?: never;
-  query?: never;
-  url: "/change";
-};
-
-export type ChangeErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Merge conflict
-   */
-  409: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-};
-
-export type ChangeError = ChangeErrors[keyof ChangeErrors];
-
-export type ChangeResponses = {
-  /**
-   * Mutation results (response includes `Deprecation: true` + `Link: </mutate>; rel="successor-version"`)
-   */
-  200: ChangeOutput;
-};
-
-export type ChangeResponse = ChangeResponses[keyof ChangeResponses];
-
-export type ListCommitsData = {
-  body?: never;
-  path?: never;
-  query?: {
-    branch?: string | null;
-  };
-  url: "/commits";
-};
-
-export type ListCommitsErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-};
-
-export type ListCommitsError = ListCommitsErrors[keyof ListCommitsErrors];
-
-export type ListCommitsResponses = {
-  /**
-   * List of commits
-   */
-  200: CommitListOutput;
-};
-
-export type ListCommitsResponse =
-  ListCommitsResponses[keyof ListCommitsResponses];
-
-export type GetCommitData = {
-  body?: never;
-  path: {
-    /**
-     * Commit identifier
-     */
-    commit_id: string;
-  };
-  query?: never;
-  url: "/commits/{commit_id}";
-};
-
-export type GetCommitErrors = {
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Commit not found
-   */
-  404: ErrorOutput;
-};
-
-export type GetCommitError = GetCommitErrors[keyof GetCommitErrors];
-
-export type GetCommitResponses = {
-  /**
-   * Commit details
-   */
-  200: CommitOutput;
-};
-
-export type GetCommitResponse = GetCommitResponses[keyof GetCommitResponses];
-
-export type ExportData = {
-  body: ExportRequest;
-  path?: never;
-  query?: never;
-  url: "/export";
-};
-
-export type ExportErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-};
-
-export type ExportError = ExportErrors[keyof ExportErrors];
-
-export type ExportResponses = {
-  /**
-   * Exported data as NDJSON
-   */
-  200: unknown;
-};
-
 export type ListGraphsData = {
   body?: never;
   path?: never;
@@ -803,30 +519,55 @@ export type ListGraphsResponses = {
 
 export type ListGraphsResponse = ListGraphsResponses[keyof ListGraphsResponses];
 
-export type HealthData = {
+export type ClusterListBranchesData = {
   body?: never;
-  path?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/healthz";
+  url: "/graphs/{graph_id}/branches";
 };
 
-export type HealthResponses = {
+export type ClusterListBranchesErrors = {
   /**
-   * Server is healthy
+   * Unauthorized
    */
-  200: HealthOutput;
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
 };
 
-export type HealthResponse = HealthResponses[keyof HealthResponses];
+export type ClusterListBranchesError =
+  ClusterListBranchesErrors[keyof ClusterListBranchesErrors];
 
-export type IngestData = {
-  body: IngestRequest;
-  path?: never;
+export type ClusterListBranchesResponses = {
+  /**
+   * List of branches
+   */
+  200: BranchListOutput;
+};
+
+export type ClusterListBranchesResponse =
+  ClusterListBranchesResponses[keyof ClusterListBranchesResponses];
+
+export type ClusterCreateBranchData = {
+  body: BranchCreateRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/ingest";
+  url: "/graphs/{graph_id}/branches";
 };
 
-export type IngestErrors = {
+export type ClusterCreateBranchErrors = {
   /**
    * Bad request
    */
@@ -840,30 +581,41 @@ export type IngestErrors = {
    */
   403: ErrorOutput;
   /**
+   * Branch already exists
+   */
+  409: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
 };
 
-export type IngestError = IngestErrors[keyof IngestErrors];
+export type ClusterCreateBranchError =
+  ClusterCreateBranchErrors[keyof ClusterCreateBranchErrors];
 
-export type IngestResponses = {
+export type ClusterCreateBranchResponses = {
   /**
-   * Ingest results
+   * Branch created
    */
-  200: IngestOutput;
+  200: BranchCreateOutput;
 };
 
-export type IngestResponse = IngestResponses[keyof IngestResponses];
+export type ClusterCreateBranchResponse =
+  ClusterCreateBranchResponses[keyof ClusterCreateBranchResponses];
 
-export type MutateData = {
-  body: ChangeRequest;
-  path?: never;
+export type ClusterMergeBranchesData = {
+  body: BranchMergeRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/mutate";
+  url: "/graphs/{graph_id}/branches/merge";
 };
 
-export type MutateErrors = {
+export type ClusterMergeBranchesErrors = {
   /**
    * Bad request
    */
@@ -886,25 +638,129 @@ export type MutateErrors = {
   429: ErrorOutput;
 };
 
-export type MutateError = MutateErrors[keyof MutateErrors];
+export type ClusterMergeBranchesError =
+  ClusterMergeBranchesErrors[keyof ClusterMergeBranchesErrors];
 
-export type MutateResponses = {
+export type ClusterMergeBranchesResponses = {
   /**
-   * Mutation results
+   * Branches merged
+   */
+  200: BranchMergeOutput;
+};
+
+export type ClusterMergeBranchesResponse =
+  ClusterMergeBranchesResponses[keyof ClusterMergeBranchesResponses];
+
+export type ClusterDeleteBranchData = {
+  body?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+    /**
+     * Branch name to delete
+     */
+    branch: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/branches/{branch}";
+};
+
+export type ClusterDeleteBranchErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Branch not found
+   */
+  404: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+};
+
+export type ClusterDeleteBranchError =
+  ClusterDeleteBranchErrors[keyof ClusterDeleteBranchErrors];
+
+export type ClusterDeleteBranchResponses = {
+  /**
+   * Branch deleted
+   */
+  200: BranchDeleteOutput;
+};
+
+export type ClusterDeleteBranchResponse =
+  ClusterDeleteBranchResponses[keyof ClusterDeleteBranchResponses];
+
+export type ClusterChangeData = {
+  body: ChangeRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/change";
+};
+
+export type ClusterChangeErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Merge conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+};
+
+export type ClusterChangeError = ClusterChangeErrors[keyof ClusterChangeErrors];
+
+export type ClusterChangeResponses = {
+  /**
+   * Mutation results (response includes `Deprecation: true` + `Link: <mutate>; rel="successor-version"`)
    */
   200: ChangeOutput;
 };
 
-export type MutateResponse = MutateResponses[keyof MutateResponses];
+export type ClusterChangeResponse =
+  ClusterChangeResponses[keyof ClusterChangeResponses];
 
-export type ListQueriesData = {
+export type ClusterListCommitsData = {
   body?: never;
-  path?: never;
-  query?: never;
-  url: "/queries";
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: {
+    branch?: string | null;
+  };
+  url: "/graphs/{graph_id}/commits";
 };
 
-export type ListQueriesErrors = {
+export type ClusterListCommitsErrors = {
   /**
    * Unauthorized
    */
@@ -915,31 +771,285 @@ export type ListQueriesErrors = {
   403: ErrorOutput;
 };
 
-export type ListQueriesError = ListQueriesErrors[keyof ListQueriesErrors];
+export type ClusterListCommitsError =
+  ClusterListCommitsErrors[keyof ClusterListCommitsErrors];
 
-export type ListQueriesResponses = {
+export type ClusterListCommitsResponses = {
+  /**
+   * List of commits
+   */
+  200: CommitListOutput;
+};
+
+export type ClusterListCommitsResponse =
+  ClusterListCommitsResponses[keyof ClusterListCommitsResponses];
+
+export type ClusterGetCommitData = {
+  body?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+    /**
+     * Commit identifier
+     */
+    commit_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/commits/{commit_id}";
+};
+
+export type ClusterGetCommitErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Commit not found
+   */
+  404: ErrorOutput;
+};
+
+export type ClusterGetCommitError =
+  ClusterGetCommitErrors[keyof ClusterGetCommitErrors];
+
+export type ClusterGetCommitResponses = {
+  /**
+   * Commit details
+   */
+  200: CommitOutput;
+};
+
+export type ClusterGetCommitResponse =
+  ClusterGetCommitResponses[keyof ClusterGetCommitResponses];
+
+export type ClusterExportData = {
+  body: ExportRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/export";
+};
+
+export type ClusterExportErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type ClusterExportError = ClusterExportErrors[keyof ClusterExportErrors];
+
+export type ClusterExportResponses = {
+  /**
+   * Exported data as NDJSON
+   */
+  200: unknown;
+};
+
+export type ClusterIngestData = {
+  body: IngestRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/ingest";
+};
+
+export type ClusterIngestErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+};
+
+export type ClusterIngestError = ClusterIngestErrors[keyof ClusterIngestErrors];
+
+export type ClusterIngestResponses = {
+  /**
+   * Load results (response includes `Deprecation: true` + `Link: <load>; rel="successor-version"`)
+   */
+  200: IngestOutput;
+};
+
+export type ClusterIngestResponse =
+  ClusterIngestResponses[keyof ClusterIngestResponses];
+
+export type ClusterLoadData = {
+  body: IngestRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/load";
+};
+
+export type ClusterLoadErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+};
+
+export type ClusterLoadError = ClusterLoadErrors[keyof ClusterLoadErrors];
+
+export type ClusterLoadResponses = {
+  /**
+   * Load results
+   */
+  200: IngestOutput;
+};
+
+export type ClusterLoadResponse =
+  ClusterLoadResponses[keyof ClusterLoadResponses];
+
+export type ClusterMutateData = {
+  body: ChangeRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/mutate";
+};
+
+export type ClusterMutateErrors = {
+  /**
+   * Bad request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Merge conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+};
+
+export type ClusterMutateError = ClusterMutateErrors[keyof ClusterMutateErrors];
+
+export type ClusterMutateResponses = {
+  /**
+   * Mutation results
+   */
+  200: ChangeOutput;
+};
+
+export type ClusterMutateResponse =
+  ClusterMutateResponses[keyof ClusterMutateResponses];
+
+export type ClusterListQueriesData = {
+  body?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/queries";
+};
+
+export type ClusterListQueriesErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+};
+
+export type ClusterListQueriesError =
+  ClusterListQueriesErrors[keyof ClusterListQueriesErrors];
+
+export type ClusterListQueriesResponses = {
   /**
    * Stored-query catalog (the mcp.expose subset, with typed params)
    */
   200: QueriesCatalogOutput;
 };
 
-export type ListQueriesResponse =
-  ListQueriesResponses[keyof ListQueriesResponses];
+export type ClusterListQueriesResponse =
+  ClusterListQueriesResponses[keyof ClusterListQueriesResponses];
 
-export type InvokeQueryData = {
+export type ClusterInvokeQueryData = {
   body?: null | InvokeStoredQueryRequest;
   path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
     /**
      * Stored query name (the registry key)
      */
     name: string;
   };
   query?: never;
-  url: "/queries/{name}";
+  url: "/graphs/{graph_id}/queries/{name}";
 };
 
-export type InvokeQueryErrors = {
+export type ClusterInvokeQueryErrors = {
   /**
    * Bad request (param type error; snapshot on a stored mutation)
    */
@@ -970,26 +1080,32 @@ export type InvokeQueryErrors = {
   500: ErrorOutput;
 };
 
-export type InvokeQueryError = InvokeQueryErrors[keyof InvokeQueryErrors];
+export type ClusterInvokeQueryError =
+  ClusterInvokeQueryErrors[keyof ClusterInvokeQueryErrors];
 
-export type InvokeQueryResponses = {
+export type ClusterInvokeQueryResponses = {
   /**
    * Read envelope (ReadOutput) or mutation envelope (ChangeOutput), serialized untagged
    */
   200: InvokeStoredQueryResponse;
 };
 
-export type InvokeQueryResponse =
-  InvokeQueryResponses[keyof InvokeQueryResponses];
+export type ClusterInvokeQueryResponse =
+  ClusterInvokeQueryResponses[keyof ClusterInvokeQueryResponses];
 
-export type QueryData = {
+export type ClusterQueryData = {
   body: QueryRequest;
-  path?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/query";
+  url: "/graphs/{graph_id}/query";
 };
 
-export type QueryErrors = {
+export type ClusterQueryErrors = {
   /**
    * Bad request - also returned when the query body contains mutations; use POST /mutate (or its deprecated alias POST /change) for write queries
    */
@@ -1004,25 +1120,31 @@ export type QueryErrors = {
   403: ErrorOutput;
 };
 
-export type QueryError = QueryErrors[keyof QueryErrors];
+export type ClusterQueryError = ClusterQueryErrors[keyof ClusterQueryErrors];
 
-export type QueryResponses = {
+export type ClusterQueryResponses = {
   /**
    * Query results
    */
   200: ReadOutput;
 };
 
-export type QueryResponse = QueryResponses[keyof QueryResponses];
+export type ClusterQueryResponse =
+  ClusterQueryResponses[keyof ClusterQueryResponses];
 
-export type ReadData = {
+export type ClusterReadData = {
   body: ReadRequest;
-  path?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/read";
+  url: "/graphs/{graph_id}/read";
 };
 
-export type ReadErrors = {
+export type ClusterReadErrors = {
   /**
    * Bad request
    */
@@ -1037,25 +1159,31 @@ export type ReadErrors = {
   403: ErrorOutput;
 };
 
-export type ReadError = ReadErrors[keyof ReadErrors];
+export type ClusterReadError = ClusterReadErrors[keyof ClusterReadErrors];
 
-export type ReadResponses = {
+export type ClusterReadResponses = {
   /**
-   * Query results (response includes `Deprecation: true` + `Link: </query>; rel="successor-version"`)
+   * Query results (response includes `Deprecation: true` + `Link: <query>; rel="successor-version"`)
    */
   200: ReadOutput;
 };
 
-export type ReadResponse = ReadResponses[keyof ReadResponses];
+export type ClusterReadResponse =
+  ClusterReadResponses[keyof ClusterReadResponses];
 
-export type GetSchemaData = {
+export type ClusterGetSchemaData = {
   body?: never;
-  path?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/schema";
+  url: "/graphs/{graph_id}/schema";
 };
 
-export type GetSchemaErrors = {
+export type ClusterGetSchemaErrors = {
   /**
    * Unauthorized
    */
@@ -1066,25 +1194,32 @@ export type GetSchemaErrors = {
   403: ErrorOutput;
 };
 
-export type GetSchemaError = GetSchemaErrors[keyof GetSchemaErrors];
+export type ClusterGetSchemaError =
+  ClusterGetSchemaErrors[keyof ClusterGetSchemaErrors];
 
-export type GetSchemaResponses = {
+export type ClusterGetSchemaResponses = {
   /**
    * Current schema source
    */
   200: SchemaOutput;
 };
 
-export type GetSchemaResponse = GetSchemaResponses[keyof GetSchemaResponses];
+export type ClusterGetSchemaResponse =
+  ClusterGetSchemaResponses[keyof ClusterGetSchemaResponses];
 
-export type ApplySchemaData = {
+export type ClusterApplySchemaData = {
   body: SchemaApplyRequest;
-  path?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: never;
-  url: "/schema/apply";
+  url: "/graphs/{graph_id}/schema/apply";
 };
 
-export type ApplySchemaErrors = {
+export type ClusterApplySchemaErrors = {
   /**
    * Bad request
    */
@@ -1098,33 +1233,43 @@ export type ApplySchemaErrors = {
    */
   403: ErrorOutput;
   /**
+   * Schema apply is disabled for cluster-backed serving; use `omnigraph cluster apply` and restart
+   */
+  409: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
 };
 
-export type ApplySchemaError = ApplySchemaErrors[keyof ApplySchemaErrors];
+export type ClusterApplySchemaError =
+  ClusterApplySchemaErrors[keyof ClusterApplySchemaErrors];
 
-export type ApplySchemaResponses = {
+export type ClusterApplySchemaResponses = {
   /**
    * Schema apply results
    */
   200: SchemaApplyOutput;
 };
 
-export type ApplySchemaResponse =
-  ApplySchemaResponses[keyof ApplySchemaResponses];
+export type ClusterApplySchemaResponse =
+  ClusterApplySchemaResponses[keyof ClusterApplySchemaResponses];
 
-export type GetSnapshotData = {
+export type ClusterGetSnapshotData = {
   body?: never;
-  path?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
   query?: {
     branch?: string | null;
   };
-  url: "/snapshot";
+  url: "/graphs/{graph_id}/snapshot";
 };
 
-export type GetSnapshotErrors = {
+export type ClusterGetSnapshotErrors = {
   /**
    * Unauthorized
    */
@@ -1135,14 +1280,31 @@ export type GetSnapshotErrors = {
   403: ErrorOutput;
 };
 
-export type GetSnapshotError = GetSnapshotErrors[keyof GetSnapshotErrors];
+export type ClusterGetSnapshotError =
+  ClusterGetSnapshotErrors[keyof ClusterGetSnapshotErrors];
 
-export type GetSnapshotResponses = {
+export type ClusterGetSnapshotResponses = {
   /**
    * Database snapshot
    */
   200: SnapshotOutput;
 };
 
-export type GetSnapshotResponse =
-  GetSnapshotResponses[keyof GetSnapshotResponses];
+export type ClusterGetSnapshotResponse =
+  ClusterGetSnapshotResponses[keyof ClusterGetSnapshotResponses];
+
+export type HealthData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/healthz";
+};
+
+export type HealthResponses = {
+  /**
+   * Server is healthy
+   */
+  200: HealthOutput;
+};
+
+export type HealthResponse = HealthResponses[keyof HealthResponses];

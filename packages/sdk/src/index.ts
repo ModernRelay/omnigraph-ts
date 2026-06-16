@@ -23,6 +23,7 @@ export {
   TooManyRequestsError,
   InternalServerError,
   NetworkError,
+  ConfigurationError,
 } from './errors';
 
 // Public DTO types (camelCase). Inputs end in `Input`; outputs are bare nouns.

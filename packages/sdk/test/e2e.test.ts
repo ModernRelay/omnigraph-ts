@@ -1,13 +1,31 @@
-// End-to-end tests against a real omnigraph-server.
+// End-to-end tests against a real omnigraph-server (cluster-only, 0.7.0+).
 //
-// Skipped unless OMNIGRAPH_E2E=1. Local quick-start:
+// Skipped unless OMNIGRAPH_E2E=1. Local quick-start (a local-filesystem
+// cluster serving two graphs, alpha + beta):
 //
-//   tmp=$(mktemp -d)
-//   omnigraph init --schema packages/sdk/test/fixtures/schema.pg "$tmp/repo.omni"
-//   omnigraph load --data packages/sdk/test/fixtures/data.jsonl --mode overwrite "$tmp/repo.omni"
-//   OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token omnigraph-server "$tmp/repo.omni" --bind 127.0.0.1:18080 &
+//   dir=$(mktemp -d)
+//   cp packages/sdk/test/fixtures/schema.pg "$dir/graph.pg"
+//   cat > "$dir/cluster.yaml" <<'YAML'
+//   version: 1
+//   metadata: { name: e2e }
+//   state: { backend: cluster, lock: true }
+//   graphs:
+//     alpha: { schema: ./graph.pg }
+//     beta:  { schema: ./graph.pg }
+//   policies:
+//     server: { file: ./server.policy.yaml, applies_to: [cluster] }
+//     data:   { file: ./graph.policy.yaml,  applies_to: [alpha, beta] }
+//   YAML
+//   # server.policy.yaml grants `graph_list`; graph.policy.yaml grants the
+//   # per-graph data actions (read/export/change/schema_apply/branch_*).
+//   omnigraph cluster import --config "$dir"
+//   omnigraph cluster apply  --config "$dir"
+//   for g in alpha beta; do
+//     omnigraph load --data packages/sdk/test/fixtures/data.jsonl --mode overwrite "$dir/graphs/$g.omni"
+//   done
+//   OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token omnigraph-server --cluster "$dir" --bind 127.0.0.1:18080 &
 //   OMNIGRAPH_E2E=1 OMNIGRAPH_BASE_URL=http://127.0.0.1:18080 OMNIGRAPH_TOKEN=ci-token \
-//     pnpm --filter @modernrelay/omnigraph run test
+//     OMNIGRAPH_GRAPH_ID=alpha pnpm --filter @modernrelay/omnigraph run test
 //
 // CI runs this in `.github/workflows/e2e.yml` against the omnigraph-server
 // release pinned by `omnigraph.serverVersion` in the repo-root package.json.
@@ -17,14 +35,12 @@ import Omnigraph, {
   BadRequestError,
   BranchMergeOutcome,
   LoadMode,
-  MethodNotAllowedError,
   NotFoundError,
   SERVER_VERSION,
   UnauthorizedError,
 } from '../src';
 
 const E2E_ENABLED = process.env.OMNIGRAPH_E2E === '1';
-const E2E_MULTIGRAPH = process.env.OMNIGRAPH_E2E_MULTIGRAPH === '1';
 const BASE_URL = process.env.OMNIGRAPH_BASE_URL ?? 'http://127.0.0.1:18080';
 const TOKEN = process.env.OMNIGRAPH_TOKEN;
 const GRAPH_ID = process.env.OMNIGRAPH_GRAPH_ID;
@@ -36,6 +52,11 @@ let og: Omnigraph;
 
 describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   beforeAll(() => {
+    // 0.7.0 is cluster-only: graph-scoped ops require a graphId. Fail loud
+    // here rather than letting every test throw ConfigurationError.
+    if (!GRAPH_ID) {
+      throw new Error('OMNIGRAPH_E2E=1 requires OMNIGRAPH_GRAPH_ID (cluster-only server)');
+    }
     og = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID });
   });
 
@@ -62,6 +83,22 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       const sdkMajorMinor = SERVER_VERSION.split('.').slice(0, 2).join('.');
       const serverMajorMinor = h.version.split('.').slice(0, 2).join('.');
       expect(serverMajorMinor).toBe(sdkMajorMinor);
+    });
+  });
+
+  describe('graphs registry + cluster routing', () => {
+    it('graphs.list returns the configured graph (and beta)', async () => {
+      const graphs = await og.graphs.list();
+      const ids = graphs.map((g) => g.graphId);
+      expect(ids).toContain(GRAPH_ID);
+      expect(ids).toContain('beta');
+    });
+
+    it('og.graph("beta") routes under /graphs/beta and returns a snapshot', async () => {
+      const beta = og.graph('beta');
+      const s = await beta.snapshot({ branch: 'main' });
+      expect(s.branch).toBe('main');
+      expect(s.tables.length).toBeGreaterThan(0);
     });
   });
 
@@ -154,8 +191,33 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
     });
   });
 
-  describe('ingest', () => {
-    it('merge mode creates branch and writes rows', async () => {
+  describe('load / ingest', () => {
+    // `from` is mandatory for a missing branch under 0.7.0 — without it the
+    // server returns 404 (no implicit fork). Both tests pass `from: 'main'`.
+    it('load (canonical) merge-mode forks a branch and writes rows', async () => {
+      const branch = `e2e-load-${Date.now()}`;
+      const name = `e2e-Carol-${Date.now()}`;
+      branchesToCleanup.push(branch);
+      const result = await og.load({
+        branch,
+        from: 'main',
+        mode: LoadMode.MERGE,
+        data: JSON.stringify({ type: 'Person', data: { name, age: 33 } }) + '\n',
+      });
+      expect(result.branch).toBe(branch);
+      expect(result.tables.length).toBeGreaterThan(0);
+
+      const r = await og.read({
+        querySource:
+          'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
+        queryName: 'find',
+        params: { name },
+        branch,
+      });
+      expect((r.rows as unknown[]).length).toBe(1);
+    });
+
+    it('ingest (deprecated alias) merge mode creates branch and writes rows', async () => {
       const branch = `e2e-ingest-${Date.now()}`;
       const dianaName = `e2e-Diana-${Date.now()}`;
       branchesToCleanup.push(branch);
@@ -234,61 +296,5 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
         og.read({ querySource: 'this is not gq', queryName: 'broken', branch: 'main' }),
       ).rejects.toBeInstanceOf(BadRequestError);
     });
-  });
-
-  // Single-graph servers return 405 on /graphs; multi-graph servers don't run
-  // this block (see the multi-graph describe further down).
-  describe.skipIf(E2E_MULTIGRAPH)('graphs.list (single-graph)', () => {
-    it('throws MethodNotAllowedError', async () => {
-      await expect(og.graphs.list()).rejects.toBeInstanceOf(MethodNotAllowedError);
-    });
-  });
-});
-
-// Multi-graph mode: an `omnigraph-server --config omnigraph.yaml` with a
-// non-empty `graphs:` map (e.g. alpha + beta). Requires both:
-//   OMNIGRAPH_E2E=1 OMNIGRAPH_E2E_MULTIGRAPH=1
-//   OMNIGRAPH_BASE_URL, OMNIGRAPH_TOKEN, OMNIGRAPH_GRAPH_ID (= "alpha")
-// and a server-level Cedar policy granting the test actor `graph_list` plus
-// per-graph policies granting the per-graph actions exercised below.
-describe.skipIf(!E2E_ENABLED || !E2E_MULTIGRAPH)('e2e multigraph: cluster routing', () => {
-  let mg: Omnigraph;
-
-  beforeAll(() => {
-    if (!GRAPH_ID) {
-      throw new Error('OMNIGRAPH_E2E_MULTIGRAPH=1 requires OMNIGRAPH_GRAPH_ID');
-    }
-    mg = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID });
-  });
-
-  it('graphs.list returns alpha and beta', async () => {
-    const graphs = await mg.graphs.list();
-    const ids = graphs.map((g) => g.graphId).sort();
-    expect(ids).toContain('alpha');
-    expect(ids).toContain('beta');
-  });
-
-  it('snapshot on the configured graph returns tables', async () => {
-    const s = await mg.snapshot({ branch: 'main' });
-    expect(s.branch).toBe('main');
-    expect(s.tables.length).toBeGreaterThan(0);
-  });
-
-  it('read on the configured graph returns the expected row', async () => {
-    const r = await mg.read({
-      querySource:
-        'query find($name: String) { match { $p: Person { name: $name } } return { $p.name } }',
-      queryName: 'find',
-      params: { name: 'Alice' },
-      branch: 'main',
-    });
-    expect((r.rows as unknown[]).length).toBe(1);
-  });
-
-  it('og.graph("beta") routes under /graphs/beta and returns a snapshot', async () => {
-    const beta = mg.graph('beta');
-    const s = await beta.snapshot({ branch: 'main' });
-    expect(s.branch).toBe('main');
-    expect(s.tables.length).toBeGreaterThan(0);
   });
 });

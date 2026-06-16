@@ -52,7 +52,7 @@ describe('error dispatcher', () => {
         manifest_conflict: { actual: 7, expected: 5, table_key: 'Person' },
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     try {
       await og.change({ query: 'insert Person { name: "x" }' });
       throw new Error('should have thrown');
@@ -79,7 +79,7 @@ describe('error dispatcher', () => {
         ],
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     try {
       await og.branches.merge({ source: 'a', target: 'b' });
       throw new Error('should have thrown');

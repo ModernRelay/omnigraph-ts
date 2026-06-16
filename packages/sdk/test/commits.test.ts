@@ -19,10 +19,10 @@ describe('commits resource', () => {
         ],
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const result = await og.commits.list({ branch: 'main' });
     expect(calls[0]?.method).toBe('GET');
-    expect(calls[0]?.url).toBe('http://x/commits?branch=main');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/commits?branch=main');
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(1);
     expect(result[0]?.graphCommitId).toBe('01KQ');
@@ -32,9 +32,9 @@ describe('commits resource', () => {
 
   it('list omits branch query param when not given', async () => {
     const { fetch, calls } = stubFetch({ body: { commits: [] } });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.commits.list();
-    expect(calls[0]?.url).toBe('http://x/commits');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/commits');
   });
 
   it('retrieve sends GET /commits/{id} with URL-escaped id', async () => {
@@ -49,10 +49,10 @@ describe('commits resource', () => {
         created_at: 1,
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const r = await og.commits.retrieve('01KQ/X');
     expect(calls[0]?.method).toBe('GET');
-    expect(calls[0]?.url).toBe('http://x/commits/01KQ%2FX');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/commits/01KQ%2FX');
     expect(r.graphCommitId).toBe('01KQ/X');
   });
 
@@ -62,7 +62,7 @@ describe('commits resource', () => {
       body: { error: 'commit not found', code: 'not_found' },
       headers: { 'X-Request-Id': '01XYZ' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     try {
       await og.commits.retrieve('01BOGUS');
       throw new Error('should have thrown');
