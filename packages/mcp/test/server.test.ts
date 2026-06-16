@@ -111,7 +111,6 @@ describe('omnigraph-mcp server', () => {
         'load',
         'mutate',
         'query',
-        'schema_apply',
         'schema_get',
         'snapshot',
       ].sort(),
@@ -125,7 +124,6 @@ describe('omnigraph-mcp server', () => {
     expect(byName.get('load')?.annotations?.destructiveHint).toBe(true);
     expect(byName.get('branches_delete')?.annotations?.destructiveHint).toBe(true);
     expect(byName.get('branches_merge')?.annotations?.destructiveHint).toBe(true);
-    expect(byName.get('schema_apply')?.annotations?.destructiveHint).toBe(true);
     expect(byName.get('snapshot')?.annotations?.readOnlyHint).toBe(true);
     expect(byName.get('schema_get')?.annotations?.readOnlyHint).toBe(true);
   });
@@ -321,38 +319,10 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     expect(observedBody?.branch).toBeUndefined();
   });
 
-  it('schema_apply forwards allowDataLoss as allow_data_loss', async () => {
-    let observedBody: Record<string, unknown> | undefined;
-    const recordingFetch: typeof globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      const path = flatPath(url);
-      const method = init?.method ?? 'GET';
-      if (method === 'POST' && path === '/schema/apply') {
-        observedBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
-        return new Response(
-          JSON.stringify({ applied: true, manifest_version: 2, step_count: 1, steps: [], supported: true, uri: 's3://x' }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
-    }) as unknown as typeof globalThis.fetch;
-
-    const server = createOmnigraphMcpServer({ baseUrl: 'http://x', graphId: 'g', fetch: recordingFetch });
-    const client = new Client({ name: 'test', version: '0.0.0' });
-    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-    await Promise.all([server.connect(serverT), client.connect(clientT)]);
-
-    await client.callTool({
-      name: 'schema_apply',
-      arguments: {
-        schemaSource: 'node Foo { id: String @key }',
-        allowDataLoss: true,
-      },
-    });
-    expect(observedBody).toEqual({
-      schema_source: 'node Foo { id: String @key }',
-      allow_data_loss: true,
-    });
+  it('does not expose a schema_apply tool (cluster graphs reject HTTP schema apply)', async () => {
+    const { client } = await setup();
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).not.toContain('schema_apply');
   });
 
   it('rejects calls with missing required input', async () => {

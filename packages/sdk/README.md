@@ -107,14 +107,9 @@ The iterator lazily issues `POST /export` on first iteration and cancels the ups
 
 ```ts
 const { schemaSource } = await og.schema.get();    // .pg source
-await og.schema.apply({ schemaSource: nextSchema }); // migrate
-
-// Hard-drop column data instead of soft-dropping it (defaults to false; matches
-// the CLI's --allow-data-loss). Soft drops remain reversible via time travel;
-// hard drops are not. Use only when the migration plan includes intentional
-// data deletions you've already reviewed.
-await og.schema.apply({ schemaSource: nextSchema, allowDataLoss: true });
 ```
+
+> **`og.schema.apply()` is rejected on a cluster-managed graph (409 → `ConflictError`).** A 0.7.0 server is cluster-only and evolves schema declaratively via `omnigraph cluster apply` (an operator action), not over HTTP. The method remains in the SDK as a faithful binding for `POST /schema/apply` (and surfaces the 409), but on a cluster server it will not migrate. Drive schema changes through the cluster workflow.
 
 ### Snapshots and commits
 
@@ -196,7 +191,7 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 | `og.branches.create({ name })` | Throws `ConflictError` on retry (branch exists). Catch and treat as success. |
 | `og.branches.merge({ source, target })` | Idempotent — re-merge yields `outcome: 'already_up_to_date'`. |
 | `og.branches.delete(name)` | Idempotent — delete-of-deleted is a no-op. |
-| `og.schema.apply({ schemaSource })` | Idempotent — unchanged schema returns `applied: false`. |
+| `og.schema.apply({ schemaSource })` | **Rejected (409) on a cluster-managed graph** — evolve schema via `omnigraph cluster apply`, not over HTTP. |
 | `og.load({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
 | `og.load({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
 | `og.load({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |

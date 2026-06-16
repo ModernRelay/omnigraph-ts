@@ -72,7 +72,8 @@ Mutating (`destructiveHint: true` where appropriate — hosts should surface con
 | `branches_create` | Create a new branch |
 | `branches_delete` | Delete a branch |
 | `branches_merge` | Merge `source` into `target` |
-| `schema_apply` | Apply a schema migration. Optional `allowDataLoss: true` hard-drops column data for destructive steps; leave unset unless the plan was reviewed. |
+
+There is **no `schema_apply` tool**: a cluster-managed graph rejects HTTP schema apply (409). Schema is read-only here (`schema_get`); evolve it via `omnigraph cluster apply`.
 
 ### Resources
 

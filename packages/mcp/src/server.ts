@@ -4,9 +4,10 @@
 //
 // Tools mutate or query the live database. Read-only tools (query, snapshot,
 // branches.list, commits.list, schema.get, health) carry no destructive
-// side effects. Mutating tools (mutate, load, schema.apply, branch
-// create/delete/merge) are annotated with `destructiveHint: true` so MCP
-// hosts can surface a confirmation UI.
+// side effects. Mutating tools (mutate, load, branch create/delete/merge) are
+// annotated with `destructiveHint: true` so MCP hosts can surface a
+// confirmation UI. Schema is read-only here (`schema_get`): a cluster-managed
+// graph evolves its schema via `omnigraph cluster apply`, not over HTTP.
 //
 // Resources are an alternative read surface — agents that prefer to *read*
 // the schema or a branch snapshot rather than *call* a tool can use them.
@@ -28,7 +29,7 @@ ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before any qu
 After schema, consult the matching best-practices resource for the task at hand:
   - omnigraph://best-practices/queries     — before .gq queries (query/mutate)
   - omnigraph://best-practices/data        — before load (mode selection, branch loop)
-  - omnigraph://best-practices/schema      — before schema_apply
+  - omnigraph://best-practices/schema      — to understand the .pg schema before writing
   - omnigraph://best-practices/remote-ops  — after any 504 or unexpected error
   - omnigraph://best-practices/search      — before nearest/bm25/rrf queries
 
@@ -40,8 +41,8 @@ Workflow norms (violating these breaks things or silently corrupts data):
 4. \`load mode: "merge"\` upserts by @key (idempotent — use this for at-least-once pipelines). \`"overwrite"\` truncates the branch. \`"append"\` fails on key collision.
 5. Verify every write. \`commits_list\` head BEFORE and AFTER. If identical, the write did not land. 504s do not mean failure — the server may have committed after the proxy dropped the response.
 6. Append-only types (Signal, Claim, Decision, Event, Interaction, Policy, Outcome, MarketingElement) duplicate on blind retry. Pointer types (Org, Person, Opportunity, Channel, Actor, ActionItem, Artifact, Meeting, Technology, Campaign, UseCase) dedupe via @key.
-7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`. \`schema_apply\` skips branches: it is main-only and rejects open feature branches.
-8. \`schema_apply\` is destructive and has no undo. Use \`schema_get\` + a local diff first. Non-nullable property adds require add-optional → backfill → tighten in two applies.
+7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`.
+8. Schema is read-only over this MCP. \`schema_get\` returns the active .pg source; there is no \`schema_apply\` tool. A cluster-managed graph rejects HTTP schema apply (409) — schema changes go through \`omnigraph cluster apply\` (an operator/CLI action), not an agent tool.
 
 Date format: ISO strings on \`mutate\` params; integer days-since-epoch in load JSONL \`Date\` fields. \`DateTime\` is ISO on both.
 
@@ -335,21 +336,11 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     },
   );
 
-  server.registerTool(
-    'schema_apply',
-    {
-      title: 'Apply schema migration',
-      description:
-        'Apply a new .pg schema as a migration. Idempotent: applying an unchanged schema returns applied=false. ' +
-        '`allowDataLoss` hard-drops column data for destructive migration steps; leave false unless the plan was reviewed.',
-      inputSchema: { schemaSource: z.string().min(1), allowDataLoss: z.boolean().optional() },
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
-    },
-    async ({ schemaSource, allowDataLoss }) => {
-      const r = await og.schema.apply({ schemaSource, allowDataLoss });
-      return { content: jsonText(r) };
-    },
-  );
+  // NOTE: no `schema_apply` tool. omnigraph-server 0.7.0 is cluster-only, and a
+  // cluster-managed graph rejects `POST /graphs/{id}/schema/apply` with 409 —
+  // schema is evolved declaratively via `omnigraph cluster apply`, an operator
+  // action outside the HTTP API this MCP wraps. Use `schema_get` to read the
+  // active schema; route migrations through the cluster workflow.
 
   // ---------- Resources --------------------------------------------------
   // A schema-shaped read surface for agents that prefer reading over calling.
