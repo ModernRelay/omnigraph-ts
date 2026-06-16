@@ -1,39 +1,39 @@
 import { describe, expect, it, vi } from 'vitest';
-import Omnigraph, { NetworkError } from '../src';
+import Omnigraph, { ConfigurationError, NetworkError } from '../src';
 import { Transport } from '../src/transport';
 import { stubFetch } from './helpers';
 
 describe('transport URL handling', () => {
   it('strips trailing slashes from baseUrl', async () => {
     const { fetch, calls } = stubFetch({ body: { branches: [] } });
-    const og = new Omnigraph({ baseUrl: 'http://x///', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x///', graphId: 'g', fetch });
     await og.branches.list();
-    expect(calls[0]?.url).toBe('http://x/branches');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/branches');
   });
 
   it('preserves a non-slashed baseUrl', async () => {
     const { fetch, calls } = stubFetch({ body: { branches: [] } });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.branches.list();
-    expect(calls[0]?.url).toBe('http://x/branches');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/branches');
   });
 
   it('rejects paths missing a leading slash', async () => {
     const { fetch } = stubFetch({ body: {} });
-    const t = new Transport({ baseUrl: 'http://x', fetch });
+    const t = new Transport({ baseUrl: 'http://x', graphId: 'g', fetch });
     await expect(t.request('GET', 'no-slash')).rejects.toThrow(/must start with '\/'/);
   });
 
   it('omits null/undefined query params', async () => {
     const { fetch, calls } = stubFetch({ body: { commits: [] } });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.commits.list({ branch: undefined });
-    expect(calls[0]?.url).toBe('http://x/commits');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/commits');
   });
 
   it('appends array query values as repeated keys', async () => {
     const { fetch, calls } = stubFetch({ body: {} });
-    const t = new Transport({ baseUrl: 'http://x', fetch });
+    const t = new Transport({ baseUrl: 'http://x', graphId: 'g', fetch });
     await t.request('GET', '/p', { query: { tag: ['a', 'b'] } });
     const u = new URL(calls[0]!.url);
     expect(u.searchParams.getAll('tag')).toEqual(['a', 'b']);
@@ -139,41 +139,34 @@ describe('transport graphId prefixing', () => {
     expect(calls[1]?.url).toBe('http://x/graphs/alpha/schema/apply');
   });
 
-  it('prefixes /read, /query, /change, /mutate, /ingest, /snapshot, /export under /graphs/{graphId}', async () => {
+  it('prefixes /query, /mutate, /load, /snapshot, /export under /graphs/{graphId}', async () => {
+    const loadBody = {
+      actor_id: null,
+      base_branch: 'main',
+      branch: 'main',
+      branch_created: false,
+      mode: 'merge',
+      tables: [],
+      uri: 's3://x',
+    };
     const { fetch, calls } = stubFetch([
       { body: { rows: [], columns: [] } },
-      { body: { rows: [], columns: [] } },
       { body: { affected_nodes: 0, affected_edges: 0 } },
-      { body: { affected_nodes: 0, affected_edges: 0 } },
-      {
-        body: {
-          actor_id: null,
-          base_branch: 'main',
-          branch: 'main',
-          branch_created: false,
-          mode: 'merge',
-          tables: [],
-          uri: 's3://x',
-        },
-      },
+      { body: loadBody },
       { body: { branch: 'main', tables: [] } },
       { body: '', headers: { 'content-type': 'application/x-ndjson' } },
     ]);
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'alpha', fetch });
-    await og.read({ querySource: 'query q() {}' });
     await og.query({ query: 'query q() {}' });
-    await og.change({ query: 'query q() {}' });
     await og.mutate({ query: 'query q() {}' });
-    await og.ingest({ branch: 'main', mode: 'merge', data: '{}\n' });
+    await og.load({ branch: 'main', mode: 'merge', data: '{}\n' });
     await og.snapshot();
     for await (const _ of og.export({ branch: 'main' })) void _;
-    expect(calls[0]?.url).toBe('http://x/graphs/alpha/read');
-    expect(calls[1]?.url).toBe('http://x/graphs/alpha/query');
-    expect(calls[2]?.url).toBe('http://x/graphs/alpha/change');
-    expect(calls[3]?.url).toBe('http://x/graphs/alpha/mutate');
-    expect(calls[4]?.url).toBe('http://x/graphs/alpha/ingest');
-    expect(calls[5]?.url).toBe('http://x/graphs/alpha/snapshot');
-    expect(calls[6]?.url).toBe('http://x/graphs/alpha/export');
+    expect(calls[0]?.url).toBe('http://x/graphs/alpha/query');
+    expect(calls[1]?.url).toBe('http://x/graphs/alpha/mutate');
+    expect(calls[2]?.url).toBe('http://x/graphs/alpha/load');
+    expect(calls[3]?.url).toBe('http://x/graphs/alpha/snapshot');
+    expect(calls[4]?.url).toBe('http://x/graphs/alpha/export');
   });
 
   it('never prefixes /healthz', async () => {
@@ -197,25 +190,39 @@ describe('transport graphId prefixing', () => {
     expect(calls[0]?.url).toBe('http://x/graphs/a%2Fb%20c/branches');
   });
 
-  it('omits the prefix entirely when graphId is undefined', async () => {
+  it('throws ConfigurationError for a graph-scoped op when graphId is undefined', async () => {
     const { fetch, calls } = stubFetch({ body: { branches: [] } });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
-    await og.branches.list();
-    expect(calls[0]?.url).toBe('http://x/branches');
+    await expect(og.branches.list()).rejects.toBeInstanceOf(ConfigurationError);
+    await expect(og.branches.list()).rejects.toThrow(/graphId is required/);
+    // The guard fires before any network call.
+    expect(calls.length).toBe(0);
+  });
+
+  it('allows flat management ops (/healthz, /graphs) without a graphId', async () => {
+    const { fetch, calls } = stubFetch([
+      { body: { status: 'ok', version: '0.7.0' } },
+      { body: { graphs: [] } },
+    ]);
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    await og.health();
+    await og.graphs.list();
+    expect(calls[0]?.url).toBe('http://x/healthz');
+    expect(calls[1]?.url).toBe('http://x/graphs');
   });
 });
 
 describe('transport bearer auth', () => {
   it('attaches Authorization header when token is set', async () => {
     const { fetch, calls } = stubFetch({ body: { branches: [] } });
-    const og = new Omnigraph({ baseUrl: 'http://x', token: 'tok-1', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', token: 'tok-1', graphId: 'g', fetch });
     await og.branches.list();
     expect(calls[0]?.headers['authorization']).toBe('Bearer tok-1');
   });
 
   it('omits Authorization header when token is unset', async () => {
     const { fetch, calls } = stubFetch({ body: { branches: [] } });
-    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.branches.list();
     expect(calls[0]?.headers['authorization']).toBeUndefined();
   });

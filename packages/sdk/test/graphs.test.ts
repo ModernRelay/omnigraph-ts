@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import Omnigraph, { MethodNotAllowedError } from '../src';
+import Omnigraph, { ForbiddenError } from '../src';
 import { stubFetch } from './helpers';
 
 describe('graphs resource', () => {
@@ -29,13 +29,13 @@ describe('graphs resource', () => {
     expect(calls[0]?.url).toBe('http://x/graphs');
   });
 
-  it('throws MethodNotAllowedError when single-graph server returns 405', async () => {
+  it('throws ForbiddenError when graph_list is not granted (closed-by-default)', async () => {
     const { fetch } = stubFetch({
-      status: 405,
-      body: { error: 'method not allowed', code: 'method_not_allowed' },
+      status: 403,
+      body: { error: 'graph_list not authorized', code: 'forbidden' },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
-    await expect(og.graphs.list()).rejects.toBeInstanceOf(MethodNotAllowedError);
+    await expect(og.graphs.list()).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it('attaches Authorization header when token is set', async () => {

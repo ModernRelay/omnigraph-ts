@@ -33,6 +33,10 @@ export class QueriesResource {
    *
    * A `name` the caller lacks `invoke_query` for is indistinguishable from an
    * unknown one — both surface as `NotFoundError`.
+   *
+   * Pass `expectMutation: true` (or `false`) to assert the stored query's kind
+   * (server 0.7.0+): the server rejects a mismatch with `BadRequestError`.
+   * Omit it to skip the check.
    */
   invoke(
     name: string,

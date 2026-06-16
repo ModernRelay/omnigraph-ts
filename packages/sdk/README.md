@@ -20,6 +20,7 @@ import Omnigraph from '@modernrelay/omnigraph';
 
 const og = new Omnigraph({
   baseUrl: 'http://127.0.0.1:8080',
+  graphId: 'alpha',                   // required — every graph-scoped call routes under /graphs/alpha/…
   token: process.env.OMNIGRAPH_TOKEN, // optional; omit for unauthenticated dev
 });
 
@@ -33,9 +34,11 @@ const { rows } = await og.query({
 console.log(rows); // → [{ '$p.name': 'Alice', '$p.age': 30 }]
 ```
 
-That's the whole pattern: instantiate once, call methods, get typed responses.
+That's the whole pattern: instantiate once (with a `graphId`), call methods, get typed responses.
 
-> **Migrating from `og.read` / `og.change` (server 0.6.0)** — `POST /query` and `POST /mutate` are the canonical successors. New mutation calls should use `og.mutate({ query, name })`. Deprecated `og.change()` remains source-compatible with both old `{ querySource, queryName }` callers and canonical `{ query, name }` callers; the SDK normalizes either shape to the server 0.6 wire body. `og.read()` keeps the legacy `{ querySource, queryName }` shape.
+> **`graphId` is required (server 0.7.0).** `omnigraph-server` is cluster-only: every graph-scoped operation is served under `/graphs/{graphId}/…`. A graph-scoped call without a `graphId` throws `ConfigurationError` before hitting the network. Only `og.health()` and `og.graphs.list()` work without one — use the latter to discover ids, then [`og.graph(id)`](#multi-graph-clusters). This SDK major.minor targets a 0.7.x server; for a 0.6.x (flat-route) server, stay on `@modernrelay/omnigraph@0.6.x`.
+
+> **Removed in this release: `og.read`, `og.change`, `og.ingest`.** This major release drops the deprecated aliases for a single canonical surface — use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk-load). Field names are `query` / `name` (not `querySource` / `queryName`). The server still serves the old `/read`, `/change`, `/ingest` routes as shims, so a 0.6.x-era SDK keeps working — but this SDK no longer calls them.
 
 ## What you can do
 
@@ -75,18 +78,20 @@ const { outcome } = await og.branches.merge({ source: 'feature', target: 'main' 
 await og.branches.delete('feature');
 ```
 
-### Bulk ingest
+### Bulk load
 
 ```ts
 import { LoadMode } from '@modernrelay/omnigraph';
 
-await og.ingest({
+await og.load({
   branch: 'import-2026-04-30',
-  from: 'main',
-  mode: LoadMode.MERGE, // upsert by @key — safe to retry
+  from: 'main',          // required to fork a missing branch — without it a missing branch is a 404
+  mode: LoadMode.MERGE,  // upsert by @key — safe to retry
   data: ndjsonString,
 });
 ```
+
+`og.load()` is the canonical (and only) bulk-load method. **Loading into a branch that doesn't exist requires `from`** (the base to fork from); without it the server returns `NotFoundError` (404) rather than implicitly forking from `main`.
 
 ### Stream a branch as NDJSON
 
@@ -102,14 +107,9 @@ The iterator lazily issues `POST /export` on first iteration and cancels the ups
 
 ```ts
 const { schemaSource } = await og.schema.get();    // .pg source
-await og.schema.apply({ schemaSource: nextSchema }); // migrate
-
-// Hard-drop column data instead of soft-dropping it (defaults to false; matches
-// the CLI's --allow-data-loss). Soft drops remain reversible via time travel;
-// hard drops are not. Use only when the migration plan includes intentional
-// data deletions you've already reviewed.
-await og.schema.apply({ schemaSource: nextSchema, allowDataLoss: true });
 ```
+
+> **`og.schema.apply()` is rejected on a cluster-managed graph (409 → `ConflictError`).** A 0.7.0 server is cluster-only and evolves schema declaratively via `omnigraph cluster apply` (an operator action), not over HTTP. The method remains in the SDK as a faithful binding for `POST /schema/apply` (and surfaces the 409), but on a cluster server it will not migrate. Drive schema changes through the cluster workflow.
 
 ### Snapshots and commits
 
@@ -142,12 +142,14 @@ try {
   } else if (e instanceof NotFoundError) {
     // 404
   } else if (e instanceof MethodNotAllowedError) {
-    // 405 — typically from `og.graphs.list()` on a single-graph server
+    // 405
   } else throw e;
 }
 ```
 
 Every error carries `status`, `code`, `requestId` (from the `X-Request-Id` response header), and the parsed response body for diagnostics.
+
+`ConfigurationError` is the one error thrown **client-side, before any request** — it means a graph-scoped method was called without a `graphId` configured (see [the required-`graphId` note](#first-call)). Its `status` is `0`, like `NetworkError`.
 
 ## Cancellation
 
@@ -185,23 +187,21 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 
 | Operation | Retry semantics |
 |---|---|
-| `og.health()`, `og.snapshot()`, `og.query()`, `og.read()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()` | Read-only — always safe. |
+| `og.health()`, `og.snapshot()`, `og.query()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()`, `og.graphs.list()` | Read-only — always safe. |
 | `og.branches.create({ name })` | Throws `ConflictError` on retry (branch exists). Catch and treat as success. |
 | `og.branches.merge({ source, target })` | Idempotent — re-merge yields `outcome: 'already_up_to_date'`. |
 | `og.branches.delete(name)` | Idempotent — delete-of-deleted is a no-op. |
-| `og.schema.apply({ schemaSource })` | Idempotent — unchanged schema returns `applied: false`. |
-| `og.ingest({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
-| `og.ingest({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
-| `og.ingest({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
-| `og.mutate({ query })`, `og.change({ query })`, `og.change({ querySource })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
+| `og.schema.apply({ schemaSource })` | **Rejected (409) on a cluster-managed graph** — evolve schema via `omnigraph cluster apply`, not over HTTP. |
+| `og.load({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
+| `og.load({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
+| `og.load({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
+| `og.mutate({ query })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
 
 If a mutation isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
 
-`og.read()` and `og.change()` are deprecated aliases of `og.query()` and `og.mutate()` (server 0.6.0). `og.change()` accepts both the old SDK fields (`querySource` / `queryName`) and the canonical mutation fields (`query` / `name`), then sends the canonical wire body. `og.read()` still uses `querySource` / `queryName`.
+## Cluster graphs
 
-## Multi-graph clusters
-
-A single `omnigraph-server` can host multiple graphs side-by-side under `/graphs/{graphId}/...` (configured via `omnigraph.yaml`). The same `Omnigraph` class talks to either flavor — single-graph (the default) or multi-graph — by setting `graphId`:
+`omnigraph-server` 0.7.0 is **cluster-only**: it hosts one or more graphs side-by-side under `/graphs/{graphId}/…`, declared in a `cluster.yaml`. Pick the graph with `graphId` (required for every graph-scoped call):
 
 ```ts
 const og = new Omnigraph({
@@ -211,7 +211,7 @@ const og = new Omnigraph({
 });
 
 await og.snapshot();         // → GET /graphs/alpha/snapshot
-await og.read({ /* … */ });  // → POST /graphs/alpha/read
+await og.query({ /* … */ }); // → POST /graphs/alpha/query
 ```
 
 Use `og.graph(id)` to fan out across graphs from one parent client. It returns a new client that shares `baseUrl`, `token`, and `fetch`; the parent is untouched:
@@ -223,7 +223,7 @@ await Promise.all([
 ]);
 ```
 
-Don't fold the id into `baseUrl` (e.g. `http://host/graphs/alpha`) — that breaks the flat endpoints `og.health()` and `og.graphs.list()`, which the SDK intentionally never prefixes.
+Don't fold the id into `baseUrl` (e.g. `http://host/graphs/alpha`) — that breaks the flat endpoints `og.health()` and `og.graphs.list()`, which the SDK intentionally never prefixes (and which are the only two methods that work without a `graphId`).
 
 ### Listing graphs
 
@@ -232,12 +232,14 @@ const graphs = await og.graphs.list();
 // → [{ graphId: 'alpha', uri: '…' }, { graphId: 'beta', uri: '…' }]
 ```
 
-`GET /graphs` exists only in multi-graph mode. On a single-graph server it returns 405, which the SDK surfaces as `MethodNotAllowedError`. When a token is configured, the server-level Cedar policy must authorize the `graph_list` action against `Omnigraph::Server::"root"` — without that grant, the call fails 403 even in multi-graph mode.
+`GET /graphs` is the server-scoped management surface — it is **closed by default in every runtime state** (even unauthenticated). The cluster must apply a `cluster`-scoped Cedar bundle granting the `graph_list` action against `Omnigraph::Server::"root"`; without that grant the call fails 403. `og.health()` (`/healthz`) is the only always-open endpoint.
 
-### Auth changes in server 0.6
+### Auth (server 0.7.0, cluster-managed)
 
-- **Unauthenticated mode must be explicit on the server.** A server with no token configured no longer accepts arbitrary requests by default; the operator must enable unauthenticated mode in `omnigraph.yaml`.
-- **Token without policy default-denies non-read actions.** If a token is configured but the Cedar policy doesn't grant a given action, the server returns 403 — including for actions that the 0.4-series treated as implicit reads. Pair every token with a policy that authorizes exactly the actions the SDK caller will issue (`read`, `export`, `change`, `schema_apply`, `branch_create`, `branch_delete`, `branch_merge`, `graph_list`, etc.).
+Authorization is Cedar policy declared in the cluster's `cluster.yaml` `policies:` section, with each bundle bound to scopes via `applies_to` (a graph id for per-graph rules, or the literal `cluster` for server-scoped `graph_list`).
+
+- **Token without policy default-denies non-read actions.** If a token is configured but no bundle grants a given action, the server returns 403. Grant exactly the actions the SDK caller will issue: per-graph `read`, `export`, `change`, `schema_apply`, `branch_create`, `branch_delete`, `branch_merge`, `invoke_query`; and server-scoped `graph_list` for `og.graphs.list()`.
+- **Unauthenticated (open) mode** must be explicit on the server (`--unauthenticated`). It opens the data plane but **not** the `graph_list` management surface, which always requires an explicit cluster policy bundle.
 
 ## Multiple clients in one process
 

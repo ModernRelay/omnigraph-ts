@@ -68,8 +68,11 @@ pnpm run build           # builds all workspace packages (SDK first, then MCP)
 pnpm run typecheck       # runs after build so workspace types resolve
 pnpm run test            # mocked unit tests across all packages
 
-# Live e2e against a real server (requires omnigraph-server v$(jq -r .omnigraph.serverVersion package.json) running):
-OMNIGRAPH_E2E=1 OMNIGRAPH_BASE_URL=http://127.0.0.1:8080 OMNIGRAPH_TOKEN=$TOKEN pnpm --filter @modernrelay/omnigraph run test
+# Live e2e against a real cluster server (0.7.0 is cluster-only — boot it with
+# `omnigraph-server --cluster <dir>`; see packages/sdk/test/e2e.test.ts header
+# and .github/workflows/e2e.yml for the cluster.yaml + import/apply/load setup):
+OMNIGRAPH_E2E=1 OMNIGRAPH_BASE_URL=http://127.0.0.1:8080 OMNIGRAPH_TOKEN=$TOKEN \
+  OMNIGRAPH_GRAPH_ID=alpha pnpm --filter @modernrelay/omnigraph run test
 ```
 
 CI runs the same sequence (see `.github/workflows/ci.yml` and `e2e.yml`) and downloads the pinned `omnigraph-server` release binary for the e2e job.

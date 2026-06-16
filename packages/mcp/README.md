@@ -32,7 +32,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 const server = createOmnigraphMcpServer({
   baseUrl: 'http://127.0.0.1:8080',
   token: process.env.OMNIGRAPH_TOKEN,
-  graphId: 'alpha', // optional — set when talking to a multi-graph cluster
+  graphId: 'alpha', // required — omnigraph-server 0.7.0 is cluster-only
 });
 await server.connect(new StdioServerTransport());
 ```
@@ -42,9 +42,9 @@ await server.connect(new StdioServerTransport());
 | Variable | Purpose |
 |---|---|
 | `OMNIGRAPH_BASE_URL` | Required. `omnigraph-server` URL. |
+| `OMNIGRAPH_GRAPH_ID` | Required (server 0.7.0+ is cluster-only). Graph this server operates on — routes every graph-scoped call under `/graphs/${id}/...`. The `bin` entrypoint refuses to start without it. |
 | `OMNIGRAPH_TOKEN` | Optional bearer token. Required against a server with auth enabled. |
 | `OMNIGRAPH_DEFAULT_BRANCH` | Branch used when a tool input omits one. Defaults to `main`. |
-| `OMNIGRAPH_GRAPH_ID` | Optional. Target graph id in a multi-graph cluster — routes every graph-scoped call under `/graphs/${id}/...`. Leave unset for single-graph servers. |
 
 ## Surface
 
@@ -56,31 +56,30 @@ Read-only (`readOnlyHint: true`):
 |---|---|
 | `health` | Server liveness + version |
 | `snapshot` | Snapshot of a branch (table list + row counts) |
-| `query` | Run a `.gq` read query (canonical; successor to `read`) |
-| `read` | Legacy alias for `query`. Field names are still `querySource` / `queryName`; prefer `query`. |
+| `query` | Run a `.gq` read query |
 | `schema_get` | Active `.pg` schema source |
 | `branches_list` | List user-visible branches |
 | `commits_list` | List commits on a branch |
 | `commits_get` | Retrieve a single commit |
-| `graphs_list` | List registered graphs (multi-graph servers; requires `graph_list` policy) |
+| `graphs_list` | List registered graphs in the cluster (requires a `graph_list` policy grant) |
 
 Mutating (`destructiveHint: true` where appropriate — hosts should surface confirmation):
 
 | Tool | Purpose |
 |---|---|
-| `mutate` | Run a `.gq` mutation (canonical; successor to `change`) |
-| `change` | Legacy alias for `mutate`. Accepts either legacy `querySource` / `queryName` or canonical `query` / `name`; mixed field families are rejected. Prefer `mutate`. |
-| `ingest` | Bulk-ingest NDJSON (`mode: 'merge'` for idempotency) |
+| `mutate` | Run a `.gq` mutation |
+| `load` | Bulk-load NDJSON (`mode: 'merge'` for idempotency). Without `from`, a missing branch is a 404. |
 | `branches_create` | Create a new branch |
 | `branches_delete` | Delete a branch |
 | `branches_merge` | Merge `source` into `target` |
-| `schema_apply` | Apply a schema migration. Optional `allowDataLoss: true` hard-drops column data for destructive steps; leave unset unless the plan was reviewed. |
+
+There is **no `schema_apply` tool**: a cluster-managed graph rejects HTTP schema apply (409). Schema is read-only here (`schema_get`); evolve it via `omnigraph cluster apply`.
 
 ### Resources
 
 - `omnigraph://schema` — text/plain `.pg` source
 - `omnigraph://branches` — application/json branch name list
-- `omnigraph://graphs` — application/json `[{ graphId, uri }]` (multi-graph servers only; single-graph servers return 405)
+- `omnigraph://graphs` — application/json `[{ graphId, uri }]` (requires a `graph_list` policy grant; the management surface is closed by default)
 
 ## License
 

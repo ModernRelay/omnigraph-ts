@@ -2,11 +2,12 @@
 // in MCP tools (LLM-callable) and resources (LLM-readable). Designed for
 // MCP SDK v1.x; the v2 split-package layout is a follow-up.
 //
-// Tools mutate or query the live database. Read-only tools (read, snapshot,
+// Tools mutate or query the live database. Read-only tools (query, snapshot,
 // branches.list, commits.list, schema.get, health) carry no destructive
-// side effects. Mutating tools (change, ingest, schema.apply, branch
-// create/delete/merge) are annotated with `destructiveHint: true` so MCP
-// hosts can surface a confirmation UI.
+// side effects. Mutating tools (mutate, load, branch create/delete/merge) are
+// annotated with `destructiveHint: true` so MCP hosts can surface a
+// confirmation UI. Schema is read-only here (`schema_get`): a cluster-managed
+// graph evolves its schema via `omnigraph cluster apply`, not over HTTP.
 //
 // Resources are an alternative read surface — agents that prefer to *read*
 // the schema or a branch snapshot rather than *call* a tool can use them.
@@ -23,31 +24,31 @@ import { MCP_PACKAGE_VERSION } from './version.gen';
 
 const INSTRUCTIONS = `Omnigraph is a versioned property graph. Reads are typed GQ queries; writes are server-orchestrated and branchable.
 
-ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before any query, mutation, or ingest. Schema declares node/edge types, @key fields, non-nullable properties, edge directions, and casing. Writing without seeing the schema produces queries that lint-fail or silently corrupt data.
+ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before any query, mutation, or load. Schema declares node/edge types, @key fields, non-nullable properties, edge directions, and casing. Writing without seeing the schema produces queries that lint-fail or silently corrupt data.
 
 After schema, consult the matching best-practices resource for the task at hand:
-  - omnigraph://best-practices/queries     — before .gq queries (read/change)
-  - omnigraph://best-practices/data        — before ingest (mode selection, branch loop)
-  - omnigraph://best-practices/schema      — before schema_apply
+  - omnigraph://best-practices/queries     — before .gq queries (query/mutate)
+  - omnigraph://best-practices/data        — before load (mode selection, branch loop)
+  - omnigraph://best-practices/schema      — to understand the .pg schema before writing
   - omnigraph://best-practices/remote-ops  — after any 504 or unexpected error
   - omnigraph://best-practices/search      — before nearest/bm25/rrf queries
 
 Workflow norms (violating these breaks things or silently corrupts data):
 
-1. .gq edges use lowerCamelCase even though the schema declares them PascalCase. No top-level \`mutation { }\` wrapper — every block is \`query name($p: T) { insert|update|delete ... }\`. Dispatch writes via \`change\`, not \`read\`.
+1. .gq edges use lowerCamelCase even though the schema declares them PascalCase. No top-level \`mutation { }\` wrapper — every block is \`query name($p: T) { insert|update|delete ... }\`. Dispatch writes via \`mutate\`, not \`query\`.
 2. Parameterize. Pass values via \`params\`, never interpolate into the query body. Declare typed params: \`query foo($slug: String) { ... }\`.
 3. \`nearest\`, \`bm25\`, and \`rrf\` require a trailing \`limit N\` — they are ordering operators, not filters.
-4. \`ingest mode: "merge"\` upserts by @key (idempotent — use this for at-least-once pipelines). \`"overwrite"\` truncates the branch. \`"append"\` fails on key collision.
+4. \`load mode: "merge"\` upserts by @key (idempotent — use this for at-least-once pipelines). \`"overwrite"\` truncates the branch. \`"append"\` fails on key collision.
 5. Verify every write. \`commits_list\` head BEFORE and AFTER. If identical, the write did not land. 504s do not mean failure — the server may have committed after the proxy dropped the response.
 6. Append-only types (Signal, Claim, Decision, Event, Interaction, Policy, Outcome, MarketingElement) duplicate on blind retry. Pointer types (Org, Person, Opportunity, Channel, Actor, ActionItem, Artifact, Meeting, Technology, Campaign, UseCase) dedupe via @key.
-7. Risky/large writes: \`branches_create\` from main → \`ingest\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`. \`schema_apply\` skips branches: it is main-only and rejects open feature branches.
-8. \`schema_apply\` is destructive and has no undo. Use \`schema_get\` + a local diff first. Non-nullable property adds require add-optional → backfill → tighten in two applies.
+7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`.
+8. Schema is read-only over this MCP. \`schema_get\` returns the active .pg source; there is no \`schema_apply\` tool. A cluster-managed graph rejects HTTP schema apply (409) — schema changes go through \`omnigraph cluster apply\` (an operator/CLI action), not an agent tool.
 
-Date format: ISO strings on \`change\` params; integer days-since-epoch in ingest JSONL \`Date\` fields. \`DateTime\` is ISO on both.
+Date format: ISO strings on \`mutate\` params; integer days-since-epoch in load JSONL \`Date\` fields. \`DateTime\` is ISO on both.
 
-If you see \`sync_branch()\` in an error message, it is server-internal text, NOT a tool. Retry once; on persistent failure, fall back to \`ingest\` on a branch.
+If you see \`sync_branch()\` in an error message, it is server-internal text, NOT a tool. Retry once; on persistent failure, fall back to \`load\` on a branch.
 
-Depth: https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices`;
+Depth: https://github.com/ModernRelay/omnigraph/tree/main/skills/omnigraph`;
 
 export interface CreateServerOptions {
   baseUrl: string;
@@ -55,9 +56,10 @@ export interface CreateServerOptions {
   /** Default branch when a tool input omits one. */
   defaultBranch?: string;
   /**
-   * Multi-graph cluster: target graph id. Threaded into the underlying
-   * `Omnigraph` client so every tool call routes under `/graphs/${graphId}/...`.
-   * Leave undefined for single-graph servers.
+   * Target graph id. Threaded into the underlying `Omnigraph` client so every
+   * graph-scoped tool call routes under `/graphs/${graphId}/...`. Required
+   * against omnigraph-server 0.7.0+ (cluster-only); the `bin` entrypoint
+   * refuses to start without `OMNIGRAPH_GRAPH_ID`.
    */
   graphId?: string;
   /** Custom fetch (for testing). */
@@ -65,25 +67,6 @@ export interface CreateServerOptions {
 }
 
 const LoadModeEnum = z.enum(['overwrite', 'append', 'merge']);
-const McpCanonicalChangeSchema = z
-  .object({
-    query: z.string().min(1),
-    name: z.string().optional(),
-    params: z.record(z.unknown()).optional(),
-    branch: z.string().optional(),
-  })
-  .strict();
-const McpLegacyChangeSchema = z
-  .object({
-    querySource: z.string().min(1),
-    queryName: z.string().optional(),
-    params: z.record(z.unknown()).optional(),
-    branch: z.string().optional(),
-  })
-  .strict();
-const McpChangeSchema = z.union([McpCanonicalChangeSchema, McpLegacyChangeSchema]);
-
-type McpChangeInput = z.infer<typeof McpChangeSchema>;
 
 function jsonText(value: unknown) {
   return [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }];
@@ -91,23 +74,6 @@ function jsonText(value: unknown) {
 
 function plainText(text: string) {
   return [{ type: 'text' as const, text }];
-}
-
-function normalizeMcpChangeInput(input: McpChangeInput) {
-  if ('querySource' in input) {
-    return {
-      query: input.querySource,
-      name: input.queryName,
-      params: input.params,
-      branch: input.branch,
-    };
-  }
-  return {
-    query: input.query,
-    name: input.name,
-    params: input.params,
-    branch: input.branch,
-  };
 }
 
 export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
@@ -198,36 +164,6 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   );
 
   server.registerTool(
-    'read',
-    {
-      title: 'Run GQ read query (legacy)',
-      description:
-        'Legacy alias for `query` — prefer `query` for new callers. Runs the same ' +
-        '.gq read against `POST /read` instead of `POST /query`; server responds ' +
-        'with `Deprecation: true` and a `Link: rel="successor-version"` header. ' +
-        'Field names here are the legacy `querySource` / `queryName`.',
-      inputSchema: {
-        querySource: z.string().min(1),
-        queryName: z.string().optional(),
-        params: z.record(z.unknown()).optional(),
-        branch: z.string().optional(),
-        snapshot: z.string().optional(),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    async ({ querySource, queryName, params, branch, snapshot }) => {
-      const r = await og.read({
-        querySource,
-        queryName,
-        params,
-        branch: snapshot ? branch : (branch ?? defaultBranch),
-        snapshot,
-      });
-      return { content: jsonText(r) };
-    },
-  );
-
-  server.registerTool(
     'schema_get',
     {
       title: 'Get current schema',
@@ -262,10 +198,10 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'List registered graphs',
       description:
-        'Return every graph the server exposes, alphabetically by graphId. ' +
-        'Multi-graph servers only — a single-graph server returns 405 ' +
-        '(MethodNotAllowedError). When a token is configured the server-level ' +
-        'Cedar policy must authorize the `graph_list` action.',
+        'Return every graph the cluster exposes, alphabetically by graphId. ' +
+        'The `/graphs` management surface is closed by default — the cluster ' +
+        'must grant the `graph_list` action (a `cluster`-scoped policy bundle) ' +
+        'or this returns 403 (ForbiddenError).',
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -333,32 +269,13 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   );
 
   server.registerTool(
-    'change',
+    'load',
     {
-      title: 'Run GQ mutation (legacy)',
-      description:
-        'Legacy alias for `mutate` — prefer `mutate` for new callers. Same behavior, ' +
-        'sent to `POST /change` instead of `POST /mutate`; server responds with ' +
-        '`Deprecation: true` and a `Link: rel="successor-version"` header. Accepts ' +
-        'both legacy `querySource` / `queryName` and canonical `query` / `name`; ' +
-        'mixed field families are rejected.',
-      inputSchema: McpChangeSchema,
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-    },
-    async (input) => {
-      const normalized = normalizeMcpChangeInput(input);
-      const r = await og.change({ ...normalized, branch: normalized.branch ?? defaultBranch });
-      return { content: jsonText(r) };
-    },
-  );
-
-  server.registerTool(
-    'ingest',
-    {
-      title: 'Bulk-ingest NDJSON',
+      title: 'Bulk-load NDJSON',
       description:
         'Bulk-load NDJSON data into a branch. `mode: "merge"` upserts by @key (idempotent). ' +
-        '`mode: "append"` is strict insert (errors on duplicate). `mode: "overwrite"` replaces all data.',
+        '`mode: "append"` is strict insert (errors on duplicate). `mode: "overwrite"` replaces all data. ' +
+        'Without `from`, the target branch must already exist (a missing branch is a 404); pass `from` to fork-if-missing.',
       inputSchema: {
         branch: z.string().min(1),
         from: z.string().optional(),
@@ -368,7 +285,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
     async ({ branch, from, mode, data }) => {
-      const r = await og.ingest({ branch, from, mode, data });
+      const r = await og.load({ branch, from, mode, data });
       return { content: jsonText(r) };
     },
   );
@@ -419,21 +336,11 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     },
   );
 
-  server.registerTool(
-    'schema_apply',
-    {
-      title: 'Apply schema migration',
-      description:
-        'Apply a new .pg schema as a migration. Idempotent: applying an unchanged schema returns applied=false. ' +
-        '`allowDataLoss` hard-drops column data for destructive migration steps; leave false unless the plan was reviewed.',
-      inputSchema: { schemaSource: z.string().min(1), allowDataLoss: z.boolean().optional() },
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
-    },
-    async ({ schemaSource, allowDataLoss }) => {
-      const r = await og.schema.apply({ schemaSource, allowDataLoss });
-      return { content: jsonText(r) };
-    },
-  );
+  // NOTE: no `schema_apply` tool. omnigraph-server 0.7.0 is cluster-only, and a
+  // cluster-managed graph rejects `POST /graphs/{id}/schema/apply` with 409 —
+  // schema is evolved declaratively via `omnigraph cluster apply`, an operator
+  // action outside the HTTP API this MCP wraps. Use `schema_get` to read the
+  // active schema; route migrations through the cluster workflow.
 
   // ---------- Resources --------------------------------------------------
   // A schema-shaped read surface for agents that prefer reading over calling.
@@ -474,8 +381,8 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'Graphs',
       description:
-        'JSON array of registered graphs, each `{ graphId, uri }`. Multi-graph ' +
-        'servers only — single-graph servers return 405 on `GET /graphs`.',
+        'JSON array of registered graphs, each `{ graphId, uri }`. The `/graphs` ' +
+        'management surface is closed by default — requires a `graph_list` policy grant.',
       mimeType: 'application/json',
     },
     async (uri) => {
@@ -528,7 +435,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       const lines = [
         '# Omnigraph best-practices index',
         '',
-        'Vendored from https://github.com/ModernRelay/omnigraph-cookbooks/tree/main/skills/omnigraph-best-practices.',
+        'Vendored from https://github.com/ModernRelay/omnigraph/tree/main/skills/omnigraph.',
         '',
         '| Resource | Read before |',
         '|---|---|',

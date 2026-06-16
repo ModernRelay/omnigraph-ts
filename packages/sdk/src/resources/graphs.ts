@@ -6,11 +6,14 @@ export class GraphsResource {
   constructor(private readonly t: Transport) {}
 
   /**
-   * List every graph registered with the server, alphabetically by `graphId`.
+   * List every graph registered with the cluster, alphabetically by `graphId`.
    *
-   * Multi-graph mode only. On a single-graph server this call returns 405 →
-   * `MethodNotAllowedError`. When a token is configured the server-level
-   * Cedar policy must authorize the `graph_list` action.
+   * `/graphs` is the server-scoped management surface, **closed by default in
+   * every runtime state** (even unauthenticated). The cluster must apply a
+   * `cluster`-scoped Cedar bundle granting the `graph_list` action against
+   * `Omnigraph::Server::"root"`; without that grant this call fails 403 →
+   * `ForbiddenError`. This and `health()` are the only methods that work
+   * without a configured `graphId`.
    *
    * Routing note: `/graphs` is a flat management endpoint and is **never**
    * rewritten under a `graphId` prefix.

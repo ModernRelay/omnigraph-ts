@@ -57,6 +57,17 @@ export class TooManyRequestsError extends OmnigraphError {}
 export class InternalServerError extends OmnigraphError {}
 export class NetworkError extends OmnigraphError {}
 
+/**
+ * Thrown client-side, before any request is sent, when the client is
+ * misconfigured for the target server. As of omnigraph-server 0.7.0 the server
+ * is cluster-only: every graph-scoped operation is served under
+ * `/graphs/{graphId}/…`, so a `graphId` must be configured. Only `health()`
+ * and `graphs.list()` are graph-independent and work without one.
+ *
+ * `status` is 0 (no HTTP exchange occurred), like {@link NetworkError}.
+ */
+export class ConfigurationError extends OmnigraphError {}
+
 const codeToClass: Record<ErrorCode, new (ctx: OmnigraphErrorContext) => OmnigraphError> = {
   bad_request: BadRequestError,
   unauthorized: UnauthorizedError,

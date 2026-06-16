@@ -23,6 +23,7 @@ export {
   TooManyRequestsError,
   InternalServerError,
   NetworkError,
+  ConfigurationError,
 } from './errors';
 
 // Public DTO types (camelCase). Inputs end in `Input`; outputs are bare nouns.
@@ -46,8 +47,6 @@ export type {
   SchemaApplyInput,
   // Operations
   Change,
-  ChangeInput,
-  LegacyChangeInput,
   MutationInput,
   ExportInput,
   Health,
@@ -56,7 +55,6 @@ export type {
   IngestTable,
   QueryInput,
   Read,
-  ReadInput,
   ReadTarget,
   Snapshot,
   SnapshotTable,
@@ -75,7 +73,7 @@ export type {
 } from './types';
 
 // Runtime enum constants — also valid as types via TS declaration merging.
-// Use as values: `og.ingest({ ..., mode: LoadMode.MERGE })`.
+// Use as values: `og.load({ ..., mode: LoadMode.MERGE })`.
 // Use as types: `function check(c: ErrorCode) { ... }`.
 export {
   BranchMergeOutcome,
