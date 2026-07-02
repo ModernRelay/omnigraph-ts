@@ -164,6 +164,10 @@ export type GraphListResponse = {
 };
 
 export type HealthOutput = {
+  /**
+   * The internal-schema (storage-format) version this binary writes and reads.
+   */
+  internal_schema_version: number;
   source_version?: string | null;
   status: string;
   version: string;
@@ -342,8 +346,8 @@ export const ParamKind = {
 export type ParamKind = (typeof ParamKind)[keyof typeof ParamKind];
 
 /**
- * Response for `GET /queries`: the `mcp.expose` subset of a graph's
- * stored-query registry, each with typed parameters.
+ * Response for `GET /queries`: every stored query in a graph's
+ * registry, each with typed parameters.
  */
 export type QueriesCatalogOutput = {
   queries: Array<QueryCatalogEntry>;
@@ -474,6 +478,11 @@ export type SchemaOutput = {
 
 export type SnapshotOutput = {
   branch: string;
+  /**
+   * The on-disk internal-schema (storage-format) version this graph's branch
+   * is stamped at.
+   */
+  internal_schema_version: number;
   manifest_version: number;
   tables: Array<SnapshotTableOutput>;
 };
@@ -1025,7 +1034,7 @@ export type ClusterListQueriesError =
 
 export type ClusterListQueriesResponses = {
   /**
-   * Stored-query catalog (the mcp.expose subset, with typed params)
+   * Stored-query catalog (every stored query, with typed params)
    */
   200: QueriesCatalogOutput;
 };

@@ -4,13 +4,17 @@ import { stubFetch } from './helpers';
 
 describe('top-level client operations', () => {
   it('health sends GET /healthz', async () => {
-    const { fetch, calls } = stubFetch({ body: { status: 'ok', version: '0.3.1' } });
+    const { fetch, calls } = stubFetch({
+      body: { status: 'ok', version: '0.8.0', internal_schema_version: 4 },
+    });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
     const h = await og.health();
     expect(calls[0]?.method).toBe('GET');
     expect(calls[0]?.url).toBe('http://x/healthz');
     expect(h.status).toBe('ok');
-    expect(h.version).toBe('0.3.1');
+    expect(h.version).toBe('0.8.0');
+    // New in server 0.8.0: the storage-format version, camelized like any field.
+    expect(h.internalSchemaVersion).toBe(4);
   });
 
   it('snapshot encodes branch as a query param', async () => {
