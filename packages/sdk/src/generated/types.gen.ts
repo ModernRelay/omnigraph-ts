@@ -43,12 +43,31 @@ export type BranchMergeOutcome =
 
 export type BranchMergeOutput = {
   actor_id?: string | null;
+  /**
+   * Why the requested source-branch deletion did not happen. Present iff
+   * `branch_deleted` is `false`.
+   */
+  branch_delete_error?: string | null;
+  /**
+   * Result of the requested post-merge source-branch deletion. Absent when
+   * `delete_branch` was not requested; `true` when the source branch was
+   * deleted; `false` when the deletion was refused or failed (the merge
+   * itself still succeeded — see `branch_delete_error`).
+   */
+  branch_deleted?: boolean | null;
   outcome: BranchMergeOutcome;
   source: string;
   target: string;
 };
 
 export type BranchMergeRequest = {
+  /**
+   * Delete the source branch after a successful merge. The deletion runs
+   * under its own `branch_delete` policy check; a refusal or failure is
+   * reported via `branch_deleted` / `branch_delete_error` on the response
+   * and never fails the already-landed merge.
+   */
+  delete_branch?: boolean;
   /**
    * Source branch whose commits will be merged.
    */
@@ -126,6 +145,8 @@ export type ErrorOutput = {
   error: string;
   manifest_conflict?: null | ManifestConflictOutput;
   merge_conflicts?: Array<MergeConflictOutput>;
+  read_set_conflict?: null | ReadSetConflictOutput;
+  recovery_required?: null | RecoveryRequiredOutput;
 };
 
 export type ExportRequest = {
@@ -443,9 +464,24 @@ export type ReadRequest = {
   snapshot?: string | null;
 };
 
+/**
+ * Structured authority mismatch for an RFC-022 prepared write. Values are
+ * strings because members include optional graph commit ids and future
+ * authority tokens, not only numeric table versions.
+ */
+export type ReadSetConflictOutput = {
+  actual?: string | null;
+  expected?: string | null;
+  member: string;
+};
+
 export type ReadTargetOutput = {
   branch?: string | null;
   snapshot?: string | null;
+};
+
+export type RecoveryRequiredOutput = {
+  operation_id: string;
 };
 
 export type SchemaApplyOutput = {
@@ -597,6 +633,10 @@ export type ClusterCreateBranchErrors = {
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterCreateBranchError =
@@ -645,6 +685,10 @@ export type ClusterMergeBranchesErrors = {
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterMergeBranchesError =
@@ -693,6 +737,10 @@ export type ClusterDeleteBranchErrors = {
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterDeleteBranchError =
@@ -734,13 +782,17 @@ export type ClusterChangeErrors = {
    */
   403: ErrorOutput;
   /**
-   * Merge conflict
+   * Write-authority conflict
    */
   409: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterChangeError = ClusterChangeErrors[keyof ClusterChangeErrors];
@@ -899,9 +951,17 @@ export type ClusterIngestErrors = {
    */
   403: ErrorOutput;
   /**
+   * Prepared load authority changed before effects
+   */
+  409: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterIngestError = ClusterIngestErrors[keyof ClusterIngestErrors];
@@ -942,9 +1002,17 @@ export type ClusterLoadErrors = {
    */
   403: ErrorOutput;
   /**
+   * Prepared load authority changed before effects
+   */
+  409: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterLoadError = ClusterLoadErrors[keyof ClusterLoadErrors];
@@ -985,13 +1053,17 @@ export type ClusterMutateErrors = {
    */
   403: ErrorOutput;
   /**
-   * Merge conflict
+   * Write-authority conflict
    */
   409: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterMutateError = ClusterMutateErrors[keyof ClusterMutateErrors];
@@ -1076,7 +1148,7 @@ export type ClusterInvokeQueryErrors = {
    */
   404: ErrorOutput;
   /**
-   * Merge conflict
+   * Stored mutation write-authority conflict
    */
   409: ErrorOutput;
   /**
@@ -1087,6 +1159,10 @@ export type ClusterInvokeQueryErrors = {
    * Policy evaluation error (a denial is reported as 404, not 500)
    */
   500: ErrorOutput;
+  /**
+   * A stored mutation is blocked by a durable recovery intent
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterInvokeQueryError =
