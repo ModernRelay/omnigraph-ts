@@ -38,6 +38,20 @@ function fakeFetch(): typeof globalThis.fetch {
     if (method === 'GET' && path === '/branches') {
       return respond(200, { branches: ['main', 'feature'] });
     }
+    if (method === 'POST' && path === '/branches/merge') {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        source: string;
+        target?: string;
+        delete_branch?: boolean;
+      };
+      return respond(200, {
+        actor_id: null,
+        outcome: 'already_up_to_date',
+        source: body.source,
+        target: body.target ?? 'main',
+        ...(body.delete_branch ? { branch_deleted: true } : {}),
+      });
+    }
     if (method === 'GET' && path === '/schema') {
       return respond(200, { schema_source: 'node Person { name: String @key }' });
     }
@@ -136,6 +150,18 @@ describe('omnigraph-mcp server', () => {
     expect(parsed.status).toBe('ok');
     expect(parsed.version).toBe('0.3.0');
     expect(parsed.sdkServerVersion).toBe('0.8.1');
+  });
+
+  it('branches_merge passes deleteBranch through and returns the delete result', async () => {
+    const { client } = await setup();
+    const r = await client.callTool({
+      name: 'branches_merge',
+      arguments: { source: 'feature', target: 'main', deleteBranch: true },
+    });
+    const block = (r.content as Array<{ type: string; text: string }>)[0]!;
+    const parsed = JSON.parse(block.text);
+    expect(parsed.outcome).toBe('already_up_to_date');
+    expect(parsed.branchDeleted).toBe(true);
   });
 
   it('calls the query tool and preserves opaque param keys', async () => {

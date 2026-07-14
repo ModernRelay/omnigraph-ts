@@ -41,7 +41,7 @@ Workflow norms (violating these breaks things or silently corrupts data):
 4. \`load mode: "merge"\` upserts by @key (idempotent — use this for at-least-once pipelines). \`"overwrite"\` truncates the branch. \`"append"\` fails on key collision.
 5. Verify every write. \`commits_list\` head BEFORE and AFTER. If identical, the write did not land. 504s do not mean failure — the server may have committed after the proxy dropped the response.
 6. Append-only types (Signal, Claim, Decision, Event, Interaction, Policy, Outcome, MarketingElement) duplicate on blind retry. Pointer types (Org, Person, Opportunity, Channel, Actor, ActionItem, Artifact, Meeting, Technology, Campaign, UseCase) dedupe via @key.
-7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`.
+7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` with \`deleteBranch: true\` (merges and cleans up the branch in one step; a deletion refusal is reported in the result, never fails the merge).
 8. Schema is read-only over this MCP. \`schema_get\` returns the active .pg source; there is no \`schema_apply\` tool. A cluster-managed graph rejects HTTP schema apply (409) — schema changes go through \`omnigraph cluster apply\` (an operator/CLI action), not an agent tool.
 
 Date format: ISO strings on \`mutate\` params; integer days-since-epoch in load JSONL \`Date\` fields. \`DateTime\` is ISO on both.
@@ -323,15 +323,21 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'Merge branch',
       description:
-        'Merge `source` into `target` (default `main`). Idempotent: re-merging an already-merged branch yields outcome=already_up_to_date.',
+        'Merge `source` into `target` (default `main`). Idempotent: re-merging an already-merged branch yields outcome=already_up_to_date. ' +
+        'Pass deleteBranch=true to delete the source branch after the merge lands — a deletion refusal is reported via branchDeleted/branchDeleteError in the result, never as an error.',
       inputSchema: {
         source: z.string().min(1),
         target: z.string().optional(),
+        deleteBranch: z.boolean().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ source, target }) => {
-      const r = await og.branches.merge({ source, target: target ?? defaultBranch });
+    async ({ source, target, deleteBranch }) => {
+      const r = await og.branches.merge({
+        source,
+        target: target ?? defaultBranch,
+        deleteBranch,
+      });
       return { content: jsonText(r) };
     },
   );
