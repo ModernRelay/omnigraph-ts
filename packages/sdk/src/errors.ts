@@ -1,4 +1,11 @@
-import type { ErrorCode, ErrorOutput, ManifestConflict, MergeConflict } from './types';
+import type {
+  ErrorCode,
+  ErrorOutput,
+  ManifestConflict,
+  MergeConflict,
+  ReadSetConflict,
+  RecoveryRequired,
+} from './types';
 
 export interface OmnigraphErrorContext {
   status: number;
@@ -44,17 +51,43 @@ export class ConflictError extends OmnigraphError {
    * Refresh and retry.
    */
   readonly manifestConflict?: ManifestConflict;
+  /**
+   * Set when the conflict is a coarse read-set rejection: `member` (a branch
+   * identifier, graph head, or schema identity the write was prepared
+   * against) changed between preparation and commit. Refresh and retry.
+   */
+  readonly readSetConflict?: ReadSetConflict;
 
   constructor(ctx: OmnigraphErrorContext) {
     super(ctx);
     const body = ctx.body as ErrorOutput | undefined;
     this.mergeConflicts = body?.mergeConflicts;
     this.manifestConflict = body?.manifestConflict ?? undefined;
+    this.readSetConflict = body?.readSetConflict ?? undefined;
   }
 }
 
 export class TooManyRequestsError extends OmnigraphError {}
 export class InternalServerError extends OmnigraphError {}
+
+/**
+ * 503 with a `recovery_required` body: a durable recovery intent overlaps the
+ * requested operation and must be resolved (typically by the server's next
+ * write or a read-write reopen) before a retry can succeed. Carries the
+ * blocking recovery `operationId`. The body deliberately has no `code` —
+ * `ErrorCode` is a closed wire contract, so the meaning rides in the
+ * structured field.
+ */
+export class ServiceUnavailableError extends OmnigraphError {
+  readonly recoveryRequired?: RecoveryRequired;
+
+  constructor(ctx: OmnigraphErrorContext) {
+    super(ctx);
+    const body = ctx.body as ErrorOutput | undefined;
+    this.recoveryRequired = body?.recoveryRequired ?? undefined;
+  }
+}
+
 export class NetworkError extends OmnigraphError {}
 
 /**
@@ -88,6 +121,7 @@ const statusToClass: Record<number, new (ctx: OmnigraphErrorContext) => Omnigrap
   409: ConflictError,
   429: TooManyRequestsError,
   500: InternalServerError,
+  503: ServiceUnavailableError,
 };
 
 export function fromResponse(args: {

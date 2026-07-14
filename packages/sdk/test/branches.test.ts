@@ -44,6 +44,34 @@ describe('branches resource', () => {
     expect(r.outcome).toBe('fast_forward');
   });
 
+  it('merge with deleteBranch sends delete_branch and camelizes the delete result', async () => {
+    const { fetch, calls } = stubFetch({
+      body: {
+        actor_id: null,
+        outcome: 'fast_forward',
+        source: 'feature',
+        target: 'main',
+        branch_deleted: false,
+        branch_delete_error: "descendant branch 'feature-child' still depends on it",
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const r = await og.branches.merge({
+      source: 'feature',
+      target: 'main',
+      deleteBranch: true,
+    });
+    expect(JSON.parse(calls[0]?.body ?? '{}')).toEqual({
+      source: 'feature',
+      target: 'main',
+      delete_branch: true,
+    });
+    // The merge landed; the refused deletion is data, not an error.
+    expect(r.outcome).toBe('fast_forward');
+    expect(r.branchDeleted).toBe(false);
+    expect(r.branchDeleteError).toContain('feature-child');
+  });
+
   it('delete escapes the branch name in path', async () => {
     const { fetch, calls } = stubFetch({
       body: { actor_id: null, name: 'a b/c', uri: 's3://x' },

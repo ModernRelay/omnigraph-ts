@@ -37,6 +37,12 @@ export class BranchesResource {
    * Merge `source` into `target` (defaults to `main`).
    *
    * **Idempotency**: a retry on the same merge yields `outcome: "already_up_to_date"`.
+   *
+   * **Cleanup**: `deleteBranch: true` deletes `source` after the merge lands
+   * (requires `branch_delete` permission in addition to `branch_merge`). A
+   * deletion refusal never fails the call — the merge is durable by then —
+   * so check `branchDeleted` / `branchDeleteError` on the result. It runs on
+   * every successful outcome, including `already_up_to_date`.
    */
   merge(input: BranchMergeInput, opts: CallOptions = {}): Promise<BranchMerge> {
     return this.t.request<BranchMerge>('POST', '/branches/merge', {

@@ -22,6 +22,7 @@ export {
   ConflictError,
   TooManyRequestsError,
   InternalServerError,
+  ServiceUnavailableError,
   NetworkError,
   ConfigurationError,
 } from './errors';
@@ -67,6 +68,8 @@ export type {
   // Conflict / errors / shared
   MergeConflict,
   ManifestConflict,
+  ReadSetConflict,
+  RecoveryRequired,
   ErrorOutput,
   // Utility
   Camelize,

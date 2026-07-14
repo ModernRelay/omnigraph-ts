@@ -6,6 +6,7 @@ import Omnigraph, {
   InternalServerError,
   MethodNotAllowedError,
   NotFoundError,
+  ServiceUnavailableError,
   TooManyRequestsError,
   UnauthorizedError,
 } from '../src';
@@ -60,6 +61,51 @@ describe('error dispatcher', () => {
       expect(e).toBeInstanceOf(ConflictError);
       const err = e as ConflictError;
       expect(err.manifestConflict).toEqual({ actual: 7, expected: 5, tableKey: 'Person' });
+    }
+  });
+
+  it('ConflictError exposes readSetConflict when present', async () => {
+    const { fetch } = stubFetch({
+      status: 409,
+      body: {
+        error: 'read set changed',
+        code: 'conflict',
+        read_set_conflict: { member: 'graph_head:main', expected: '01A', actual: '01B' },
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    try {
+      await og.mutate({ query: 'insert Person { name: "x" }' });
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ConflictError);
+      const err = e as ConflictError;
+      expect(err.readSetConflict).toEqual({
+        member: 'graph_head:main',
+        expected: '01A',
+        actual: '01B',
+      });
+    }
+  });
+
+  it('maps a code-less 503 with recovery_required to ServiceUnavailableError', async () => {
+    // The 503 body deliberately has no `code` (ErrorCode is a closed wire
+    // contract), so the mapping must come from the status alone.
+    const { fetch } = stubFetch({
+      status: 503,
+      body: {
+        error: 'a durable recovery intent overlaps this write',
+        recovery_required: { operation_id: '01JRECOVERY' },
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    try {
+      await og.mutate({ query: 'insert Person { name: "x" }' });
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ServiceUnavailableError);
+      const err = e as ServiceUnavailableError;
+      expect(err.recoveryRequired).toEqual({ operationId: '01JRECOVERY' });
     }
   });
 

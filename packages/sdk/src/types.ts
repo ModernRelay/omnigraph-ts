@@ -35,7 +35,9 @@ import type {
   QueryCatalogEntry as QueryCatalogEntryOutput,
   QueryRequest,
   ReadOutput,
+  ReadSetConflictOutput,
   ReadTargetOutput,
+  RecoveryRequiredOutput,
   SchemaApplyOutput,
   SchemaApplyRequest,
   SchemaOutput,
@@ -81,6 +83,8 @@ export type Snapshot = Camelize<SnapshotOutput>;
 export type SnapshotTable = Camelize<SnapshotTableOutput>;
 export type MergeConflict = Camelize<MergeConflictOutput>;
 export type ManifestConflict = Camelize<ManifestConflictOutput>;
+export type ReadSetConflict = Camelize<ReadSetConflictOutput>;
+export type RecoveryRequired = Camelize<RecoveryRequiredOutput>;
 
 // Inputs (requests): camelCase from the caller, converted to snake_case on the wire.
 export type BranchCreateInput = Camelize<BranchCreateRequest>;
