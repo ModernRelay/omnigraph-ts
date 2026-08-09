@@ -87,6 +87,16 @@ describe('top-level client operations', () => {
     expect(r.branchCreated).toBe(false);
     expect(r.nodes[0]?.name).toBe('Person');
   });
+
+  it('loadNdjson omits absent query params entirely', async () => {
+    const { fetch, calls } = stubFetch({
+      body: { branch: 'main', branch_created: false, mode: 'merge', nodes: [], edges: [] },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await og.loadNdjson({ ndjson: '{"type":"Person","data":{}}\n' });
+    // No `?` — branch/from/mode fall back to server defaults on the wire.
+    expect(calls[0]?.url).toBe('http://x/graphs/g/load/ndjson');
+  });
 });
 
 describe('og.query and og.mutate (canonical successors to read/change)', () => {
