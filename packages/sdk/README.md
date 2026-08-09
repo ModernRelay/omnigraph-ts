@@ -36,7 +36,7 @@ console.log(rows); // → [{ '$p.name': 'Alice', '$p.age': 30 }]
 
 That's the whole pattern: instantiate once (with a `graphId`), call methods, get typed responses.
 
-> **`graphId` is required (server 0.7.0).** `omnigraph-server` is cluster-only: every graph-scoped operation is served under `/graphs/{graphId}/…`. A graph-scoped call without a `graphId` throws `ConfigurationError` before hitting the network. Only `og.health()` and `og.graphs.list()` work without one — use the latter to discover ids, then [`og.graph(id)`](#multi-graph-clusters). This SDK major.minor targets a 0.7.x server; for a 0.6.x (flat-route) server, stay on `@modernrelay/omnigraph@0.6.x`.
+> **`graphId` is required (server 0.7.0).** `omnigraph-server` is cluster-only: every graph-scoped operation is served under `/graphs/{graphId}/…`. A graph-scoped call without a `graphId` throws `ConfigurationError` before hitting the network. Only `og.health()` and `og.graphs.list()` work without one — use the latter to discover ids, then [`og.graph(id)`](#multi-graph-clusters). This SDK targets the matching server release (see [Server compatibility](#server-compatibility)); for a 0.6.x (flat-route) server, stay on `@modernrelay/omnigraph@0.6.x`.
 
 > **Removed in this release: `og.read`, `og.change`, `og.ingest`.** This major release drops the deprecated aliases for a single canonical surface — use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk-load). Field names are `query` / `name` (not `querySource` / `queryName`). The server still serves the old `/read`, `/change`, `/ingest` routes as shims, so a 0.6.x-era SDK keeps working — but this SDK no longer calls them.
 
@@ -91,7 +91,22 @@ await og.load({
 });
 ```
 
-`og.load()` is the canonical (and only) bulk-load method. **Loading into a branch that doesn't exist requires `from`** (the base to fork from); without it the server returns `NotFoundError` (404) rather than implicitly forking from `main`.
+`og.load()` is the canonical bulk-load method. **Loading into a branch that doesn't exist requires `from`** (the base to fork from); without it the server returns `NotFoundError` (404) rather than implicitly forking from `main`.
+
+For high-rate pipelines there is also `og.loadNdjson()` (server 0.9.0+), which posts the batch as a raw `application/x-ndjson` body instead of a JSON envelope — one strict, bounded graph-level batch per call, acknowledged only after its single graph commit is durably visible:
+
+```ts
+await og.loadNdjson({
+  branch: 'ingest',
+  from: 'main',           // same fork-if-missing rule as og.load()
+  mode: LoadMode.MERGE,   // default; upsert by @key — safe to retry
+  ndjson:
+    '{"type":"Person","data":{"name":"Ada"}}\n' +
+    '{"edge":"Knows","from":"ada","to":"grace","data":{}}\n',
+});
+```
+
+Each nonblank line is exactly one node envelope (`{"type":...,"data":{...}}`) or edge envelope (`{"edge":...,"from":...,"to":...,"data":{...}}`). The batch is bounded like every keyed load — an oversized request is refused with a 413 before any durable effect; split it across calls.
 
 ### Stream a branch as NDJSON
 
@@ -194,7 +209,8 @@ Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), 
 | `og.schema.apply({ schemaSource })` | **Rejected (409) on a cluster-managed graph** — evolve schema via `omnigraph cluster apply`, not over HTTP. |
 | `og.load({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
 | `og.load({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
-| `og.load({ data, mode: 'append' })` | **Not idempotent** — blind insert. Avoid for retry-prone callers. |
+| `og.load({ data, mode: 'append' })` | **Not idempotent on 0.8.x and earlier** — blind insert. On a 0.9.0+ server, a duplicate id is rejected with a key conflict instead of absorbed. Prefer `merge` for retry-prone callers either way. |
+| `og.loadNdjson({ ndjson, mode: 'merge' })` | **Idempotent** — same rules as `og.load()`; `merge` is the default mode. |
 | `og.mutate({ query })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
 
 If a mutation isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
