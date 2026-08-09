@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "0.8.1"
+    "version": "0.9.0"
   },
   "paths": {
     "/graphs": {
@@ -15,7 +15,7 @@
         "tags": [
           "management"
         ],
-        "summary": "List every graph currently registered with this server (MR-668).",
+        "summary": "List every graph currently registered with this server.",
         "description": "Multi-graph mode only. In single mode, the route returns 405 — there's\nno registry to enumerate. Cedar-gated by the server-level policy via\nthe `graph_list` action against `Omnigraph::Server::\"root\"`.\n\nOrder: alphabetical by `graph_id` (server-sorted so clients see\ndeterministic output across requests).",
         "operationId": "listGraphs",
         "responses": {
@@ -212,6 +212,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -227,7 +237,7 @@
           "branches"
         ],
         "summary": "Merge one branch into another.",
-        "description": "Merges `source` into `target` (defaults to `main`). Outcome is one of\n`already_up_to_date`, `fast_forward`, or `merged`. Returns 409 with the\nlist of conflicts if the merge cannot be completed; the target is left\nunchanged in that case. **Destructive** to `target` on success.",
+        "description": "Merges `source` into `target` (defaults to `main`). Outcome is one of\n`already_up_to_date`, `fast_forward`, or `merged`. Returns 409 with the\nlist of conflicts if the merge cannot be completed; the target is left\nunchanged in that case. **Destructive** to `target` on success.\n\nWith `delete_branch: true` the source branch is deleted after a successful\nmerge, under its own `branch_delete` policy check. The merge is durable by\nthen, so a deletion refusal or failure never fails the request; it is\nreported via `branch_deleted: false` + `branch_delete_error`.",
         "operationId": "cluster_mergeBranches",
         "parameters": [
           {
@@ -301,8 +311,28 @@
               }
             }
           },
+          "413": {
+            "description": "Merge row, byte, or recovery-chain ceiling exceeded before effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
             "content": {
               "application/json": {
                 "schema": {
@@ -397,6 +427,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -477,7 +517,17 @@
             }
           },
           "409": {
-            "description": "Merge conflict",
+            "description": "Write-authority conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Keyed write exceeds the per-commit row or byte ceiling",
             "content": {
               "application/json": {
                 "schema": {
@@ -488,6 +538,16 @@
           },
           "429": {
             "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
             "content": {
               "application/json": {
                 "schema": {
@@ -510,8 +570,8 @@
         "tags": [
           "commits"
         ],
-        "summary": "List commits.",
-        "description": "Filter by `branch` to get the commits on a single branch (most recent\nfirst); omit to list across all branches. Read-only.",
+        "summary": "List commits, most recent first.",
+        "description": "`branch` selects which history to list: a named branch returns the history\nreachable from that branch's head (the main commits inherited up to the\nfork plus the branch-authored commits); omitting it returns `main`'s\nhistory. There is no cross-branch listing. Ordering is part of the\ncontract — newest first by (manifest version, created-at, commit id) — and\na future `cursor`/`limit` pagination will be keyset-based on that same\norder. Read-only.",
         "operationId": "cluster_listCommits",
         "parameters": [
           {
@@ -716,6 +776,46 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Branch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Export authority conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Export cut or transport capacity exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recovery required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -795,8 +895,38 @@
               }
             }
           },
+          "409": {
+            "description": "Prepared load authority changed before effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Keyed load exceeds the per-commit row or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
             "content": {
               "application/json": {
                 "schema": {
@@ -819,8 +949,8 @@
         "tags": [
           "mutations"
         ],
-        "summary": "Bulk-load NDJSON data into a branch (canonical load endpoint).",
-        "description": "`data` is NDJSON with one record per line. `mode` controls behavior on\nexisting rows: `merge` upserts by id (default), `append` blindly inserts,\n`overwrite` replaces table contents. Branch creation is opt-in by\npresence of `from`: with `from` set, a missing `branch` is created from\nit; without `from`, `branch` must already exist — a missing branch is a\n404, never an implicit fork. **Destructive** when `mode` is `overwrite`\nor when the load produces conflicting writes.\n\nThe legacy `POST /ingest` route has identical semantics and is kept as a\ndeprecated alias.",
+        "summary": "Compatibility-load NDJSON data through a JSON envelope.",
+        "description": "`data` is NDJSON with one record per line. `mode` controls behavior on\nexisting rows: `merge` upserts by id (default), `append` strictly inserts\nabsent ids, and `overwrite` replaces table contents. Branch creation is opt-in by\npresence of `from`: with `from` set, a missing `branch` is created from\nit; without `from`, `branch` must already exist — a missing branch is a\n404, never an implicit fork. **Destructive** when `mode` is `overwrite`\nor when the load produces conflicting writes.\n\nThe legacy `POST /ingest` route has identical semantics and is kept as a\ndeprecated alias.",
         "operationId": "cluster_load",
         "parameters": [
           {
@@ -884,8 +1014,217 @@
               }
             }
           },
+          "409": {
+            "description": "Prepared load authority changed before effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Keyed load exceeds the per-commit row or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/load/ndjson": {
+      "post": {
+        "tags": [
+          "mutations"
+        ],
+        "summary": "Load one strict, bounded graph-level NDJSON batch.",
+        "description": "Bearer authentication runs in middleware. This handler completes both\nbranch authorization checks before polling the raw body. A successful\nresponse describes logical schema declarations only and is returned after\nthe ordinary graph commit is visible.",
+        "operationId": "cluster_loadNdjson",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Target branch. Defaults to `main`. Without `from`, it must exist.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Parent branch used to create a missing target branch.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "How existing rows are handled. Defaults to `merge`.",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LoadMode"
+                }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Strict raw graph-level NDJSON. Each nonblank line is exactly one node envelope {\"type\":\"<Node>\",\"data\":{...}} or edge envelope {\"edge\":\"<Edge>\",\"from\":\"<src-id>\",\"to\":\"<dst-id>\",\"data\":{...}}. `data` defaults to {}; optional `data.id` follows ordinary ID semantics. Duplicate, unknown, reserved physical, and noncanonical supplied node-ID members are refused.",
+          "content": {
+            "application/x-ndjson": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "One committed graph-batch result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphBatchLoadOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query or graph batch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target branch missing without `from`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Prepared load authority changed before effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request or keyed load exceeds a bounded ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/x-ndjson",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
             "content": {
               "application/json": {
                 "schema": {
@@ -908,7 +1247,7 @@
           "mutations"
         ],
         "summary": "Apply a GQ mutation to a branch (canonical mutation endpoint).",
-        "description": "Writes to the named `branch` (defaults to `main`). Mutations are atomic\nper call and produce a new commit. Returns counts of nodes and edges\naffected. **Destructive**: on success the branch is updated; rejected\nmutations may still acquire locks briefly. Returns 409 on merge conflict.\n\nPairs with `POST /query` (read-only). The legacy `POST /change` route\nhas identical semantics and is kept as a deprecated alias.",
+        "description": "Writes to the named `branch` (defaults to `main`). Mutations are atomic\nper call and produce a new commit. Returns counts of nodes and edges\naffected. **Destructive**: on success the branch is updated; rejected\nmutations may still acquire locks briefly. Returns 409 when the prepared\nwrite authority changes before effects.\n\nPairs with `POST /query` (read-only). The legacy `POST /change` route\nhas identical semantics and is kept as a deprecated alias.",
         "operationId": "cluster_mutate",
         "parameters": [
           {
@@ -973,7 +1312,17 @@
             }
           },
           "409": {
-            "description": "Merge conflict",
+            "description": "Write-authority conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Keyed write exceeds the per-commit row or byte ceiling",
             "content": {
               "application/json": {
                 "schema": {
@@ -984,6 +1333,16 @@
           },
           "429": {
             "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
             "content": {
               "application/json": {
                 "schema": {
@@ -1154,7 +1513,17 @@
             }
           },
           "409": {
-            "description": "Merge conflict",
+            "description": "Stored mutation write-authority conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Stored keyed mutation exceeds the per-commit row or byte ceiling",
             "content": {
               "application/json": {
                 "schema": {
@@ -1175,6 +1544,16 @@
           },
           "500": {
             "description": "Policy evaluation error (a denial is reported as 404, not 500)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A stored mutation is blocked by a durable recovery intent",
             "content": {
               "application/json": {
                 "schema": {
@@ -1699,6 +2078,20 @@
               "null"
             ]
           },
+          "branch_delete_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the requested source-branch deletion did not happen. Present iff\n`branch_deleted` is `false`."
+          },
+          "branch_deleted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Result of the requested post-merge source-branch deletion. Absent when\n`delete_branch` was not requested; `true` when the source branch was\ndeleted; `false` when the deletion was refused or failed (the merge\nitself still succeeded — see `branch_delete_error`)."
+          },
           "outcome": {
             "$ref": "#/components/schemas/BranchMergeOutcome"
           },
@@ -1716,6 +2109,10 @@
           "source"
         ],
         "properties": {
+          "delete_branch": {
+            "type": "boolean",
+            "description": "Delete the source branch after a successful merge. The deletion runs\nunder its own `branch_delete` policy check; a refusal or failure is\nreported via `branch_deleted` / `branch_delete_error` on the response\nand never fails the already-landed merge."
+          },
           "source": {
             "type": "string",
             "description": "Source branch whose commits will be merged."
@@ -1884,6 +2281,17 @@
           "error": {
             "type": "string"
           },
+          "key_conflict": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/KeyConflictOutput",
+                "description": "Set when a strict keyed insert found an existing or concurrently\ninserted logical id.  The caller may choose a different id; replaying\nthe same strict operation will not convert it into an upsert."
+              }
+            ]
+          },
           "manifest_conflict": {
             "oneOf": [
               {
@@ -1900,6 +2308,39 @@
             "items": {
               "$ref": "#/components/schemas/MergeConflictOutput"
             }
+          },
+          "read_set_conflict": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReadSetConflictOutput",
+                "description": "Set when a prepared write's logical authority changed before effects."
+              }
+            ]
+          },
+          "recovery_required": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryRequiredOutput",
+                "description": "Set when an overlapping durable recovery intent must be resolved before\nretry. Its table effects may or may not have started."
+              }
+            ]
+          },
+          "resource_limit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ResourceLimitOutput",
+                "description": "Set when the request must be split into smaller graph commits. The\nrejected attempt has no durable sidecar and no table effect."
+              }
+            ]
           }
         }
       },
@@ -1926,6 +2367,77 @@
               "type": "string"
             },
             "description": "Restrict the export to these node/edge type names. Empty exports all types."
+          }
+        }
+      },
+      "GraphBatchDeclarationOutput": {
+        "type": "object",
+        "description": "One logical declaration touched by a graph-batch load.\n\nThis deliberately carries the accepted-schema name, not the backing\nmanifest table key, dataset path, or Lance identity.",
+        "required": [
+          "name",
+          "rows_loaded"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "rows_loaded": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "GraphBatchLoadOutput": {
+        "type": "object",
+        "description": "Terminal result for the raw graph-level NDJSON load surface.",
+        "required": [
+          "branch",
+          "branch_created",
+          "mode",
+          "nodes",
+          "edges",
+          "total_rows"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base branch a fork was requested from, even when the target already\nexisted. `null` when the request omitted `from`."
+          },
+          "branch": {
+            "type": "string"
+          },
+          "branch_created": {
+            "type": "boolean"
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphBatchDeclarationOutput"
+            },
+            "description": "Logical edge declarations touched by this batch, sorted by name."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/LoadMode"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphBatchDeclarationOutput"
+            },
+            "description": "Logical node declarations touched by this batch, sorted by name."
+          },
+          "total_rows": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -2101,7 +2613,7 @@
               "boolean",
               "null"
             ],
-            "description": "The kind the caller expects (RFC-011 Decision 3): `Some(false)` for\n`omnigraph query <name>`, `Some(true)` for `omnigraph mutate <name>`.\nWhen set and it disagrees with the stored query's actual kind, the\nserver rejects the call (400) so the verb asserts the kind. `None`\n(the default) skips the check — preserving older clients and aliases."
+            "description": "The kind the caller expects: `Some(false)` for\n`omnigraph query <name>`, `Some(true)` for `omnigraph mutate <name>`.\nWhen set and it disagrees with the stored query's actual kind, the\nserver rejects the call (400) so the verb asserts the kind. `None`\n(the default) skips the check — preserving older clients and aliases."
           },
           "params": {
             "description": "JSON object whose keys match the stored query's declared parameters."
@@ -2125,6 +2637,24 @@
           }
         ],
         "description": "Response for `POST /queries/{name}`: the read envelope for a stored\nread, or the mutation envelope for a stored mutation. Serialized\n**untagged**, so the wire shape is exactly [`ReadOutput`] or\n[`ChangeOutput`] — classification follows the stored query, not a\nwrapper field."
+      },
+      "KeyConflictOutput": {
+        "type": "object",
+        "description": "A strict insert rejected because `key` already names a row in the keyed\ngraph table.  The operation is effect-free when this output is returned;\npartial or ambiguous attempts surface `recovery_required` instead.",
+        "required": [
+          "table_key"
+        ],
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "table_key": {
+            "type": "string"
+          }
+        }
       },
       "LoadMode": {
         "type": "string",
@@ -2413,6 +2943,30 @@
           }
         }
       },
+      "ReadSetConflictOutput": {
+        "type": "object",
+        "description": "Structured authority mismatch for a prepared write. Values are\nstrings because members include optional graph commit ids and future\nauthority tokens, not only numeric table versions.",
+        "required": [
+          "member"
+        ],
+        "properties": {
+          "actual": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "member": {
+            "type": "string"
+          }
+        }
+      },
       "ReadTargetOutput": {
         "type": "object",
         "properties": {
@@ -2427,6 +2981,41 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "RecoveryRequiredOutput": {
+        "type": "object",
+        "required": [
+          "operation_id"
+        ],
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ResourceLimitOutput": {
+        "type": "object",
+        "description": "A write rejected before durable recovery ownership because its bounded\nphysical plan exceeded an explicit row, byte, or transaction-chain ceiling.",
+        "required": [
+          "resource",
+          "limit",
+          "actual"
+        ],
+        "properties": {
+          "actual": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "resource": {
+            "type": "string"
           }
         }
       },

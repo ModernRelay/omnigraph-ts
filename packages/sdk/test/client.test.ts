@@ -60,6 +60,33 @@ describe('top-level client operations', () => {
     expect(r.baseBranch).toBeNull();
     expect(r.branchCreated).toBe(false);
   });
+
+  it('loadNdjson sends the raw NDJSON body with the x-ndjson content type', async () => {
+    const ndjson =
+      '{"type":"Person","data":{"name":"A"}}\n' +
+      '{"edge":"Knows","from":"a","to":"b","data":{}}\n';
+    const { fetch, calls } = stubFetch({
+      body: {
+        actor_id: null,
+        base_branch: null,
+        branch: 'main',
+        branch_created: false,
+        mode: 'merge',
+        nodes: [{ name: 'Person', rows: 1 }],
+        edges: [{ name: 'Knows', rows: 1 }],
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const r = await og.loadNdjson({ ndjson, branch: 'main', mode: 'merge' });
+    expect(calls[0]?.method).toBe('POST');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/load/ndjson?branch=main&mode=merge');
+    // The body must pass through verbatim — no JSON re-encoding, no
+    // camel-to-snake rewriting of the user-schema `data` keys.
+    expect(calls[0]?.body).toBe(ndjson);
+    expect(calls[0]?.headers['content-type']).toBe('application/x-ndjson');
+    expect(r.branchCreated).toBe(false);
+    expect(r.nodes[0]?.name).toBe('Person');
+  });
 });
 
 describe('og.query and og.mutate (canonical successors to read/change)', () => {

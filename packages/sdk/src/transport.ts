@@ -30,6 +30,12 @@ const FLAT_PATHS: ReadonlySet<string> = new Set(['/healthz', '/graphs']);
 
 export interface RequestOptions {
   body?: unknown;
+  /**
+   * Raw request body sent verbatim with the given Content-Type, bypassing
+   * the JSON + camelCase-to-snake_case pipeline. For non-JSON payloads such
+   * as NDJSON (`POST /load/ndjson`). Mutually exclusive with `body`.
+   */
+  rawBody?: { content: string; contentType: string };
   query?: Record<string, string | string[] | undefined | null>;
   signal?: AbortSignal;
   /**
@@ -113,7 +119,10 @@ export class Transport {
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
     headers.set('Accept', 'application/json, application/x-ndjson');
     let bodyInit: BodyInit | undefined;
-    if (opts.body !== undefined) {
+    if (opts.rawBody !== undefined) {
+      bodyInit = opts.rawBody.content;
+      headers.set('Content-Type', opts.rawBody.contentType);
+    } else if (opts.body !== undefined) {
       bodyInit = JSON.stringify(
         camelToSnake(opts.body, { opaqueKeys: opts.opaqueBodyKeys }),
       );
