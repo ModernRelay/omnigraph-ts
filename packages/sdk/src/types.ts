@@ -18,6 +18,8 @@ import type {
   CommitOutput,
   ErrorCode,
   ExportRequest,
+  GraphBatchDeclarationOutput,
+  GraphBatchLoadOutput,
   GraphInfo as GraphInfoOutput,
   GraphListResponse,
   HealthOutput,
@@ -66,6 +68,9 @@ export type GraphList = Camelize<GraphListResponse>;
 export type Health = Camelize<HealthOutput>;
 export type Ingest = Camelize<IngestOutput>;
 export type IngestTable = Camelize<IngestTableOutput>;
+// Strict graph-level NDJSON batch load (POST /load/ndjson).
+export type GraphBatchLoad = Camelize<GraphBatchLoadOutput>;
+export type GraphBatchDeclaration = Camelize<GraphBatchDeclarationOutput>;
 export type Read = Camelize<ReadOutput>;
 export type ReadTarget = Camelize<ReadTargetOutput>;
 // Stored queries (GET /queries, POST /queries/{name}).
@@ -88,6 +93,25 @@ export type BranchMergeInput = Camelize<BranchMergeRequest>;
 export type MutationInput = Camelize<ChangeRequest>;
 export type ExportInput = Camelize<ExportRequest>;
 export type IngestInput = Camelize<IngestRequest>;
+/**
+ * Input for `loadNdjson` (`POST /load/ndjson`). The body is raw NDJSON —
+ * the routing knobs travel as query parameters, so this is a hand-written
+ * shape rather than a camelized wire DTO.
+ */
+export interface LoadNdjsonInput {
+  /**
+   * Strict graph-level NDJSON: each nonblank line is exactly one node
+   * envelope `{"type":"<Node>","data":{...}}` or edge envelope
+   * `{"edge":"<Edge>","from":"<src-id>","to":"<dst-id>","data":{...}}`.
+   */
+  ndjson: string;
+  /** Target branch. Defaults to `main`. Without `from`, it must exist. */
+  branch?: string;
+  /** Parent branch used to create a missing target branch. */
+  from?: string;
+  /** How existing rows are handled. Defaults to `merge`. */
+  mode?: LoadMode;
+}
 export type QueryInput = Camelize<QueryRequest>;
 export type InvokeQueryInput = Camelize<InvokeStoredQueryRequest>;
 export type SchemaApplyInput = Camelize<SchemaApplyRequest>;

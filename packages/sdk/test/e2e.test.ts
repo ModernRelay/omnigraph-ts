@@ -216,6 +216,32 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       });
       expect((r.rows as unknown[]).length).toBe(1);
     });
+
+    // New endpoint in server 0.9.0: strict bounded graph-level NDJSON batch.
+    // This is the one place the raw x-ndjson request body meets a real
+    // server — the unit test only proves the shape against our own mock.
+    it('loadNdjson commits a strict graph batch and the rows are queryable', async () => {
+      const branch = `e2e-ndjson-${Date.now()}`;
+      const name = `e2e-Dave-${Date.now()}`;
+      branchesToCleanup.push(branch);
+      const result = await og.loadNdjson({
+        branch,
+        from: 'main',
+        mode: LoadMode.MERGE,
+        ndjson: JSON.stringify({ type: 'Person', data: { name, age: 44 } }) + '\n',
+      });
+      expect(result.branch).toBe(branch);
+      expect(result.nodes.length).toBeGreaterThan(0);
+
+      const r = await og.query({
+        query:
+          'query find($name: String) { match { $p: Person { name: $name } } return { $p.name, $p.age } }',
+        name: 'find',
+        params: { name },
+        branch,
+      });
+      expect((r.rows as unknown[]).length).toBe(1);
+    });
   });
 
   describe('commits', () => {

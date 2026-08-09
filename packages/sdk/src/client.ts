@@ -10,9 +10,11 @@ import { SchemaResource } from './resources/schema';
 import type {
   Change,
   ExportInput,
+  GraphBatchLoad,
   Health,
   Ingest,
   IngestInput,
+  LoadNdjsonInput,
   MutationInput,
   QueryInput,
   Read,
@@ -138,6 +140,29 @@ export default class Omnigraph {
    */
   load(input: IngestInput, opts: CallOptions = {}): Promise<Ingest> {
     return this.t.request<Ingest>('POST', '/load', { body: input, signal: opts.signal });
+  }
+
+  /**
+   * Load one strict, bounded graph-level NDJSON batch (`POST /load/ndjson`,
+   * `Content-Type: application/x-ndjson`). One graph commit per request,
+   * acknowledged only after it is durably visible.
+   *
+   * Each nonblank line is exactly one node envelope
+   * `{"type":"<Node>","data":{...}}` or edge envelope
+   * `{"edge":"<Edge>","from":"<src-id>","to":"<dst-id>","data":{...}}`.
+   * Bounded like every keyed load — an oversized batch is refused with a
+   * 413 before any durable effect; split it across requests.
+   *
+   * `mode` defaults to `merge` (**use it for at-least-once safety** — retries
+   * upsert by `@key` instead of duplicating rows). **Branch creation is
+   * opt-in**: without `from`, the target `branch` must already exist.
+   */
+  loadNdjson(input: LoadNdjsonInput, opts: CallOptions = {}): Promise<GraphBatchLoad> {
+    return this.t.request<GraphBatchLoad>('POST', '/load/ndjson', {
+      query: { branch: input.branch, from: input.from, mode: input.mode },
+      rawBody: { content: input.ndjson, contentType: 'application/x-ndjson' },
+      signal: opts.signal,
+    });
   }
 
   /**

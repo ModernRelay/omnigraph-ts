@@ -43,12 +43,31 @@ export type BranchMergeOutcome =
 
 export type BranchMergeOutput = {
   actor_id?: string | null;
+  /**
+   * Why the requested source-branch deletion did not happen. Present iff
+   * `branch_deleted` is `false`.
+   */
+  branch_delete_error?: string | null;
+  /**
+   * Result of the requested post-merge source-branch deletion. Absent when
+   * `delete_branch` was not requested; `true` when the source branch was
+   * deleted; `false` when the deletion was refused or failed (the merge
+   * itself still succeeded — see `branch_delete_error`).
+   */
+  branch_deleted?: boolean | null;
   outcome: BranchMergeOutcome;
   source: string;
   target: string;
 };
 
 export type BranchMergeRequest = {
+  /**
+   * Delete the source branch after a successful merge. The deletion runs
+   * under its own `branch_delete` policy check; a refusal or failure is
+   * reported via `branch_deleted` / `branch_delete_error` on the response
+   * and never fails the already-landed merge.
+   */
+  delete_branch?: boolean;
   /**
    * Source branch whose commits will be merged.
    */
@@ -124,8 +143,12 @@ export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 export type ErrorOutput = {
   code?: null | ErrorCode;
   error: string;
+  key_conflict?: null | KeyConflictOutput;
   manifest_conflict?: null | ManifestConflictOutput;
   merge_conflicts?: Array<MergeConflictOutput>;
+  read_set_conflict?: null | ReadSetConflictOutput;
+  recovery_required?: null | RecoveryRequiredOutput;
+  resource_limit?: null | ResourceLimitOutput;
 };
 
 export type ExportRequest = {
@@ -141,6 +164,41 @@ export type ExportRequest = {
    * Restrict the export to these node/edge type names. Empty exports all types.
    */
   type_names?: Array<string>;
+};
+
+/**
+ * One logical declaration touched by a graph-batch load.
+ *
+ * This deliberately carries the accepted-schema name, not the backing
+ * manifest table key, dataset path, or Lance identity.
+ */
+export type GraphBatchDeclarationOutput = {
+  name: string;
+  rows_loaded: number;
+};
+
+/**
+ * Terminal result for the raw graph-level NDJSON load surface.
+ */
+export type GraphBatchLoadOutput = {
+  actor_id?: string | null;
+  /**
+   * Base branch a fork was requested from, even when the target already
+   * existed. `null` when the request omitted `from`.
+   */
+  base_branch?: string | null;
+  branch: string;
+  branch_created: boolean;
+  /**
+   * Logical edge declarations touched by this batch, sorted by name.
+   */
+  edges: Array<GraphBatchDeclarationOutput>;
+  mode: LoadMode;
+  /**
+   * Logical node declarations touched by this batch, sorted by name.
+   */
+  nodes: Array<GraphBatchDeclarationOutput>;
+  total_rows: number;
 };
 
 /**
@@ -224,7 +282,7 @@ export type InvokeStoredQueryRequest = {
    */
   branch?: string | null;
   /**
-   * The kind the caller expects (RFC-011 Decision 3): `Some(false)` for
+   * The kind the caller expects: `Some(false)` for
    * `omnigraph query <name>`, `Some(true)` for `omnigraph mutate <name>`.
    * When set and it disagrees with the stored query's actual kind, the
    * server rejects the call (400) so the verb asserts the kind. `None`
@@ -250,6 +308,16 @@ export type InvokeStoredQueryRequest = {
  * wrapper field.
  */
 export type InvokeStoredQueryResponse = ReadOutput | ChangeOutput;
+
+/**
+ * A strict insert rejected because `key` already names a row in the keyed
+ * graph table.  The operation is effect-free when this output is returned;
+ * partial or ambiguous attempts surface `recovery_required` instead.
+ */
+export type KeyConflictOutput = {
+  key?: string | null;
+  table_key: string;
+};
 
 /**
  * Shadow enum for documenting [`LoadMode`] in the OpenAPI schema.
@@ -443,9 +511,34 @@ export type ReadRequest = {
   snapshot?: string | null;
 };
 
+/**
+ * Structured authority mismatch for a prepared write. Values are
+ * strings because members include optional graph commit ids and future
+ * authority tokens, not only numeric table versions.
+ */
+export type ReadSetConflictOutput = {
+  actual?: string | null;
+  expected?: string | null;
+  member: string;
+};
+
 export type ReadTargetOutput = {
   branch?: string | null;
   snapshot?: string | null;
+};
+
+export type RecoveryRequiredOutput = {
+  operation_id: string;
+};
+
+/**
+ * A write rejected before durable recovery ownership because its bounded
+ * physical plan exceeded an explicit row, byte, or transaction-chain ceiling.
+ */
+export type ResourceLimitOutput = {
+  actual: number;
+  limit: number;
+  resource: string;
 };
 
 export type SchemaApplyOutput = {
@@ -597,6 +690,10 @@ export type ClusterCreateBranchErrors = {
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterCreateBranchError =
@@ -642,9 +739,17 @@ export type ClusterMergeBranchesErrors = {
    */
   409: ErrorOutput;
   /**
+   * Merge row, byte, or recovery-chain ceiling exceeded before effects
+   */
+  413: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterMergeBranchesError =
@@ -693,6 +798,10 @@ export type ClusterDeleteBranchErrors = {
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterDeleteBranchError =
@@ -734,13 +843,21 @@ export type ClusterChangeErrors = {
    */
   403: ErrorOutput;
   /**
-   * Merge conflict
+   * Write-authority conflict
    */
   409: ErrorOutput;
+  /**
+   * Keyed write exceeds the per-commit row or byte ceiling
+   */
+  413: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterChangeError = ClusterChangeErrors[keyof ClusterChangeErrors];
@@ -862,6 +979,22 @@ export type ClusterExportErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Branch not found
+   */
+  404: ErrorOutput;
+  /**
+   * Export authority conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Export cut or transport capacity exhausted
+   */
+  413: ErrorOutput;
+  /**
+   * Recovery required
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterExportError = ClusterExportErrors[keyof ClusterExportErrors];
@@ -899,9 +1032,21 @@ export type ClusterIngestErrors = {
    */
   403: ErrorOutput;
   /**
+   * Prepared load authority changed before effects
+   */
+  409: ErrorOutput;
+  /**
+   * Keyed load exceeds the per-commit row or byte ceiling
+   */
+  413: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterIngestError = ClusterIngestErrors[keyof ClusterIngestErrors];
@@ -942,9 +1087,21 @@ export type ClusterLoadErrors = {
    */
   403: ErrorOutput;
   /**
+   * Prepared load authority changed before effects
+   */
+  409: ErrorOutput;
+  /**
+   * Keyed load exceeds the per-commit row or byte ceiling
+   */
+  413: ErrorOutput;
+  /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterLoadError = ClusterLoadErrors[keyof ClusterLoadErrors];
@@ -958,6 +1115,86 @@ export type ClusterLoadResponses = {
 
 export type ClusterLoadResponse =
   ClusterLoadResponses[keyof ClusterLoadResponses];
+
+export type ClusterLoadNdjsonData = {
+  /**
+   * Strict raw graph-level NDJSON. Each nonblank line is exactly one node envelope {"type":"<Node>","data":{...}} or edge envelope {"edge":"<Edge>","from":"<src-id>","to":"<dst-id>","data":{...}}. `data` defaults to {}; optional `data.id` follows ordinary ID semantics. Duplicate, unknown, reserved physical, and noncanonical supplied node-ID members are refused.
+   */
+  body: string;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: {
+    /**
+     * Target branch. Defaults to `main`. Without `from`, it must exist.
+     */
+    branch?: string | null;
+    /**
+     * Parent branch used to create a missing target branch.
+     */
+    from?: string | null;
+    /**
+     * How existing rows are handled. Defaults to `merge`.
+     */
+    mode?: null | LoadMode;
+  };
+  url: "/graphs/{graph_id}/load/ndjson";
+};
+
+export type ClusterLoadNdjsonErrors = {
+  /**
+   * Malformed query or graph batch
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Target branch missing without `from`
+   */
+  404: ErrorOutput;
+  /**
+   * Prepared load authority changed before effects
+   */
+  409: ErrorOutput;
+  /**
+   * Request or keyed load exceeds a bounded ceiling
+   */
+  413: ErrorOutput;
+  /**
+   * Content-Type must be application/x-ndjson
+   */
+  415: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
+};
+
+export type ClusterLoadNdjsonError =
+  ClusterLoadNdjsonErrors[keyof ClusterLoadNdjsonErrors];
+
+export type ClusterLoadNdjsonResponses = {
+  /**
+   * One committed graph-batch result
+   */
+  200: GraphBatchLoadOutput;
+};
+
+export type ClusterLoadNdjsonResponse =
+  ClusterLoadNdjsonResponses[keyof ClusterLoadNdjsonResponses];
 
 export type ClusterMutateData = {
   body: ChangeRequest;
@@ -985,13 +1222,21 @@ export type ClusterMutateErrors = {
    */
   403: ErrorOutput;
   /**
-   * Merge conflict
+   * Write-authority conflict
    */
   409: ErrorOutput;
+  /**
+   * Keyed write exceeds the per-commit row or byte ceiling
+   */
+  413: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
   429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterMutateError = ClusterMutateErrors[keyof ClusterMutateErrors];
@@ -1076,9 +1321,13 @@ export type ClusterInvokeQueryErrors = {
    */
   404: ErrorOutput;
   /**
-   * Merge conflict
+   * Stored mutation write-authority conflict
    */
   409: ErrorOutput;
+  /**
+   * Stored keyed mutation exceeds the per-commit row or byte ceiling
+   */
+  413: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -1087,6 +1336,10 @@ export type ClusterInvokeQueryErrors = {
    * Policy evaluation error (a denial is reported as 404, not 500)
    */
   500: ErrorOutput;
+  /**
+   * A stored mutation is blocked by a durable recovery intent
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterInvokeQueryError =
