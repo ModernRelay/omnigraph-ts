@@ -25,11 +25,10 @@ import type {
   HealthOutput,
   IngestOutput,
   IngestRequest,
-  IngestTableOutput,
   InvokeStoredQueryRequest,
   InvokeStoredQueryResponse,
   LoadMode,
-  ManifestConflictOutput,
+  PublishedDatasetVersionConflictOutput,
   MergeConflictKindOutput,
   MergeConflictOutput,
   ParamDescriptor as ParamDescriptorOutput,
@@ -42,18 +41,19 @@ import type {
   SchemaApplyRequest,
   SchemaOutput,
   SnapshotOutput,
-  SnapshotTableOutput,
+  SnapshotDatasetOutput,
 } from './generated/types.gen';
 
 type CamelKey<S extends string> = S extends `${infer P}_${infer R}`
   ? `${P}${Capitalize<CamelKey<R>>}`
   : S;
 
-export type Camelize<T> = T extends Array<infer U>
-  ? Array<Camelize<U>>
-  : T extends object
-  ? { [K in keyof T as K extends string ? CamelKey<K> : K]: Camelize<T[K]> }
-  : T;
+export type Camelize<T> =
+  T extends Array<infer U>
+    ? Array<Camelize<U>>
+    : T extends object
+      ? { [K in keyof T as K extends string ? CamelKey<K> : K]: Camelize<T[K]> }
+      : T;
 
 // Outputs (responses): camelCase facing the caller.
 export type BranchCreate = Camelize<BranchCreateOutput>;
@@ -67,7 +67,6 @@ export type GraphInfo = Camelize<GraphInfoOutput>;
 export type GraphList = Camelize<GraphListResponse>;
 export type Health = Camelize<HealthOutput>;
 export type Ingest = Camelize<IngestOutput>;
-export type IngestTable = Camelize<IngestTableOutput>;
 // Strict graph-level NDJSON batch load (POST /load/ndjson).
 export type GraphBatchLoad = Camelize<GraphBatchLoadOutput>;
 export type GraphBatchDeclaration = Camelize<GraphBatchDeclarationOutput>;
@@ -83,9 +82,43 @@ export type InvokeQuery = Camelize<InvokeStoredQueryResponse>;
 export type Schema = Camelize<SchemaOutput>;
 export type SchemaApply = Camelize<SchemaApplyOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
-export type SnapshotTable = Camelize<SnapshotTableOutput>;
+export type SnapshotDataset = Camelize<SnapshotDatasetOutput>;
 export type MergeConflict = Camelize<MergeConflictOutput>;
-export type ManifestConflict = Camelize<ManifestConflictOutput>;
+export type PublishedDatasetVersionConflict =
+  Camelize<PublishedDatasetVersionConflictOutput>;
+
+export type CommitChanges = Camelize<
+  import('./generated/types.gen').CommitChangesOutput
+>;
+export type ChangeFeed = Camelize<
+  import('./generated/types.gen').ChangeFeedOutput
+>;
+export type ChangeBlock = Camelize<
+  import('./generated/types.gen').ChangeBlockOutput
+>;
+export type ChangeCause = Camelize<
+  import('./generated/types.gen').ChangeCauseOutput
+>;
+export type EntityChange = Camelize<
+  import('./generated/types.gen').EntityChangeOutput
+>;
+export type ChangeImage = Camelize<
+  import('./generated/types.gen').ChangeImageOutput
+>;
+export type ChangeBaseline = Camelize<
+  import('./generated/types.gen').ChangeBaselineOutput
+>;
+export type ChangeBaselineInput = Camelize<
+  import('./generated/types.gen').ChangeBaselineRequest
+>;
+/** Entity NDJSON envelopes; user property names inside data are never converted. */
+export type ExportRecord =
+  | { type: string; data: Record<string, unknown> }
+  | { edge: string; from: string; to: string; data: Record<string, unknown> };
+/** The OpenAPI record describes the terminal envelope only; entities precede it. */
+export type ChangeBaselineRecord =
+  | ExportRecord
+  | Camelize<import('./generated/types.gen').ChangeBaselineRecord>;
 
 // Inputs (requests): camelCase from the caller, converted to snake_case on the wire.
 export type BranchCreateInput = Camelize<BranchCreateRequest>;
@@ -125,6 +158,10 @@ export {
   LoadMode,
   MergeConflictKindOutput,
   ParamKind,
+  BlobEntityKind,
+  EntityKindOutput,
+  ChangeOpOutput,
+  ChangeDiffRefusalReason,
 } from './generated/types.gen';
 
 // CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.

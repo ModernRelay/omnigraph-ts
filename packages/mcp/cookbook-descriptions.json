@@ -10,18 +10,15 @@
     },
     "schema": {
       "title": "Schema authoring and evolution",
-      "description": "Read before calling `schema_apply`. Covers .pg grammar, decorators (@key, @unique, @embed, @rename_from), inline-only enums, the add-optional→backfill→tighten sequence for non-nullable additions, and why apply is main-only and rejects open feature branches."
-    },
-    "remote-ops": {
-      "title": "Remote-operation safety",
-      "description": "Read after any 504 or unexpected error. Covers the verify-after-write ritual (commits_list head before/after), retry-safety table by node kind (pointer types dedupe via @key; append-only types duplicate on retry), and the `sync_branch()` server-internal error vs. a tool."
+      "description": "Read to interpret `schema_get` and .pg declarations. Covers decorators, inline enums, stable renames, and add-optional/backfill evolution; tightening optional properties remains unsupported. Schema changes are operator-owned through cluster apply, not an MCP tool."
     },
     "search": {
       "title": "Vector and full-text search",
-      "description": "Read before using nearest/bm25/rrf. Covers the scope-first-rank-second pattern, the hardcoded embedding model (gemini-embedding-2-preview, Vector(3072)), and trailing-`limit` requirement."
+      "description": "Read before using nearest/bm25/rrf. Covers scope-first-rank-second queries, schema-declared embeddings, and the trailing-`limit` requirement. Match vector dimensions and models to the live deployment; CLI examples are not MCP tools."
     }
   },
   "skipped": {
+    "remote-ops": "Awaiting upstream v0.10 refresh: its blanket 409 retry and branch-head verification advice conflicts with exact commit receipts and typed refusals. Current MCP instructions and README define write/error handling instead.",
     "aliases": "CLI-only — operator aliases + --alias mechanics, not actionable through the HTTP API the MCP wraps.",
     "commands": "CLI-only — the omnigraph binary's command surface, not the HTTP API.",
     "server-policy": "Server-deployment concerns (Cedar policy, auth tokens), out of scope for an MCP client.",

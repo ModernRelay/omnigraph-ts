@@ -1,6 +1,7 @@
 import type { Transport } from '../transport';
-import type { Commit, CommitList } from '../types';
+import type { Commit, CommitChanges, CommitList } from '../types';
 import type { CallOptions } from '../internals';
+import type { ChangePageInput } from './changes';
 
 export interface ListCommitsInput {
   branch?: string;
@@ -29,6 +30,33 @@ export class CommitsResource {
       'GET',
       `/commits/${encodeURIComponent(id)}`,
       { signal: opts.signal },
+    );
+  }
+
+  /**
+   * Read one page of logical entity changes relative to the first parent.
+   * The page token continues this commit result; it is not a feed cursor.
+   * A parentless commit or schema boundary is refused, never an empty diff.
+   */
+  changes(
+    id: string,
+    input: ChangePageInput = {},
+    opts: CallOptions = {},
+  ): Promise<CommitChanges> {
+    return this.t.request<CommitChanges>(
+      'GET',
+      `/commits/${encodeURIComponent(id)}/changes`,
+      {
+        query: {
+          page_token: input.pageToken,
+          limit: input.limit?.toString(),
+          kind: input.kind,
+          type: input.type,
+          op: input.op,
+        },
+        signal: opts.signal,
+        opaqueResponseKeys: new Set(['properties']),
+      },
     );
   }
 }

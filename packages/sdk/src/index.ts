@@ -4,7 +4,9 @@ export default Omnigraph;
 export { Omnigraph };
 
 export type { OmnigraphOptions, SnapshotInput } from './client';
-export type { CallOptions, ListCommitsInput, FetchLike } from './internals';
+export type { CallOptions, ConditionalCallOptions, ListCommitsInput, FetchLike } from './internals';
+export type { BlobInput } from './resources/blobs';
+export type { PollChangesInput, ChangePageInput } from './resources/changes';
 
 // Build-time pin: which omnigraph-server release this SDK was generated
 // against. Compare against `og.health()` at startup if you want to detect
@@ -20,6 +22,12 @@ export {
   NotFoundError,
   MethodNotAllowedError,
   ConflictError,
+  GoneError,
+  PreconditionFailedError,
+  PayloadTooLargeError,
+  RangeNotSatisfiableError,
+  FailedDependencyError,
+  ServiceUnavailableError,
   TooManyRequestsError,
   InternalServerError,
   NetworkError,
@@ -54,13 +62,12 @@ export type {
   GraphBatchLoad,
   Ingest,
   IngestInput,
-  IngestTable,
   LoadNdjsonInput,
   QueryInput,
   Read,
   ReadTarget,
   Snapshot,
-  SnapshotTable,
+  SnapshotDataset,
   // Stored queries
   Queries,
   QueryCatalogEntry,
@@ -69,8 +76,18 @@ export type {
   InvokeQueryInput,
   // Conflict / errors / shared
   MergeConflict,
-  ManifestConflict,
+  PublishedDatasetVersionConflict,
   ErrorOutput,
+  CommitChanges,
+  ChangeFeed,
+  ChangeBlock,
+  ChangeCause,
+  EntityChange,
+  ChangeImage,
+  ChangeBaseline,
+  ChangeBaselineInput,
+  ChangeBaselineRecord,
+  ExportRecord,
   // Utility
   Camelize,
 } from './types';
@@ -84,4 +101,8 @@ export {
   LoadMode,
   MergeConflictKindOutput,
   ParamKind,
+  BlobEntityKind,
+  EntityKindOutput,
+  ChangeOpOutput,
+  ChangeDiffRefusalReason,
 } from './types';

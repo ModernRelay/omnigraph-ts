@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "paths": {
     "/graphs": {
@@ -58,6 +58,623 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/blob": {
+      "get": {
+        "tags": [
+          "blobs"
+        ],
+        "summary": "Deliver one logical node or edge Blob cell.",
+        "description": "Managed content is streamed through the bounded transport. External\ndescriptors redirect without target-store I/O. Authorization and target\nresolution share the exact helper used by `/query`.",
+        "operationId": "cluster_getBlob",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entity",
+            "in": "query",
+            "description": "Select a logical node or edge cell.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/BlobEntityKind"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Accepted-schema node or edge type name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Logical entity id within the selected type.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "property",
+            "in": "query",
+            "description": "Accepted-schema Blob property name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Branch to read. Mutually exclusive with `snapshot`; defaults to `main`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "description": "Immutable graph snapshot id. Mutually exclusive with `branch`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Strong entity-tag-list precondition, including `*`, evaluated before If-None-Match and Range.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "description": "One `bytes` range. Malformed, unknown-unit, and multiple ranges are ignored in V1.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "description": "Weak entity-tag-list comparison, including `*`, evaluated before Range.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "description": "One strong entity tag. A mismatch causes the complete representation to be served.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete managed Blob",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The literal value `bytes` for managed content"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "description": "Exact served payload length"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Strong validator for the selected managed Blob"
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Exact resolved graph snapshot"
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "OpenAPI-only marker for an unstructured octet-stream response body."
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One satisfiable managed byte range",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                }
+              },
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "OpenAPI-only marker for an unstructured octet-stream response body."
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "External Blob descriptor; the server does not dereference it",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The literal value `no-store`"
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Exact stored absolute URI"
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Exact resolved graph snapshot"
+              }
+            }
+          },
+          "304": {
+            "description": "If-None-Match matched the managed Blob validator",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "description": "Complete managed Blob length, as required for a valid 304 Content-Length"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selector, target, or non-Blob property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown entity or null Blob cell",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "If-Match did not strongly match the selected managed Blob validator",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Requested managed byte range is unsatisfiable",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Unsatisfied range in the form `bytes */N`"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Stored Blob integrity or pre-header delivery refusal, including ranged external descriptors that cannot be redirected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "head": {
+        "tags": [
+          "blobs"
+        ],
+        "summary": "Return the status and representation headers for one Blob cell.",
+        "description": "This is a distinct handler rather than Axum's automatic GET-to-HEAD\nfallback. It never calls `BlobReader::read_range`; Range and If-Range are\ndeliberately ignored while If-None-Match is still evaluated.",
+        "operationId": "cluster_headBlob",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entity",
+            "in": "query",
+            "description": "Select a logical node or edge cell.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/BlobEntityKind"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Accepted-schema node or edge type name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Logical entity id within the selected type.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "property",
+            "in": "query",
+            "description": "Accepted-schema Blob property name.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Branch to read. Mutually exclusive with `snapshot`; defaults to `main`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "description": "Immutable graph snapshot id. Mutually exclusive with `branch`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Strong entity-tag-list precondition, including `*`, evaluated before If-None-Match.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "description": "Weak entity-tag-list comparison, including `*`. Range and If-Range are ignored for HEAD.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "description": "Accepted but ignored for HEAD; metadata always describes the complete selected Blob.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "If-Range",
+            "in": "header",
+            "description": "Accepted but ignored for HEAD together with Range.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Managed Blob metadata with no response body",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The literal value `bytes`"
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "description": "Complete managed Blob length"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Strong validator for the selected managed Blob"
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Exact resolved graph snapshot"
+              }
+            }
+          },
+          "302": {
+            "description": "External Blob descriptor; the server does not dereference it",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The literal value `no-store`"
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Exact stored absolute URI"
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Exact resolved graph snapshot"
+              }
+            }
+          },
+          "304": {
+            "description": "If-None-Match matched the managed Blob validator",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "description": "Complete managed Blob length, as required for a valid 304 Content-Length"
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selector, target, or non-Blob property; HEAD responses have no body"
+          },
+          "401": {
+            "description": "Unauthorized; HEAD responses have no body"
+          },
+          "403": {
+            "description": "Forbidden; HEAD responses have no body"
+          },
+          "404": {
+            "description": "Unknown entity or null Blob cell; HEAD responses have no body"
+          },
+          "412": {
+            "description": "If-Match did not strongly match the selected managed Blob validator; HEAD responses have no body",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Omnigraph-Snapshot-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Stored Blob integrity or pre-header delivery refusal, including ranged external descriptors that cannot be redirected; HEAD responses have no body"
           }
         },
         "security": [
@@ -129,7 +746,7 @@
           "branches"
         ],
         "summary": "Create a new branch.",
-        "description": "Forks `name` off of `from` (defaults to `main`). The new branch shares\ntable data with its parent until it is mutated. Returns 409 if `name`\nalready exists.",
+        "description": "Forks `name` off of `from` (defaults to `main`). The new branch shares\nbacking dataset data with its parent until it is mutated. Returns 409 if `name`\nalready exists.",
         "operationId": "cluster_createBranch",
         "parameters": [
           {
@@ -312,7 +929,17 @@
             }
           },
           "413": {
-            "description": "Merge row, byte, or recovery-chain ceiling exceeded before effects",
+            "description": "Merge entity, byte, or recovery-chain ceiling exceeded before effects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "A merge could not probe or read an allowed external Blob source",
             "content": {
               "application/json": {
                 "schema": {
@@ -452,7 +1079,7 @@
           "mutations"
         ],
         "summary": "**Deprecated** — use [`POST /mutate`](#tag/mutations/operation/mutate) instead.",
-        "description": "Apply a GQ mutation to a branch. Behavior is unchanged; the route is\nkept indefinitely for back-compat. New integrations should target\n`POST /mutate`, which has identical semantics and a name that pairs\ncleanly with `POST /query`. Responses from this route include\n`Deprecation: true` and `Link: <mutate>; rel=\"successor-version\"`\nheaders per RFC 9745 / RFC 8288 so SDKs and proxies can surface the\nsignal.",
+        "description": "Apply a GQ mutation to a branch. The deprecated route retains its request\nand execution semantics, while its response uses the current canonical\nvocabulary. New integrations should target `POST /mutate`. Responses include\n`Deprecation: true` and `Link: <mutate>; rel=\"successor-version\"`\nheaders per RFC 9745 / RFC 8288 so SDKs and proxies can surface the\nsignal.",
         "operationId": "cluster_change",
         "parameters": [
           {
@@ -527,7 +1154,17 @@
             }
           },
           "413": {
-            "description": "Keyed write exceeds the per-commit row or byte ceiling",
+            "description": "Keyed write exceeds the per-commit entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "An allowed external Blob source could not be probed or read",
             "content": {
               "application/json": {
                 "schema": {
@@ -565,13 +1202,337 @@
         ]
       }
     },
+    "/graphs/{graph_id}/changes": {
+      "get": {
+        "tags": [
+          "changes"
+        ],
+        "summary": "Poll the change feed of one branch.",
+        "description": "At-least-once: retrying a cursor may replay the complete next commit, so\nconsumers apply blocks idempotently by `graph_commit_id` and persist the\nterminal cursor together with its blocks. The server holds no consumer\nstate.",
+        "operationId": "cluster_pollChanges",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Branch whose first-parent history is polled. Defaults to `main`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Durable cursor from a prior terminal page. Mutually exclusive with\n`start` and `page_token`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Explicit start mode: `now` (default) | `beginning` |\n`after:<commit_id>`. Mutually exclusive with `cursor` and `page_token`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "description": "Continuation of one bounded poll (keeps its captured cut). Mutually\nexclusive with `cursor` and `start`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EntityKindOutput"
+              }
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "op",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ChangeOpOutput"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Change blocks in first-parent order. The durable cursor appears only on a terminal page, advanced only over complete commits; a mid-block page carries only next_page_token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFeedOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid start/filter combination, or a rejected cursor or page token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Branch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The feed crossed an unprovable schema boundary; see change_diff_refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Feed gap: required history was reclaimed; reset via the baseline handshake",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Requested limit exceeds the public change ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure while reading changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recovery required before changes can be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/changes/baseline": {
+      "post": {
+        "tags": [
+          "changes"
+        ],
+        "summary": "Capture a change-feed baseline: one exact entity snapshot plus the cursor\nthat resumes the feed immediately after it.",
+        "description": "A baseline is a full data export, so it requires the export action. The\nsnapshot honors the scope's kind and type dimensions; `op` binds only the\nresume cursor's feed scope.",
+        "operationId": "cluster_captureChangeBaseline",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeBaselineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "NDJSON entity snapshot pinned at one captured commit. Every preceding record is one type-keyed entity record (the load/export NDJSON shape); the FINAL record is the ChangeBaselineRecord envelope — an interrupted stream has no terminal record and therefore no usable cursor. Install the snapshot durably before the cursor.",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeBaselineRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Branch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Baseline cut or transport capacity exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure while capturing the baseline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recovery required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/graphs/{graph_id}/commits": {
       "get": {
         "tags": [
           "commits"
         ],
         "summary": "List commits, most recent first.",
-        "description": "`branch` selects which history to list: a named branch returns the history\nreachable from that branch's head (the main commits inherited up to the\nfork plus the branch-authored commits); omitting it returns `main`'s\nhistory. There is no cross-branch listing. Ordering is part of the\ncontract — newest first by (manifest version, created-at, commit id) — and\na future `cursor`/`limit` pagination will be keyset-based on that same\norder. Read-only.",
+        "description": "`branch` selects which history to list: a named branch returns the history\nreachable from that branch's head (the main commits inherited up to the\nfork plus the branch-authored commits); omitting it returns `main`'s\nhistory. There is no cross-branch listing. Ordering is part of the\ncontract — newest first by (graph-manifest version, created-at, commit id) — and\na future `cursor`/`limit` pagination will be keyset-based on that same\norder. Read-only.",
         "operationId": "cluster_listCommits",
         "parameters": [
           {
@@ -640,7 +1601,7 @@
           "commits"
         ],
         "summary": "Get a single commit.",
-        "description": "Returns the commit's manifest version, parent commit(s), and creation\nmetadata. Read-only.",
+        "description": "Returns the commit's graph-manifest version, parent commit(s), and creation\nmetadata. Read-only.",
         "operationId": "cluster_getCommit",
         "parameters": [
           {
@@ -711,13 +1672,195 @@
         ]
       }
     },
+    "/graphs/{graph_id}/commits/{commit_id}/changes": {
+      "get": {
+        "tags": [
+          "changes"
+        ],
+        "summary": "Entity changes one commit made relative to its first parent.",
+        "description": "Read-only, in graph vocabulary with exact before/after images. Bounded:\na large commit continues via the opaque `page_token`.",
+        "operationId": "cluster_getCommitChanges",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "commit_id",
+            "in": "path",
+            "description": "Commit identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "description": "Opaque continuation from the preceding page of this response.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum changes per page. Server default applies when absent; above\nthe public ceiling the request fails with 413.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Repeatable filter: node | edge.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/EntityKindOutput"
+              }
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Repeatable filter: accepted-schema type name.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "op",
+            "in": "query",
+            "description": "Repeatable filter: insert | update | delete.",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ChangeOpOutput"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entity changes this commit made relative to its first parent, in frozen (kind, type, id, op) order with the cause stated once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitChangesOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter or limit, or a rejected page token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Commit not found, or the actor cannot read the commit's branch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Commit cannot be entity-diffed (parentless commit or schema boundary); see change_diff_refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Required retained history is no longer readable; see change_feed_gap and capture a new baseline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Requested limit exceeds the public change ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure while reading changes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recovery required before changes can be read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/graphs/{graph_id}/export": {
       "post": {
         "tags": [
           "queries"
         ],
         "summary": "Stream the contents of a branch as NDJSON.",
-        "description": "Emits one JSON object per line (`application/x-ndjson`). Filter with\n`type_names` (node/edge type names) and/or `table_keys`; both empty\nstreams the entire branch. Suitable for large exports — the response is\nstreamed, not buffered. Read-only.",
+        "description": "Emits one JSON object per line (`application/x-ndjson`). Filter with\n`type_names` (node/edge type names); an empty list streams the entire branch.\nSuitable for large exports — the response is streamed, not buffered.\nRead-only.",
         "operationId": "cluster_export",
         "parameters": [
           {
@@ -807,6 +1950,16 @@
               }
             }
           },
+          "415": {
+            "description": "Request body must use application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Recovery required",
             "content": {
@@ -831,7 +1984,7 @@
           "mutations"
         ],
         "summary": "**Deprecated** — use [`POST /load`](#tag/mutations/operation/load) instead.",
-        "description": "Bulk-load NDJSON data into a branch. Behavior is unchanged; the route is\nkept indefinitely for back-compat. New integrations should target\n`POST /load`, which has identical semantics. Responses from this route\ninclude `Deprecation: true` and `Link: <load>; rel=\"successor-version\"`\nheaders per RFC 9745 / RFC 8288 so SDKs and proxies can surface the signal.",
+        "description": "Bulk-load NDJSON data into a branch. The deprecated route retains its\nparser and branch defaults, but its response uses the current canonical\nvocabulary. New integrations should target `POST /load`. Responses\ninclude `Deprecation: true` and `Link: <load>; rel=\"successor-version\"`\nheaders per RFC 9745 / RFC 8288 so SDKs and proxies can surface the signal.",
         "operationId": "cluster_ingest",
         "parameters": [
           {
@@ -906,7 +2059,17 @@
             }
           },
           "413": {
-            "description": "Keyed load exceeds the per-commit row or byte ceiling",
+            "description": "Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "An allowed external Blob source could not be probed or read",
             "content": {
               "application/json": {
                 "schema": {
@@ -950,7 +2113,7 @@
           "mutations"
         ],
         "summary": "Compatibility-load NDJSON data through a JSON envelope.",
-        "description": "`data` is NDJSON with one record per line. `mode` controls behavior on\nexisting rows: `merge` upserts by id (default), `append` strictly inserts\nabsent ids, and `overwrite` replaces table contents. Branch creation is opt-in by\npresence of `from`: with `from` set, a missing `branch` is created from\nit; without `from`, `branch` must already exist — a missing branch is a\n404, never an implicit fork. **Destructive** when `mode` is `overwrite`\nor when the load produces conflicting writes.\n\nThe legacy `POST /ingest` route has identical semantics and is kept as a\ndeprecated alias.",
+        "description": "`data` is NDJSON with one record per line. `mode` controls behavior on\nexisting entities: `merge` upserts by id (default), `append` strictly inserts\nabsent ids, and `overwrite` replaces type data. Branch creation is opt-in by\npresence of `from`: with `from` set, a missing `branch` is created from\nit; without `from`, `branch` must already exist — a missing branch is a\n404, never an implicit fork. **Destructive** when `mode` is `overwrite`\nor when the load produces conflicting writes.\n\nThe legacy `POST /ingest` route has identical semantics and is kept as a\ndeprecated alias.",
         "operationId": "cluster_load",
         "parameters": [
           {
@@ -1025,7 +2188,17 @@
             }
           },
           "413": {
-            "description": "Keyed load exceeds the per-commit row or byte ceiling",
+            "description": "Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "An allowed external Blob source could not be probed or read",
             "content": {
               "application/json": {
                 "schema": {
@@ -1107,7 +2280,7 @@
           {
             "name": "mode",
             "in": "query",
-            "description": "How existing rows are handled. Defaults to `merge`.",
+            "description": "How existing entities are handled. Defaults to `merge`.",
             "required": false,
             "schema": {
               "oneOf": [
@@ -1194,7 +2367,7 @@
             }
           },
           "413": {
-            "description": "Request or keyed load exceeds a bounded ceiling",
+            "description": "Request, load, or external Blob admission exceeds a bounded ceiling",
             "content": {
               "application/json": {
                 "schema": {
@@ -1205,6 +2378,16 @@
           },
           "415": {
             "description": "Content-Type must be application/x-ndjson",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "An allowed external Blob source could not be probed or read",
             "content": {
               "application/json": {
                 "schema": {
@@ -1247,7 +2430,7 @@
           "mutations"
         ],
         "summary": "Apply a GQ mutation to a branch (canonical mutation endpoint).",
-        "description": "Writes to the named `branch` (defaults to `main`). Mutations are atomic\nper call and produce a new commit. Returns counts of nodes and edges\naffected. **Destructive**: on success the branch is updated; rejected\nmutations may still acquire locks briefly. Returns 409 when the prepared\nwrite authority changes before effects.\n\nPairs with `POST /query` (read-only). The legacy `POST /change` route\nhas identical semantics and is kept as a deprecated alias.",
+        "description": "Writes to the named `branch` (defaults to `main`). Mutations are atomic\nper call and produce a new commit. Returns counts of nodes and edges\naffected. **Destructive**: on success the branch is updated; rejected\nmutations may still acquire locks briefly. Returns 409 when the prepared\nwrite authority changes before effects.\n\nConditional callers use `POST /mutate/if-graph-commit`. Keeping that\ncapability on a distinct path makes rolling upgrades fail closed: an older\nserver returns 404 instead of ignoring an unknown optional header and\nmutating unconditionally.\n\nPairs with `POST /query` (read-only). The legacy `POST /change` route\nhas identical semantics and is kept as a deprecated alias.",
         "operationId": "cluster_mutate",
         "parameters": [
           {
@@ -1322,7 +2505,164 @@
             }
           },
           "413": {
-            "description": "Keyed write exceeds the per-commit row or byte ceiling",
+            "description": "Keyed write exceeds the per-commit entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "An allowed external Blob source could not be probed or read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "An overlapping durable recovery intent must be resolved before retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/mutate/if-graph-commit": {
+      "post": {
+        "tags": [
+          "mutations"
+        ],
+        "summary": "Apply a mutation only while the branch still has the required graph head.",
+        "description": "The dedicated path is the rolling-safe capability signal. Clients must not\nsend this header to `/mutate`: an older server could ignore an unknown\noptional header after executing the write.",
+        "operationId": "cluster_mutate_if_graph_commit",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Omnigraph-If-Graph-Commit",
+            "in": "header",
+            "description": "Required raw graph-head commit id. The mutation runs only while the branch's effective head still equals it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Conditional mutation results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing, duplicate, malformed, or invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Write-authority conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Graph-commit precondition failed; the write had no effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Keyed write exceeds the per-commit entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "An allowed external Blob source could not be probed or read",
             "content": {
               "application/json": {
                 "schema": {
@@ -1513,7 +2853,7 @@
             }
           },
           "409": {
-            "description": "Stored mutation write-authority conflict",
+            "description": "Stored mutation write-authority conflict, or a full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying",
             "content": {
               "application/json": {
                 "schema": {
@@ -1523,7 +2863,199 @@
             }
           },
           "413": {
-            "description": "Stored keyed mutation exceeds the per-commit row or byte ceiling",
+            "description": "Stored keyed mutation exceeds the per-commit entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "A stored mutation could not probe or read an allowed external Blob source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-actor admission cap exceeded; honor `Retry-After` header",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Policy evaluation error (a denial is reported as 404, not 500)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A stored mutation is blocked by a durable recovery intent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/queries/{name}/if-graph-commit": {
+      "post": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Invoke one stored mutation with a required graph-head precondition.",
+        "description": "A distinct path makes support observable before any mutation runs; older\nservers return 404 instead of ignoring an unknown conditional header.",
+        "operationId": "cluster_invoke_query_if_graph_commit",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Stored mutation name (the registry key)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Omnigraph-If-Graph-Commit",
+            "in": "header",
+            "description": "Required raw graph-head commit id. The stored mutation runs only while the branch's effective head still equals it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/InvokeStoredQueryRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored conditional mutation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing, duplicate, malformed, read-only, or invalid invocation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (the inner `change` gate)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown stored mutation, or `invoke_query` denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stored mutation write-authority conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stored mutation graph-commit precondition failed; the write had no effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Stored keyed mutation exceeds the per-commit entity or byte ceiling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "424": {
+            "description": "A stored mutation could not probe or read an allowed external Blob source",
             "content": {
               "application/json": {
                 "schema": {
@@ -1576,7 +3108,7 @@
           "queries"
         ],
         "summary": "Execute an inline read query (friendlier-named alternative to `POST /read`).",
-        "description": "Designed for ad-hoc exploration and AI-agent tool-use: short field\nnames (`query`, `name`) match the CLI `-e` flag and the GQ `query`\nkeyword. Mutations (`insert`/`update`/`delete`) are rejected with 400\n-- use `POST /mutate` (or its deprecated alias `POST /change`) for\nwrite queries. Otherwise behaves identically to `POST /read`: same\ntarget semantics (branch xor snapshot), same Cedar action (Read),\nsame response shape.",
+        "description": "Designed for ad-hoc exploration and AI-agent tool-use: short field\nnames (`query`, `name`) match the CLI `-e` flag and the GQ `query`\nkeyword. Mutations (`insert`/`update`/`delete`) are rejected with 400\n-- use `POST /mutate` (or its deprecated alias `POST /change`) for\nwrite queries. It shares `POST /read` target semantics (branch xor\nsnapshot) and the same Cedar action (Read), while its canonical response\nadditionally carries the pinned graph-commit token.",
         "operationId": "cluster_query",
         "parameters": [
           {
@@ -1639,6 +3171,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1679,11 +3221,11 @@
         },
         "responses": {
           "200": {
-            "description": "Query results (response includes `Deprecation: true` + `Link: <query>; rel=\"successor-version\"`)",
+            "description": "Legacy token-free query results (response includes `Deprecation: true` + `Link: <query>; rel=\"successor-version\"`)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReadOutput"
+                  "$ref": "#/components/schemas/LegacyReadOutput"
                 }
               }
             }
@@ -1717,6 +3259,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
           }
         },
         "deprecated": true,
@@ -1733,7 +3285,7 @@
           "schema"
         ],
         "summary": "Read the current schema source.",
-        "description": "Returns the project's schema as a single string in `.pg` source form.\nUseful for clients that want to introspect available types and tables\nbefore constructing GQ queries. Read-only.",
+        "description": "Returns the project's schema as a single string in `.pg` source form.\nUseful for clients that want to introspect available types and properties\nbefore constructing GQ queries. Read-only.",
         "operationId": "cluster_getSchema",
         "parameters": [
           {
@@ -1791,7 +3343,7 @@
           "mutations"
         ],
         "summary": "Apply a schema migration.",
-        "description": "Cluster-backed servers reject this route with `409 Conflict`; operators\nmust apply schema changes through `omnigraph cluster apply` and restart.\n\nDiffs `schema_source` against the current schema and applies the resulting\nmigration steps (add/drop type, add/drop column, etc.). **Destructive**:\nsome steps drop data. Returns the list of steps applied; if `applied` is\nfalse the diff was unsupported and no changes were made.",
+        "description": "Cluster-backed servers reject this route with `409 Conflict`; operators\nmust apply schema changes through `omnigraph cluster apply` and restart.\n\nDiffs `schema_source` against the current schema and applies the resulting\nmigration steps (add/drop type, add/drop property, etc.). **Destructive**:\nsome steps drop data. Returns the list of steps applied; if `applied` is\nfalse the diff was unsupported and no changes were made.",
         "operationId": "cluster_applySchema",
         "parameters": [
           {
@@ -1889,7 +3441,7 @@
           "snapshots"
         ],
         "summary": "Read the current snapshot of a branch.",
-        "description": "Returns the manifest version plus per-table metadata (path, version, row\ncount) for every table on the branch. Defaults to `main` when `branch` is\nomitted. Read-only.",
+        "description": "Returns the graph-manifest version plus per-dataset metadata (path,\npublished dataset version, entity count) for every backing dataset on the\nbranch. Defaults to `main` when `branch` is omitted. Read-only.",
         "operationId": "cluster_getSnapshot",
         "parameters": [
           {
@@ -1915,7 +3467,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Database snapshot",
+            "description": "Graph snapshot",
             "content": {
               "application/json": {
                 "schema": {
@@ -1977,6 +3529,40 @@
   },
   "components": {
     "schemas": {
+      "BlobEntityKind": {
+        "type": "string",
+        "description": "Logical graph entity selected by the Blob delivery surface.\n\nThis is intentionally graph vocabulary: callers select a node or edge.",
+        "enum": [
+          "node",
+          "edge"
+        ]
+      },
+      "BlobRangeOutput": {
+        "type": "object",
+        "description": "Normalized half-open range details for an unsatisfiable managed Blob read.\n\nHTTP also returns `Content-Range: bytes */N`; these fields let SDKs inspect\nthe failure without parsing either that header or the human-readable text.",
+        "required": [
+          "start",
+          "end",
+          "length"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "length": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "BranchCreateOutput": {
         "type": "object",
         "required": [
@@ -2126,6 +3712,327 @@
           }
         }
       },
+      "ChangeBaselineOutput": {
+        "type": "object",
+        "description": "Terminal payload of a baseline stream: the captured snapshot commit and\nthe cursor that resumes the feed immediately after it.",
+        "required": [
+          "snapshot_commit_id",
+          "resume_cursor"
+        ],
+        "properties": {
+          "resume_cursor": {
+            "type": "string"
+          },
+          "snapshot_commit_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangeBaselineRecord": {
+        "type": "object",
+        "description": "Wire envelope of the FINAL baseline stream line: `{\"baseline\": {...}}`,\ndistinguishable from snapshot records (which carry `type`/`edge` keys).\nEmitted exactly once, only after every snapshot record — an interrupted\nstream has no terminal record and therefore no usable cursor.",
+        "required": [
+          "baseline"
+        ],
+        "properties": {
+          "baseline": {
+            "$ref": "#/components/schemas/ChangeBaselineOutput"
+          }
+        }
+      },
+      "ChangeBaselineRequest": {
+        "type": "object",
+        "description": "Body for the change baseline handshake.",
+        "properties": {
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Branch to capture. Defaults to `main`."
+          },
+          "kind": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityKindOutput"
+            },
+            "description": "Feed scope the resume cursor is bound to. The snapshot honors `kind`\nand `type`; `op` constrains only subsequent polls."
+          },
+          "op": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeOpOutput"
+            }
+          },
+          "type": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ChangeBlockOutput": {
+        "type": "object",
+        "description": "One commit block inside a feed page.",
+        "required": [
+          "cause",
+          "changes"
+        ],
+        "properties": {
+          "cause": {
+            "$ref": "#/components/schemas/ChangeCauseOutput"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityChangeOutput"
+            }
+          }
+        }
+      },
+      "ChangeCauseOutput": {
+        "type": "object",
+        "description": "The commit cause of one change block, stated once.",
+        "required": [
+          "graph_commit_id",
+          "authored_branch",
+          "authored_at"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authored_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Authorship time as Unix epoch microseconds — minted before dataset\neffects and stable across retries; deliberately not labeled a commit or\npublication time.",
+            "example": 1714000000000000
+          },
+          "authored_branch": {
+            "type": "string",
+            "description": "The branch the commit originally landed on (not the requested branch)."
+          },
+          "graph_commit_id": {
+            "type": "string"
+          },
+          "merged_parent_commit_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_commit_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ChangeDiffRefusalOutput": {
+        "type": "object",
+        "description": "A well-formed entity-diff request this commit cannot satisfy (HTTP 409).",
+        "required": [
+          "reason",
+          "graph_commit_id"
+        ],
+        "properties": {
+          "graph_commit_id": {
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ChangeDiffRefusalReason"
+          },
+          "type_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The graph type at the schema boundary, when the reason names one."
+          }
+        }
+      },
+      "ChangeDiffRefusalReason": {
+        "type": "string",
+        "description": "Why a well-formed entity-diff request was refused (HTTP 409).",
+        "enum": [
+          "parentless_commit",
+          "schema_boundary",
+          "unknown"
+        ]
+      },
+      "ChangeEndpointsOutput": {
+        "type": "object",
+        "description": "Edge endpoints as graph references. Endpoints belong to each image, so an\nendpoint-moving update has distinct before and after endpoints.",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangeErrorOutput": {
+        "type": "object",
+        "description": "Error envelope for the read-only change surfaces (`…/changes`,\n`…/changes/baseline`, `…/commits/{commit_id}/changes`): a wire-compatible\nprojection of [`ErrorOutput`] restricted to the graph-vocabulary details\nthose routes can produce after their error projection. The write-path\nconflict shapes (key / published-dataset-version / merge / read-set) are\nstructurally absent because change routes cannot produce them. Servers\nserialize [`ErrorOutput`]; every field a change route can populate appears\nhere with the same name and meaning, and absent optionals are wire-compatible.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "change_diff_refusal": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeDiffRefusalOutput",
+                "description": "Set with HTTP 409 when a commit entity diff is refused (parentless\ncommit or an unprovable schema boundary)."
+              }
+            ]
+          },
+          "change_feed_gap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeFeedGapOutput",
+                "description": "Set with HTTP 410 when retained history can no longer reconstruct a\nchange continuation. Recover via the baseline handshake."
+              }
+            ]
+          },
+          "code": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              }
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "recovery_required": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryRequiredOutput",
+                "description": "Set with HTTP 503 when the graph has a durable recovery intent that\nmust be resolved before the requested change read can proceed."
+              }
+            ]
+          },
+          "resource_limit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ResourceLimitOutput",
+                "description": "Set when a requested limit exceeds a public ceiling, or a single change\nexceeds the poll's own byte ceiling."
+              }
+            ]
+          }
+        }
+      },
+      "ChangeFeedGapOutput": {
+        "type": "object",
+        "description": "A change continuation can no longer be reconstructed from retained history\n(HTTP 410). Recovery is the baseline handshake; retrying the same cursor\ncannot succeed. `code` stays unset: [`ErrorCode`] is closed and this\nadditive detail is the machine-readable discriminator (the same rolling\ncontract as `external_blob_source`).",
+        "required": [
+          "first_unreadable_commit_id"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_unreadable_commit_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangeFeedOutput": {
+        "type": "object",
+        "description": "One bounded feed poll result.",
+        "required": [
+          "blocks"
+        ],
+        "properties": {
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeBlockOutput"
+            }
+          },
+          "caught_up": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Present with `cursor` on a terminal page: true when the page reached\nits captured head, false when more complete commits already wait."
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable caller-owned cursor, advanced only over complete commits and\nreturned only on a terminal page — an interrupted poll never advances\nit."
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue this poll's captured cut. Absent on a terminal page."
+          }
+        }
+      },
+      "ChangeImageOutput": {
+        "type": "object",
+        "description": "One exact logical entity image, decoded with the commit-era schema.",
+        "required": [
+          "properties"
+        ],
+        "properties": {
+          "endpoints": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeEndpointsOutput",
+                "description": "Present for edge images only."
+              }
+            ]
+          },
+          "properties": {
+            "description": "Exact logical property values; user-schema keys verbatim."
+          }
+        }
+      },
+      "ChangeOpOutput": {
+        "type": "string",
+        "description": "Logical operation of one change. Ordering rank is frozen:\ninsert before update before delete within one entity.",
+        "enum": [
+          "insert",
+          "update",
+          "delete"
+        ]
+      },
       "ChangeOutput": {
         "type": "object",
         "required": [
@@ -2151,6 +4058,16 @@
           },
           "branch": {
             "type": "string"
+          },
+          "commit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitOutput"
+              }
+            ]
           },
           "query_name": {
             "type": "string"
@@ -2187,6 +4104,48 @@
           }
         }
       },
+      "ChangeTypeOutput": {
+        "type": "object",
+        "description": "Graph-scoped type identity. `id` is opaque: it survives a supported rename\nand changes after drop/re-add. It is not a type-name selector or path.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CommitChangesOutput": {
+        "type": "object",
+        "description": "One bounded page of the finite commit entity diff.",
+        "required": [
+          "cause",
+          "changes"
+        ],
+        "properties": {
+          "cause": {
+            "$ref": "#/components/schemas/ChangeCauseOutput"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityChangeOutput"
+            }
+          },
+          "next_page_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue THIS bounded response. Absent on the final page. Never a feed\ncursor."
+          }
+        }
+      },
       "CommitListOutput": {
         "type": "object",
         "required": [
@@ -2205,7 +4164,7 @@
         "type": "object",
         "required": [
           "graph_commit_id",
-          "manifest_version",
+          "graph_manifest_version",
           "created_at"
         ],
         "properties": {
@@ -2221,16 +4180,16 @@
             "description": "Commit creation time as Unix epoch microseconds.",
             "example": 1714000000000000
           },
-          "graph_commit_id": {
-            "type": "string"
-          },
-          "manifest_branch": {
+          "graph_branch": {
             "type": [
               "string",
               "null"
             ]
           },
-          "manifest_version": {
+          "graph_commit_id": {
+            "type": "string"
+          },
+          "graph_manifest_version": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
@@ -2248,6 +4207,58 @@
             ]
           }
         }
+      },
+      "EntityChangeOutput": {
+        "type": "object",
+        "description": "One entity change. Cause is stated once on the enclosing block, never here.\nAn insert carries only `after`, an update exact `before` and `after`, a\ndelete only `before`.",
+        "required": [
+          "kind",
+          "type",
+          "id",
+          "op"
+        ],
+        "properties": {
+          "after": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeImageOutput"
+              }
+            ]
+          },
+          "before": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeImageOutput"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntityKindOutput"
+          },
+          "op": {
+            "$ref": "#/components/schemas/ChangeOpOutput"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ChangeTypeOutput"
+          }
+        }
+      },
+      "EntityKindOutput": {
+        "type": "string",
+        "description": "Logical graph entity namespace.",
+        "enum": [
+          "node",
+          "edge"
+        ]
       },
       "ErrorCode": {
         "type": "string",
@@ -2268,6 +4279,39 @@
           "error"
         ],
         "properties": {
+          "blob_range": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BlobRangeOutput",
+                "description": "Set with HTTP 416 for a valid but unsatisfiable managed Blob byte range.\n`start..end` is half-open and `length` is the selected Blob length."
+              }
+            ]
+          },
+          "change_diff_refusal": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeDiffRefusalOutput",
+                "description": "Set with HTTP 409 when a commit entity diff is refused (parentless\ncommit or an unprovable schema boundary)."
+              }
+            ]
+          },
+          "change_feed_gap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeFeedGapOutput",
+                "description": "Set with HTTP 410 when retained history can no longer reconstruct a\nchange continuation. Recover via the baseline handshake."
+              }
+            ]
+          },
           "code": {
             "oneOf": [
               {
@@ -2281,6 +4325,28 @@
           "error": {
             "type": "string"
           },
+          "external_blob_source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalBlobSourceOutput",
+                "description": "Set with HTTP 424 when an external Blob URI passed admission policy but\nits source could not be probed or read. This optional detail is the\nrolling-safe machine-readable discriminator; `code` is omitted because\n[`ErrorCode`] is a closed compatibility contract."
+              }
+            ]
+          },
+          "full_text_index_rebuild_required": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FullTextIndexRebuildRequiredOutput",
+                "description": "Set with HTTP 409 when a selected full-text index requires an explicit\nrebuild before search can succeed. Unlike a write-authority conflict,\nthis condition is not cleared by retrying. This additive discriminator\npreserves the closed [`ErrorCode`] contract."
+              }
+            ]
+          },
           "key_conflict": {
             "oneOf": [
               {
@@ -2292,22 +4358,33 @@
               }
             ]
           },
-          "manifest_conflict": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ManifestConflictOutput",
-                "description": "Set when the conflict is a publisher CAS rejection\n(`ManifestConflictDetails::ExpectedVersionMismatch`). The caller's\npre-write view of `table_key` was at version `expected` but the\nmanifest is now at `actual`. Refresh and retry."
-              }
-            ]
-          },
           "merge_conflicts": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MergeConflictOutput"
             }
+          },
+          "precondition_failure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PreconditionFailureOutput",
+                "description": "Set when a mutation's graph-commit precondition failed\n(HTTP 412). Like `recovery_required`, the meaning rides this additive\nfield — `ErrorCode` is a closed rolling wire contract."
+              }
+            ]
+          },
+          "published_dataset_version_conflict": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublishedDatasetVersionConflictOutput",
+                "description": "Set when the conflict is a publisher CAS rejection. The caller's\npre-write view named the expected published dataset version, but the\ngraph manifest now publishes the actual version. Refresh and retry."
+              }
+            ]
           },
           "read_set_conflict": {
             "oneOf": [
@@ -2327,7 +4404,7 @@
               },
               {
                 "$ref": "#/components/schemas/RecoveryRequiredOutput",
-                "description": "Set when an overlapping durable recovery intent must be resolved before\nretry. Its table effects may or may not have started."
+                "description": "Set when an overlapping durable recovery intent must be resolved before\nretry. Its dataset effects may or may not have started."
               }
             ]
           },
@@ -2338,7 +4415,7 @@
               },
               {
                 "$ref": "#/components/schemas/ResourceLimitOutput",
-                "description": "Set when the request must be split into smaller graph commits. The\nrejected attempt has no durable sidecar and no table effect."
+                "description": "Set when the request must be split into smaller graph commits. The\nrejected attempt has no durable sidecar and no dataset effect."
               }
             ]
           }
@@ -2354,13 +4431,6 @@
             ],
             "description": "Branch to export. Defaults to `main`."
           },
-          "table_keys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Restrict the export to these table keys. Empty exports all tables."
-          },
           "type_names": {
             "type": "array",
             "items": {
@@ -2368,22 +4438,58 @@
             },
             "description": "Restrict the export to these node/edge type names. Empty exports all types."
           }
+        },
+        "additionalProperties": false
+      },
+      "ExternalBlobSourceOutput": {
+        "type": "object",
+        "description": "Structured details for an allowed external Blob source that could not be\nprobed or read. The top-level `code` remains optional so this additive\ndetail can roll out without extending the closed [`ErrorCode`] enum.",
+        "required": [
+          "uri",
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Source-side failure diagnosis. Clients should branch on the presence of\n`external_blob_source`, not parse this human-readable text."
+          },
+          "uri": {
+            "type": "string",
+            "description": "Normalized, credential-free URI spelling (or a redacted placeholder)."
+          }
+        }
+      },
+      "FullTextIndexRebuildRequiredOutput": {
+        "type": "object",
+        "description": "A selected full-text index cannot safely serve the current analyzer (HTTP 409).\nThis is not a retryable write conflict: an operator must rebuild the live\nbranch's indexes. Historical snapshots stay unchanged; branch old content\nand rebuild that branch to search it.",
+        "required": [
+          "index",
+          "reason"
+        ],
+        "properties": {
+          "index": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable diagnosis; branch on the enclosing detail's presence,\nnot this text, to distinguish the operator-action-required condition."
+          }
         }
       },
       "GraphBatchDeclarationOutput": {
         "type": "object",
-        "description": "One logical declaration touched by a graph-batch load.\n\nThis deliberately carries the accepted-schema name, not the backing\nmanifest table key, dataset path, or Lance identity.",
+        "description": "One logical declaration touched by a graph-batch load.\n\nThis deliberately carries the accepted-schema name, not a backing dataset\nselector, path, or Lance identity.",
         "required": [
           "name",
-          "rows_loaded"
+          "entities_loaded"
         ],
         "properties": {
-          "name": {
-            "type": "string"
-          },
-          "rows_loaded": {
+          "entities_loaded": {
             "type": "integer",
             "minimum": 0
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -2396,7 +4502,7 @@
           "mode",
           "nodes",
           "edges",
-          "total_rows"
+          "total_entities"
         ],
         "properties": {
           "actor_id": {
@@ -2418,6 +4524,16 @@
           "branch_created": {
             "type": "boolean"
           },
+          "commit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitOutput"
+              }
+            ]
+          },
           "edges": {
             "type": "array",
             "items": {
@@ -2435,7 +4551,7 @@
             },
             "description": "Logical node declarations touched by this batch, sorted by name."
           },
-          "total_rows": {
+          "total_entities": {
             "type": "integer",
             "minimum": 0
           }
@@ -2507,7 +4623,9 @@
           "branch",
           "branch_created",
           "mode",
-          "tables"
+          "nodes",
+          "edges",
+          "total_entities"
         ],
         "properties": {
           "actor_id": {
@@ -2529,14 +4647,36 @@
           "branch_created": {
             "type": "boolean"
           },
+          "commit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitOutput"
+              }
+            ]
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphBatchDeclarationOutput"
+            },
+            "description": "Logical edge declarations touched by this load, sorted by name."
+          },
           "mode": {
             "$ref": "#/components/schemas/LoadMode"
           },
-          "tables": {
+          "nodes": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/IngestTableOutput"
-            }
+              "$ref": "#/components/schemas/GraphBatchDeclarationOutput"
+            },
+            "description": "Logical node declarations touched by this load, sorted by name."
+          },
+          "total_entities": {
+            "type": "integer",
+            "minimum": 0
           },
           "uri": {
             "type": "string"
@@ -2575,25 +4715,9 @@
               },
               {
                 "$ref": "#/components/schemas/LoadMode",
-                "description": "How existing rows are handled. Defaults to `merge`."
+                "description": "How existing entities are handled. Defaults to `merge`."
               }
             ]
-          }
-        }
-      },
-      "IngestTableOutput": {
-        "type": "object",
-        "required": [
-          "table_key",
-          "rows_loaded"
-        ],
-        "properties": {
-          "rows_loaded": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "table_key": {
-            "type": "string"
           }
         }
       },
@@ -2640,19 +4764,52 @@
       },
       "KeyConflictOutput": {
         "type": "object",
-        "description": "A strict insert rejected because `key` already names a row in the keyed\ngraph table.  The operation is effect-free when this output is returned;\npartial or ambiguous attempts surface `recovery_required` instead.",
+        "description": "A strict insert rejected because `entity_id` already names an entity in the\nselected node or edge type. The operation is effect-free when this output is returned;\npartial or ambiguous attempts surface `recovery_required` instead.",
         "required": [
-          "table_key"
+          "entity_kind",
+          "type_name"
         ],
         "properties": {
-          "key": {
+          "entity_id": {
             "type": [
               "string",
               "null"
             ]
           },
-          "table_key": {
+          "entity_kind": {
+            "$ref": "#/components/schemas/EntityKindOutput"
+          },
+          "type_name": {
             "type": "string"
+          }
+        }
+      },
+      "LegacyReadOutput": {
+        "type": "object",
+        "description": "Indefinitely byte-stable response shape for the deprecated `POST /read`\nroute. The canonical [`ReadOutput`] may grow additive fields; this legacy\nenvelope deliberately cannot carry them.",
+        "required": [
+          "query_name",
+          "target",
+          "row_count",
+          "rows"
+        ],
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "query_name": {
+            "type": "string"
+          },
+          "row_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rows": {},
+          "target": {
+            "$ref": "#/components/schemas/ReadTargetOutput"
           }
         }
       },
@@ -2664,30 +4821,6 @@
           "append",
           "merge"
         ]
-      },
-      "ManifestConflictOutput": {
-        "type": "object",
-        "description": "Structured details for a publisher-level OCC failure. Surfaces alongside\nHTTP 409 when a write was rejected because the caller's pre-write view of\none table's manifest version was stale relative to the current head. The\nexpected/actual fields tell the client which table to refresh.",
-        "required": [
-          "table_key",
-          "expected",
-          "actual"
-        ],
-        "properties": {
-          "actual": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "expected": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "table_key": {
-            "type": "string"
-          }
-        }
       },
       "MergeConflictKindOutput": {
         "type": "string",
@@ -2704,24 +4837,28 @@
       "MergeConflictOutput": {
         "type": "object",
         "required": [
-          "table_key",
+          "entity_kind",
+          "type_name",
           "kind",
           "message"
         ],
         "properties": {
+          "entity_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity_kind": {
+            "$ref": "#/components/schemas/EntityKindOutput"
+          },
           "kind": {
             "$ref": "#/components/schemas/MergeConflictKindOutput"
           },
           "message": {
             "type": "string"
           },
-          "row_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "table_key": {
+          "type_name": {
             "type": "string"
           }
         }
@@ -2782,6 +4919,52 @@
           "vector",
           "list"
         ]
+      },
+      "PreconditionFailureOutput": {
+        "type": "object",
+        "description": "Structured details for a caller write-precondition failure: HTTP 412, a\nmutation carried `Omnigraph-If-Graph-Commit: <commit_id>`, and the branch\nhead no longer matches that id. The write had no effect; the caller re-reads\nthe branch and decides again. `actual` is `None` on a branch with no commits.",
+        "required": [
+          "expected"
+        ],
+        "properties": {
+          "actual": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected": {
+            "type": "string"
+          }
+        }
+      },
+      "PublishedDatasetVersionConflictOutput": {
+        "type": "object",
+        "description": "Structured details for a publisher-level OCC failure. Surfaces alongside\nHTTP 409 when a write was rejected because the caller's pre-write view of\none backing dataset's published version was stale relative to the current\nhead. The expected/actual fields tell the client which dataset to refresh.",
+        "required": [
+          "entity_kind",
+          "type_name",
+          "expected_published_dataset_version",
+          "actual_published_dataset_version"
+        ],
+        "properties": {
+          "actual_published_dataset_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "entity_kind": {
+            "$ref": "#/components/schemas/EntityKindOutput"
+          },
+          "expected_published_dataset_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "type_name": {
+            "type": "string"
+          }
+        }
       },
       "QueriesCatalogOutput": {
         "type": "object",
@@ -2893,6 +5076,13 @@
               "type": "string"
             }
           },
+          "graph_commit_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Effective graph head commit id of the exact snapshot this read was\nserved from. On a fresh named branch this is the inherited source head,\nso it is immediately usable as `Omnigraph-If-Graph-Commit` (CLI:\n`--if-commit`) for the branch's first conditional write. The id and rows\ncome from one pinned version, so no separate id fetch is needed."
+          },
           "query_name": {
             "type": "string"
           },
@@ -2945,7 +5135,7 @@
       },
       "ReadSetConflictOutput": {
         "type": "object",
-        "description": "Structured authority mismatch for a prepared write. Values are\nstrings because members include optional graph commit ids and future\nauthority tokens, not only numeric table versions.",
+        "description": "Structured authority mismatch for a prepared write. Values are\nstrings because members include optional graph commit ids and future\nauthority tokens, not only numeric published dataset versions.",
         "required": [
           "member"
         ],
@@ -2997,7 +5187,7 @@
       },
       "ResourceLimitOutput": {
         "type": "object",
-        "description": "A write rejected before durable recovery ownership because its bounded\nphysical plan exceeded an explicit row, byte, or transaction-chain ceiling.",
+        "description": "A write rejected before durable recovery ownership because its bounded\nphysical plan exceeded an explicit entity, byte, or transaction-chain ceiling.",
         "required": [
           "resource",
           "limit",
@@ -3026,14 +5216,14 @@
           "supported",
           "applied",
           "step_count",
-          "manifest_version",
+          "graph_manifest_version",
           "steps"
         ],
         "properties": {
           "applied": {
             "type": "boolean"
           },
-          "manifest_version": {
+          "graph_manifest_version": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
@@ -3062,7 +5252,7 @@
         "properties": {
           "allow_data_loss": {
             "type": "boolean",
-            "description": "When true, promote every `DropMode::Soft` step in the plan to\n`DropMode::Hard`, making the prior column data unreachable\nafter the apply. Matches the CLI's `--allow-data-loss` flag.\nDefaults to `false` (drops remain reversible via time travel)."
+            "description": "When true, promote every `DropMode::Soft` step in the plan to\n`DropMode::Hard`, making the prior property data unreachable\nafter the apply. Matches the CLI's `--allow-data-loss` flag.\nDefaults to `false` (drops remain reversible via time travel)."
           },
           "schema_source": {
             "type": "string",
@@ -3082,66 +5272,70 @@
           }
         }
       },
-      "SnapshotOutput": {
+      "SnapshotDatasetOutput": {
         "type": "object",
         "required": [
-          "branch",
-          "manifest_version",
-          "internal_schema_version",
-          "tables"
+          "entity_kind",
+          "type_name",
+          "dataset_path",
+          "published_dataset_version",
+          "entity_count"
         ],
         "properties": {
-          "branch": {
+          "dataset_path": {
             "type": "string"
           },
-          "internal_schema_version": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The on-disk internal-schema (storage-format) version this graph's branch\nis stamped at.",
-            "minimum": 0
-          },
-          "manifest_version": {
+          "entity_count": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
           },
-          "tables": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SnapshotTableOutput"
-            }
-          }
-        }
-      },
-      "SnapshotTableOutput": {
-        "type": "object",
-        "required": [
-          "table_key",
-          "table_path",
-          "table_version",
-          "row_count"
-        ],
-        "properties": {
-          "row_count": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
+          "entity_kind": {
+            "$ref": "#/components/schemas/EntityKindOutput"
           },
-          "table_branch": {
+          "native_dataset_branch": {
             "type": [
               "string",
               "null"
             ]
           },
-          "table_key": {
-            "type": "string"
-          },
-          "table_path": {
-            "type": "string"
-          },
-          "table_version": {
+          "published_dataset_version": {
             "type": "integer",
             "format": "int64",
+            "minimum": 0
+          },
+          "type_name": {
+            "type": "string"
+          }
+        }
+      },
+      "SnapshotOutput": {
+        "type": "object",
+        "required": [
+          "graph_branch",
+          "graph_manifest_version",
+          "internal_schema_version",
+          "datasets"
+        ],
+        "properties": {
+          "datasets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotDatasetOutput"
+            }
+          },
+          "graph_branch": {
+            "type": "string"
+          },
+          "graph_manifest_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "internal_schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The on-disk internal-schema (storage-format) version this graph's branch\nis stamped at.",
             "minimum": 0
           }
         }

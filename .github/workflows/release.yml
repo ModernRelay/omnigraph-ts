@@ -45,8 +45,9 @@ jobs:
 
       # Gates — same bar as ci.yml, run again on the exact tag SHA so a stale
       # CI run cannot bless a release.
-      - run: pnpm run check-versions
-      - run: pnpm run check-drift
+      # Reject source-pinned candidates, including manual package publishes
+      # (the same gate is also each package's prepublishOnly hook).
+      - run: pnpm run check-release
       - run: pnpm run check-coverage
       - run: pnpm run build
       - run: pnpm run typecheck

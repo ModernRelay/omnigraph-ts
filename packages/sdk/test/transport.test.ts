@@ -113,10 +113,11 @@ describe('transport graphId prefixing', () => {
       {
         body: {
           graph_commit_id: 'c1',
-          manifest_version: 1,
+          graph_manifest_version: 1,
+          created_at: 1,
           parent_commit_id: null,
           merged_parent_commit_id: null,
-          manifest_branch: null,
+          graph_branch: null,
         },
       },
     ]);
@@ -130,7 +131,7 @@ describe('transport graphId prefixing', () => {
   it('prefixes /schema and /schema/apply under /graphs/{graphId}', async () => {
     const { fetch, calls } = stubFetch([
       { body: { schema_source: 'node Person { name: String @key }' } },
-      { body: { applied: true, manifest_version: 1, steps: [], supported: true } },
+      { body: { applied: true, graph_manifest_version: 1, steps: [], supported: true, uri: 'file:///example', step_count: 0 } },
     ]);
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'alpha', fetch });
     await og.schema.get();
@@ -146,14 +147,16 @@ describe('transport graphId prefixing', () => {
       branch: 'main',
       branch_created: false,
       mode: 'merge',
-      tables: [],
+      nodes: [],
+      edges: [],
+      total_entities: 0,
       uri: 's3://x',
     };
     const { fetch, calls } = stubFetch([
-      { body: { rows: [], columns: [] } },
-      { body: { affected_nodes: 0, affected_edges: 0 } },
+      { body: { query_name: 'q', target: { branch: 'main' }, rows: [], columns: [], row_count: 0, graph_commit_id: 'c1' } },
+      { body: { branch: 'main', query_name: 'q', affected_nodes: 0, affected_edges: 0, commit: null } },
       { body: loadBody },
-      { body: { branch: 'main', tables: [] } },
+      { body: { graph_branch: 'main', graph_manifest_version: 1, internal_schema_version: 6, datasets: [] } },
       { body: '', headers: { 'content-type': 'application/x-ndjson' } },
     ]);
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'alpha', fetch });

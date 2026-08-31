@@ -29,6 +29,11 @@ export interface TransportOptions {
 const FLAT_PATHS: ReadonlySet<string> = new Set(['/healthz', '/graphs']);
 
 export interface RequestOptions {
+  headers?: Record<string, string>;
+  /** Blob descriptors must not be automatically followed to external origins. */
+  redirect?: RequestRedirect;
+  /** Explicit non-2xx successes (Blob 302 descriptors and 304 cache hits). */
+  acceptedStatuses?: readonly number[];
   body?: unknown;
   /**
    * Raw request body sent verbatim with the given Content-Type, bypassing
@@ -115,9 +120,9 @@ export class Transport {
       });
     }
     const url = this.buildUrl(path, opts.query);
-    const headers = new Headers();
+    const headers = new Headers(opts.headers);
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
-    headers.set('Accept', 'application/json, application/x-ndjson');
+    if (!headers.has('Accept')) headers.set('Accept', 'application/json, application/x-ndjson');
     let bodyInit: BodyInit | undefined;
     if (opts.rawBody !== undefined) {
       bodyInit = opts.rawBody.content;
@@ -133,6 +138,7 @@ export class Transport {
       headers,
       body: bodyInit,
       signal: opts.signal,
+      redirect: opts.redirect,
     };
     const requestMeta = { method, url };
     let response: Response;
@@ -146,7 +152,7 @@ export class Transport {
         request: requestMeta,
       });
     }
-    if (!response.ok) {
+    if (!response.ok && !opts.acceptedStatuses?.includes(response.status)) {
       const requestId = response.headers.get('X-Request-Id') ?? undefined;
       const text = await response.text().catch(() => '');
       let body: unknown;

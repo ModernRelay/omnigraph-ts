@@ -3,6 +3,27 @@ import Omnigraph, { BadRequestError } from '../src';
 import { stubFetch } from './helpers';
 
 describe('queries resource (stored queries)', () => {
+  it('guards a stored mutation on its dedicated route without converting params', async () => {
+    const { fetch, calls } = stubFetch({
+      body: { branch: 'main', query_name: 'retitle', affected_nodes: 1, affected_edges: 0,
+        commit: { graph_commit_id: 'c2', graph_manifest_version: 2, created_at: 1714000000000000 } },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const result = await og.queries.invoke('retitle item', { params: { displayName: 'new' }, expectMutation: true }, { ifGraphCommit: 'c1' });
+    expect(calls[0]?.url).toBe('http://x/graphs/g/queries/retitle%20item/if-graph-commit');
+    expect(calls[0]?.headers['omnigraph-if-graph-commit']).toBe('c1');
+    expect(JSON.parse(calls[0]?.body ?? '{}')).toEqual({ params: { displayName: 'new' }, expect_mutation: true });
+    expect(result).toMatchObject({ commit: { graphCommitId: 'c2', graphManifestVersion: 2 } });
+  });
+
+  it('does not retry a missing conditional stored-mutation route', async () => {
+    const { fetch, calls } = stubFetch({ status: 404, body: { error: 'not found' } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.queries.invoke('q', {}, { ifGraphCommit: 'c1' })).rejects.toMatchObject({ status: 404 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('http://x/graphs/g/queries/q/if-graph-commit');
+  });
+
   it('list sends GET /queries and camelizes the catalog', async () => {
     const { fetch, calls } = stubFetch({
       body: {
@@ -34,6 +55,7 @@ describe('queries resource (stored queries)', () => {
     const { fetch, calls } = stubFetch({
       body: {
         query_name: 'find_inactive',
+        graph_commit_id: 'read-cut',
         row_count: 1,
         columns: ['$u.name'],
         rows: [{ '$u.name': 'Alice' }],
@@ -54,6 +76,7 @@ describe('queries resource (stored queries)', () => {
     const read = r as { rowCount: number; rows: Array<Record<string, unknown>> };
     expect(read.rowCount).toBe(1);
     expect(read.rows[0]?.['$u.name']).toBe('Alice');
+    expect(r).toMatchObject({ graphCommitId: 'read-cut' });
   });
 
   it('serializes expectMutation → expect_mutation on the wire', async () => {

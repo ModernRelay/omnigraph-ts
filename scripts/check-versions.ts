@@ -1,8 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertReleasePin, readServerPin } from './server-pin.js';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const pin = readServerPin();
+if (process.argv.includes('--release')) assertReleasePin(pin);
 
 interface PackageJson {
   name?: string;
@@ -42,4 +45,4 @@ if (unique.size !== 1) {
   process.exit(1);
 }
 
-console.log(`Version check passed: all packages target omnigraph-server v${serverVersion}`);
+console.log(`Version check passed: all packages target omnigraph-server v${serverVersion} (${pin.ref})`);

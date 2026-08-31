@@ -1,4 +1,4 @@
-{"type": "Person", "data": {"name": "Alice", "age": 30}}
+{"type": "Person", "data": {"name": "Alice", "age": 30, "avatar": "base64:SGVsbG8gV29ybGQ="}}
 {"type": "Person", "data": {"name": "Bob", "age": 25}}
 {"type": "Person", "data": {"name": "Charlie", "age": 35}}
 {"type": "Person", "data": {"name": "Dana", "age": 40}}

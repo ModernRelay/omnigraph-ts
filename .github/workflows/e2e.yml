@@ -8,6 +8,7 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -18,14 +19,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Read pinned server version
+      - name: Resolve pinned server source
         id: ver
         run: |
-          v=$(node -p "require('./package.json').omnigraph.serverVersion")
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "Pinned omnigraph-server: v$v"
+          pnpm exec tsx -e '
+            import { readServerPin } from "./scripts/server-pin.ts";
+            const pin = readServerPin();
+            console.log("version=" + pin.version + "\nref=" + pin.ref + "\nsource_pinned=" + pin.sourcePinned);
+          ' >> "$GITHUB_OUTPUT"
 
       - name: Download omnigraph-server binary
+        if: steps.ver.outputs.source_pinned == 'false'
         run: |
           set -euo pipefail
           v="${{ steps.ver.outputs.version }}"
@@ -41,6 +45,44 @@ jobs:
           tar -C "$HOME/.local/bin" -xzf "/tmp/${asset}"
           chmod +x "$HOME/.local/bin/omnigraph" "$HOME/.local/bin/omnigraph-server"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Until the server release exists, run the same e2e suite against the
+      # exact source used by sync-spec and the MCP references, never main.
+      - name: Check out immutable server candidate
+        if: steps.ver.outputs.source_pinned == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ModernRelay/omnigraph
+          ref: ${{ steps.ver.outputs.ref }}
+          path: .server-source
+          persist-credentials: false
+
+      - name: Prepare server source build
+        if: steps.ver.outputs.source_pinned == 'true'
+        working-directory: .server-source
+        env:
+          SERVER_REF: ${{ steps.ver.outputs.ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SERVER_REF"
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler libprotobuf-dev
+          rustup toolchain install
+
+      - name: Cache server source build
+        if: steps.ver.outputs.source_pinned == 'true'
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: .server-source -> target
+
+      - name: Build pinned server candidate
+        if: steps.ver.outputs.source_pinned == 'true'
+        working-directory: .server-source
+        run: |
+          set -euo pipefail
+          cargo build --locked -p omnigraph-cli --bin omnigraph \
+            -p omnigraph-server --bin omnigraph-server
+          echo "$PWD/target/debug" >> "$GITHUB_PATH"
 
       - name: Verify server binary version matches pin
         run: |
@@ -64,6 +106,8 @@ jobs:
           dir=/tmp/cluster
           mkdir -p "$dir"
           cp packages/sdk/test/fixtures/schema.pg "$dir/graph.pg"
+          cp packages/sdk/test/fixtures/queries.gq "$dir/queries.gq"
+          omnigraph lint --schema "$dir/graph.pg" --query "$dir/queries.gq"
 
           cat > "$dir/server.policy.yaml" <<'YAML'
           version: 1
@@ -97,8 +141,10 @@ jobs:
           graphs:
             alpha:
               schema: ./graph.pg
+              queries: [./queries.gq]
             beta:
               schema: ./graph.pg
+              queries: [./queries.gq]
           policies:
             server:
               file: ./server.policy.yaml
@@ -109,6 +155,7 @@ jobs:
           YAML
 
           omnigraph cluster import --config "$dir"
+          omnigraph cluster plan   --config "$dir"
           omnigraph cluster apply  --config "$dir"
 
       - name: Seed fixture data into each graph

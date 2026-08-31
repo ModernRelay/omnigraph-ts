@@ -2,7 +2,9 @@ import { ndjsonIterator } from './stream';
 import { Transport } from './transport';
 import type { FetchLike } from './transport';
 import { BranchesResource } from './resources/branches';
-import type { CallOptions } from './internals';
+import type { CallOptions, ConditionalCallOptions } from './internals';
+import { BlobsResource } from './resources/blobs';
+import { ChangesResource } from './resources/changes';
 import { CommitsResource } from './resources/commits';
 import { GraphsResource } from './resources/graphs';
 import { QueriesResource } from './resources/queries';
@@ -61,6 +63,8 @@ export interface SnapshotInput {
 }
 
 export default class Omnigraph {
+  readonly blobs: BlobsResource;
+  readonly changes: ChangesResource;
   readonly branches: BranchesResource;
   readonly commits: CommitsResource;
   readonly graphs: GraphsResource;
@@ -73,6 +77,8 @@ export default class Omnigraph {
   constructor(opts: OmnigraphOptions) {
     this.opts = opts;
     this.t = new Transport(opts);
+    this.blobs = new BlobsResource(this.t);
+    this.changes = new ChangesResource(this.t);
     this.branches = new BranchesResource(this.t);
     this.commits = new CommitsResource(this.t);
     this.graphs = new GraphsResource(this.t);
@@ -117,11 +123,20 @@ export default class Omnigraph {
    * Run a GQ mutation (`POST /mutate`). **Destructive** — branch is updated
    * atomically.
    *
-   * **Idempotency**: design queries with `@unique` constraints or
-   * `update ... where` clauses to allow safe retry. Blind `insert` without
-   * unique keys can duplicate on retry.
+   * Pass `opts.ifGraphCommit` from a preceding read to reject stale decisions
+   * with HTTP 412. Uses the dedicated capability route; never falls back to
+   * an unconditional write on an older server. No requests are auto-retried.
+   * `commit` identifies this publication; `null` means a successful no-op.
    */
-  mutate(input: MutationInput, opts: CallOptions = {}): Promise<Change> {
+  mutate(input: MutationInput, opts: ConditionalCallOptions = {}): Promise<Change> {
+    if (opts.ifGraphCommit !== undefined) {
+      return this.t.request<Change>('POST', '/mutate/if-graph-commit', {
+        body: input,
+        headers: { 'Omnigraph-If-Graph-Commit': opts.ifGraphCommit },
+        signal: opts.signal,
+        opaqueBodyKeys: OPAQUE_PARAMS,
+      });
+    }
     return this.t.request<Change>('POST', '/mutate', {
       body: input,
       signal: opts.signal,
@@ -131,8 +146,8 @@ export default class Omnigraph {
 
   /**
    * Bulk-load NDJSON into a branch. The canonical write-load endpoint.
-   * **Use `mode: 'merge'` for at-least-once safety** — retries upsert by
-   * `@key` instead of duplicating rows.
+   * `mode: 'merge'` upserts entities with stable keys, but is not a request
+   * deduplication protocol. Reconcile an ambiguous response before retrying.
    *
    * **Branch creation is opt-in.** Without `from`, the target `branch` must
    * already exist — a missing branch is a {@link NotFoundError} (404), never an
@@ -153,8 +168,8 @@ export default class Omnigraph {
    * Bounded like every keyed load — an oversized batch is refused with a
    * 413 before any durable effect; split it across requests.
    *
-   * `mode` defaults to `merge` (**use it for at-least-once safety** — retries
-   * upsert by `@key` instead of duplicating rows). **Branch creation is
+   * `mode` defaults to `merge` (upserts stable keys, not request deduplication).
+   * Reconcile an ambiguous response before retrying. **Branch creation is
    * opt-in**: without `from`, the target `branch` must already exist.
    */
   loadNdjson(input: LoadNdjsonInput, opts: CallOptions = {}): Promise<GraphBatchLoad> {

@@ -17,7 +17,8 @@
 // the cue it needs.
 //
 // Source of truth: the `omnigraph` skill references in ModernRelay/omnigraph @
-// main (moved there from the retired ModernRelay/omnigraph-cookbooks repo). The
+// the same server pin as the OpenAPI spec (release tag or immutable candidate).
+// Moved there from the retired ModernRelay/omnigraph-cookbooks repo. The
 // generated TS module is gitignored; every build/typecheck regenerates it. CI
 // builds always fetch fresh; the published npm tarball ships the bundled JS with
 // the markdown inlined as string constants.
@@ -25,6 +26,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readServerPin } from '../../../scripts/server-pin.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = dirname(HERE);
@@ -32,7 +34,7 @@ const OUT = join(PKG_ROOT, 'src/best-practices.gen.ts');
 const DESCRIPTIONS_PATH = join(PKG_ROOT, 'cookbook-descriptions.json');
 
 const REPO = 'ModernRelay/omnigraph';
-const REF = 'main';
+const REF = readServerPin().ref;
 const REF_DIR = 'skills/omnigraph/references';
 
 const LIST_URL = `https://api.github.com/repos/${REPO}/contents/${REF_DIR}?ref=${REF}`;

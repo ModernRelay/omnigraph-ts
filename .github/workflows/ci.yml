@@ -18,7 +18,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify package versions match pinned server
         run: pnpm run check-versions
-      - name: Verify spec matches upstream pinned tag
+      - name: Verify spec matches upstream pinned source
         run: pnpm run check-drift
       - name: Verify generated SDK is up to date
         run: |
