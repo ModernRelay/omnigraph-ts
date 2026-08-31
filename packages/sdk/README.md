@@ -13,9 +13,8 @@ npm install @modernrelay/omnigraph
 
 Requires **Node 22+** (uses native `fetch` and web streams). Browser support depends on server CORS; browsers also hide manual cross-origin redirects, so inspecting external Blob descriptors requires a server-side runtime.
 
-This branch prepares **v0.10** against an immutable, unmerged server candidate.
-It is not a published release. The repository's source pin blocks publication
-until the final server tag exists and its contract is revalidated.
+**v0.10 targets omnigraph-server v0.10.0.** Upgrade the CLI, server, and client
+integrations together; see [Migrating from v0.9](#migrating-from-v09).
 
 ## First call
 
@@ -292,6 +291,13 @@ and runs live e2e against the same release, or the exact immutable source pin
 while an upcoming release is being prepared.
 
 ### Migrating from v0.9
+
+This is a coordinated upgrade, not a rolling one: stop application traffic
+while upgrading the CLI, server, and clients. Existing entities do not require
+export/import, but old full-text indexes need an explicit rebuild on each
+affected live branch. Follow the server's
+[upgrade guide](https://github.com/ModernRelay/omnigraph/blob/v0.10.0/docs/user/operations/upgrade.md#full-text-index-upgrade);
+the SDK does not perform this operator maintenance.
 
 No legacy-key aliases are fabricated; the public camelCase names follow v0.10.
 
