@@ -5,32 +5,33 @@ import { stubFetch } from './helpers';
 describe('top-level client operations', () => {
   it('health sends GET /healthz', async () => {
     const { fetch, calls } = stubFetch({
-      body: { status: 'ok', version: '0.8.0', internal_schema_version: 4 },
+      body: { status: 'ok', version: '0.10.0', internal_schema_version: 6 },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', fetch });
     const h = await og.health();
     expect(calls[0]?.method).toBe('GET');
     expect(calls[0]?.url).toBe('http://x/healthz');
     expect(h.status).toBe('ok');
-    expect(h.version).toBe('0.8.0');
-    // New in server 0.8.0: the storage-format version, camelized like any field.
-    expect(h.internalSchemaVersion).toBe(4);
+    expect(h.version).toBe('0.10.0');
+    expect(h.internalSchemaVersion).toBe(6);
   });
 
   it('snapshot encodes branch as a query param', async () => {
     const { fetch, calls } = stubFetch({
-      body: { branch: 'main', tables: [], snapshot_id: 'snap-1' },
+      body: { graph_branch: 'main', graph_manifest_version: 3, internal_schema_version: 6, datasets: [] },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const s = await og.snapshot({ branch: 'main' });
     expect(calls[0]?.method).toBe('GET');
     expect(calls[0]?.url).toBe('http://x/graphs/g/snapshot?branch=main');
-    expect(s.branch).toBe('main');
+    expect(s.graphBranch).toBe('main');
+    expect(s.graphManifestVersion).toBe(3);
+    expect(s.datasets).toEqual([]);
   });
 
   it('snapshot allows omitting branch (server default)', async () => {
     const { fetch, calls } = stubFetch({
-      body: { branch: 'main', tables: [], snapshot_id: 'snap-1' },
+      body: { graph_branch: 'main', graph_manifest_version: 3, internal_schema_version: 6, datasets: [] },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.snapshot();
@@ -45,7 +46,10 @@ describe('top-level client operations', () => {
         branch: 'main',
         branch_created: false,
         mode: 'merge',
-        tables: [],
+        nodes: [{ name: 'Person', entities_loaded: 1 }],
+        edges: [],
+        total_entities: 1,
+        commit: { graph_commit_id: 'c1', graph_manifest_version: 4, created_at: 1714000000000000 },
         uri: 's3://x',
       },
     });
@@ -59,6 +63,9 @@ describe('top-level client operations', () => {
     expect(calls[0]?.url).toBe('http://x/graphs/g/load');
     expect(r.baseBranch).toBeNull();
     expect(r.branchCreated).toBe(false);
+    expect(r.totalEntities).toBe(1);
+    expect(r.nodes[0]?.entitiesLoaded).toBe(1);
+    expect(r.commit?.graphCommitId).toBe('c1');
   });
 
   it('loadNdjson sends the raw NDJSON body with the x-ndjson content type', async () => {
@@ -72,8 +79,10 @@ describe('top-level client operations', () => {
         branch: 'main',
         branch_created: false,
         mode: 'merge',
-        nodes: [{ name: 'Person', rows: 1 }],
-        edges: [{ name: 'Knows', rows: 1 }],
+        nodes: [{ name: 'Person', entities_loaded: 1 }],
+        edges: [{ name: 'Knows', entities_loaded: 1 }],
+        total_entities: 2,
+        commit: { graph_commit_id: 'c2', graph_manifest_version: 5, created_at: 1714000000000001 },
       },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
@@ -86,6 +95,9 @@ describe('top-level client operations', () => {
     expect(calls[0]?.headers['content-type']).toBe('application/x-ndjson');
     expect(r.branchCreated).toBe(false);
     expect(r.nodes[0]?.name).toBe('Person');
+    expect(r.edges[0]?.entitiesLoaded).toBe(1);
+    expect(r.totalEntities).toBe(2);
+    expect(r.commit?.graphCommitId).toBe('c2');
   });
 
   it('loadNdjson omits absent query params entirely', async () => {
@@ -100,10 +112,43 @@ describe('top-level client operations', () => {
 });
 
 describe('og.query and og.mutate (canonical successors to read/change)', () => {
+  it('uses the dedicated conditional route and preserves the raw commit token', async () => {
+    const { fetch, calls } = stubFetch({
+      body: { branch: 'main', query_name: 'q', affected_nodes: 0, affected_edges: 0, commit: null },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const result = await og.mutate(
+      { query: 'query q($userId: String) { delete Person where id = $userId }', params: { userId: 'absent' } },
+      { ifGraphCommit: 'commit-1' },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('http://x/graphs/g/mutate/if-graph-commit');
+    expect(calls[0]?.headers['omnigraph-if-graph-commit']).toBe('commit-1');
+    expect(JSON.parse(calls[0]?.body ?? '{}').params).toEqual({ userId: 'absent' });
+    expect(result.commit).toBeNull();
+  });
+
+  it('never falls back to an unconditional mutation on an older server', async () => {
+    const { fetch, calls } = stubFetch({ status: 404, body: { error: 'not found' } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.mutate({ query: 'query q() { delete Person where id = "a" }' }, { ifGraphCommit: 'old' }))
+      .rejects.toMatchObject({ status: 404 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('http://x/graphs/g/mutate/if-graph-commit');
+  });
+
+  it('an empty conditional token still selects the guarded route, never an ordinary write', async () => {
+    const { fetch, calls } = stubFetch({ status: 400, body: { error: 'invalid commit' } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.mutate({ query: 'query q() {}' }, { ifGraphCommit: '' })).rejects.toMatchObject({ status: 400 });
+    expect(calls[0]?.url).toBe('http://x/graphs/g/mutate/if-graph-commit');
+  });
+
   it('og.query sends POST /query with canonical snake_case body and camelizes response', async () => {
     const { fetch, calls } = stubFetch({
       body: {
         query_name: 'find',
+        graph_commit_id: 'read-cut',
         target: { branch: 'main', snapshot: null },
         row_count: 1,
         columns: ['$p.name'],
@@ -126,6 +171,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     expect(body.params).toEqual({ name: 'Alice' });
     expect(r.queryName).toBe('find');
     expect(r.rowCount).toBe(1);
+    expect(r.graphCommitId).toBe('read-cut');
   });
 
   it('og.query preserves opaque param keys verbatim', async () => {
@@ -149,6 +195,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
         affected_nodes: 1,
         branch: 'feature',
         query_name: 'addPerson',
+        commit: { graph_commit_id: 'c3', graph_branch: 'feature', graph_manifest_version: 6, created_at: 1714000000000002 },
       },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
@@ -166,6 +213,9 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     expect(body.branch).toBe('feature');
     expect(body.params).toEqual({ name: 'Frank' });
     expect(r.affectedNodes).toBe(1);
+    expect(r.commit?.graphCommitId).toBe('c3');
+    expect(r.commit?.graphBranch).toBe('feature');
+    expect(calls[0]?.headers['omnigraph-if-graph-commit']).toBeUndefined();
   });
 });
 
@@ -206,17 +256,18 @@ describe('export streaming options', () => {
       data: { name: string };
     }
     const ndjson = '{"type":"Person","data":{"name":"Alice"}}\n';
-    const { fetch } = stubFetch({
+    const { fetch, calls } = stubFetch({
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const rows: PersonRow[] = [];
-    for await (const row of og.export<PersonRow>({ branch: 'main' })) {
+    for await (const row of og.export<PersonRow>({ branch: 'main', typeNames: ['Person'] })) {
       rows.push(row);
     }
     expect(rows).toHaveLength(1);
     expect(rows[0]?.data.name).toBe('Alice');
+    expect(JSON.parse(calls[0]?.body ?? '{}')).toEqual({ branch: 'main', type_names: ['Person'] });
   });
 
   it('aborts mid-stream when the signal is triggered', async () => {

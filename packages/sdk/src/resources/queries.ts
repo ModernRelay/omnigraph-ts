@@ -1,6 +1,6 @@
 import type { Transport } from '../transport';
 import type { InvokeQuery, InvokeQueryInput, Queries } from '../types';
-import type { CallOptions } from '../internals';
+import type { CallOptions, ConditionalCallOptions } from '../internals';
 
 // Mirror client.ts: `params` keys are caller-controlled (matched by name to
 // `$var` in the stored query) and a stored *read* returns opaque
@@ -37,12 +37,26 @@ export class QueriesResource {
    * Pass `expectMutation: true` (or `false`) to assert the stored query's kind
    * (server 0.7.0+): the server rejects a mismatch with `BadRequestError`.
    * Omit it to skip the check.
+   * `opts.ifGraphCommit` selects the dedicated conditional mutation route;
+   * a stored read is rejected there and an unsupported route never falls back.
    */
   invoke(
     name: string,
     input: InvokeQueryInput = {},
-    opts: CallOptions = {},
+    opts: ConditionalCallOptions = {},
   ): Promise<InvokeQuery> {
+    if (opts.ifGraphCommit !== undefined) {
+      return this.t.request<InvokeQuery>(
+        'POST',
+        `/queries/${encodeURIComponent(name)}/if-graph-commit`,
+        {
+          body: input,
+          headers: { 'Omnigraph-If-Graph-Commit': opts.ifGraphCommit },
+          signal: opts.signal,
+          opaqueBodyKeys: OPAQUE_PARAMS,
+        },
+      );
+    }
     return this.t.request<InvokeQuery>(
       'POST',
       `/queries/${encodeURIComponent(name)}`,

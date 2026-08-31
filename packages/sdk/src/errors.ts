@@ -1,4 +1,4 @@
-import type { ErrorCode, ErrorOutput, ManifestConflict, MergeConflict } from './types';
+import type { ErrorCode, ErrorOutput } from './types';
 
 export interface OmnigraphErrorContext {
   status: number;
@@ -37,19 +37,71 @@ export class NotFoundError extends OmnigraphError {}
 export class MethodNotAllowedError extends OmnigraphError {}
 
 export class ConflictError extends OmnigraphError {
-  readonly mergeConflicts?: MergeConflict[];
-  /**
-   * Set when the conflict is a publisher OCC rejection: the caller's pre-write
-   * view of `tableKey` was at `expected`, but the manifest is now at `actual`.
-   * Refresh and retry.
-   */
-  readonly manifestConflict?: ManifestConflict;
+  get mergeConflicts() {
+    return (this.body as ErrorOutput | undefined)?.mergeConflicts;
+  }
+  get publishedDatasetVersionConflict() {
+    return (
+      (this.body as ErrorOutput | undefined)?.publishedDatasetVersionConflict ??
+      undefined
+    );
+  }
+  get readSetConflict() {
+    return (this.body as ErrorOutput | undefined)?.readSetConflict ?? undefined;
+  }
+  get keyConflict() {
+    return (this.body as ErrorOutput | undefined)?.keyConflict ?? undefined;
+  }
+  get changeDiffRefusal() {
+    return (
+      (this.body as ErrorOutput | undefined)?.changeDiffRefusal ?? undefined
+    );
+  }
+  /** This conflict needs operator maintenance, not a retry. */
+  get fullTextIndexRebuildRequired() {
+    return (
+      (this.body as ErrorOutput | undefined)?.fullTextIndexRebuildRequired ??
+      undefined
+    );
+  }
+}
 
-  constructor(ctx: OmnigraphErrorContext) {
-    super(ctx);
-    const body = ctx.body as ErrorOutput | undefined;
-    this.mergeConflicts = body?.mergeConflicts;
-    this.manifestConflict = body?.manifestConflict ?? undefined;
+/** Retained change history is unavailable; recover through a baseline. */
+export class GoneError extends OmnigraphError {
+  get changeFeedGap() {
+    return (this.body as ErrorOutput | undefined)?.changeFeedGap ?? undefined;
+  }
+}
+/** Stale graph-head precondition (or a failed Blob If-Match). */
+export class PreconditionFailedError extends OmnigraphError {
+  get preconditionFailure() {
+    return (
+      (this.body as ErrorOutput | undefined)?.preconditionFailure ?? undefined
+    );
+  }
+}
+export class PayloadTooLargeError extends OmnigraphError {
+  get resourceLimit() {
+    return (this.body as ErrorOutput | undefined)?.resourceLimit ?? undefined;
+  }
+}
+export class RangeNotSatisfiableError extends OmnigraphError {
+  get blobRange() {
+    return (this.body as ErrorOutput | undefined)?.blobRange ?? undefined;
+  }
+}
+export class FailedDependencyError extends OmnigraphError {
+  get externalBlobSource() {
+    return (
+      (this.body as ErrorOutput | undefined)?.externalBlobSource ?? undefined
+    );
+  }
+}
+export class ServiceUnavailableError extends OmnigraphError {
+  get recoveryRequired() {
+    return (
+      (this.body as ErrorOutput | undefined)?.recoveryRequired ?? undefined
+    );
   }
 }
 
@@ -68,7 +120,10 @@ export class NetworkError extends OmnigraphError {}
  */
 export class ConfigurationError extends OmnigraphError {}
 
-const codeToClass: Record<ErrorCode, new (ctx: OmnigraphErrorContext) => OmnigraphError> = {
+const codeToClass: Record<
+  ErrorCode,
+  new (ctx: OmnigraphErrorContext) => OmnigraphError
+> = {
   bad_request: BadRequestError,
   unauthorized: UnauthorizedError,
   forbidden: ForbiddenError,
@@ -79,15 +134,24 @@ const codeToClass: Record<ErrorCode, new (ctx: OmnigraphErrorContext) => Omnigra
   internal: InternalServerError,
 };
 
-const statusToClass: Record<number, new (ctx: OmnigraphErrorContext) => OmnigraphError> = {
+const statusToClass: Record<
+  number,
+  new (ctx: OmnigraphErrorContext) => OmnigraphError
+> = {
   400: BadRequestError,
   401: UnauthorizedError,
   403: ForbiddenError,
   404: NotFoundError,
   405: MethodNotAllowedError,
   409: ConflictError,
+  410: GoneError,
+  412: PreconditionFailedError,
+  413: PayloadTooLargeError,
+  416: RangeNotSatisfiableError,
+  424: FailedDependencyError,
   429: TooManyRequestsError,
   500: InternalServerError,
+  503: ServiceUnavailableError,
 };
 
 export function fromResponse(args: {
@@ -100,9 +164,13 @@ export function fromResponse(args: {
   const body = args.body as ErrorOutput | undefined;
   const code = body?.code ?? null;
   const message = body?.error ?? `HTTP ${args.status}`;
+  // Several v0.10 statuses deliberately retain an older broad code (e.g.
+  // 413/416 use bad_request and Blob 412 uses conflict). Status is specific.
   const Ctor =
-    (code ? codeToClass[code] : undefined) ??
     statusToClass[args.status] ??
+    (code && Object.hasOwn(codeToClass, code)
+      ? codeToClass[code]
+      : undefined) ??
     InternalServerError;
   return new Ctor({
     status: args.status,

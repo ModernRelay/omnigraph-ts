@@ -1,0 +1,17 @@
+query find_person($name: String) {
+    match { $p: Person { name: $name } }
+    return { $p.name as name, $p.age as age }
+}
+
+query add_person($name: String, $age: I32) {
+    insert Person { name: $name, age: $age }
+}
+
+query set_age($name: String, $age: I32) {
+    update Person set { age: $age } where name = $name
+}
+
+query add_friend($name: String, $age: I32, $from: String) {
+    insert Person { name: $name, age: $age }
+    insert Knows { from: $from, to: $name }
+}

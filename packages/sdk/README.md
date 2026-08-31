@@ -11,7 +11,10 @@ npm install @modernrelay/omnigraph
 # or: pnpm add @modernrelay/omnigraph
 ```
 
-Requires **Node 22+** (uses native `fetch` and web streams). Works in Bun and Deno; browser compatibility depends on whether your `omnigraph-server` is reachable from the browser context (CORS).
+Requires **Node 22+** (uses native `fetch` and web streams). Browser support depends on server CORS; browsers also hide manual cross-origin redirects, so inspecting external Blob descriptors requires a server-side runtime.
+
+**v0.10 targets omnigraph-server v0.10.0.** Upgrade the CLI, server, and client
+integrations together; see [Migrating from v0.9](#migrating-from-v09).
 
 ## First call
 
@@ -38,7 +41,7 @@ That's the whole pattern: instantiate once (with a `graphId`), call methods, get
 
 > **`graphId` is required (server 0.7.0).** `omnigraph-server` is cluster-only: every graph-scoped operation is served under `/graphs/{graphId}/…`. A graph-scoped call without a `graphId` throws `ConfigurationError` before hitting the network. Only `og.health()` and `og.graphs.list()` work without one — use the latter to discover ids, then [`og.graph(id)`](#multi-graph-clusters). This SDK targets the matching server release (see [Server compatibility](#server-compatibility)); for a 0.6.x (flat-route) server, stay on `@modernrelay/omnigraph@0.6.x`.
 
-> **Removed in this release: `og.read`, `og.change`, `og.ingest`.** This major release drops the deprecated aliases for a single canonical surface — use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk-load). Field names are `query` / `name` (not `querySource` / `queryName`). The server still serves the old `/read`, `/change`, `/ingest` routes as shims, so a 0.6.x-era SDK keeps working — but this SDK no longer calls them.
+Use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk load). Deprecated aliases were removed from the SDK in v0.7; v0.10 does not promise compatibility with older server minor versions.
 
 ## What you can do
 
@@ -47,9 +50,8 @@ That's the whole pattern: instantiate once (with a `graphId`), call methods, get
 ```ts
 const { rows, columns, rowCount } = await og.query({
   branch: 'main',
-  query: 'query top($limit: I32) { ... order by $p.score desc limit $limit }',
+  query: 'query top() { match { $p: Person } return { $p.name, $p.age } order { $p.age desc } limit 10 }',
   name: 'top',
-  params: { limit: 10 },
 });
 ```
 
@@ -66,7 +68,29 @@ const { affectedNodes, affectedEdges } = await og.mutate({
 });
 ```
 
-Multi-statement mutations execute atomically inside a single commit.
+Multi-statement mutations publish atomically. Successful mutations return an
+exact `commit` receipt; `commit: null` means a successful no-op. Load methods
+also return their exact commit, plus `nodes`, `edges`, and `totalEntities`.
+
+### Conditional mutations
+
+```ts
+const read = await og.query({
+  query: 'query person($name: String) { match { $p: Person { name: $name } } return { $p.age } }',
+  params: { name: 'Alice' },
+});
+if (!read.graphCommitId) throw new Error('Read has no graph commit position');
+await og.mutate({
+  query: 'query birthday($name: String, $age: I32) { update Person set { age: $age } where name = $name }',
+  params: { name: 'Alice', age: 31 },
+}, { ifGraphCommit: read.graphCommitId });
+```
+
+The SDK uses `/mutate/if-graph-commit`, never an optional header on ordinary
+`/mutate`. A stale position throws `PreconditionFailedError` (412) with
+`preconditionFailure`; re-read and reconsider. An older server's 404 never
+causes an unconditional retry. Stored mutations support the same second-option
+field: `og.queries.invoke(name, input, { ifGraphCommit })`.
 
 ### Branch and merge
 
@@ -86,7 +110,7 @@ import { LoadMode } from '@modernrelay/omnigraph';
 await og.load({
   branch: 'import-2026-04-30',
   from: 'main',          // required to fork a missing branch — without it a missing branch is a 404
-  mode: LoadMode.MERGE,  // upsert by @key — safe to retry
+  mode: LoadMode.MERGE,  // upsert by @key; not request deduplication
   data: ndjsonString,
 });
 ```
@@ -99,10 +123,11 @@ For high-rate pipelines there is also `og.loadNdjson()` (server 0.9.0+), which p
 await og.loadNdjson({
   branch: 'ingest',
   from: 'main',           // same fork-if-missing rule as og.load()
-  mode: LoadMode.MERGE,   // default; upsert by @key — safe to retry
+  mode: LoadMode.MERGE,   // default; reconcile ambiguous outcomes before retry
   ndjson:
-    '{"type":"Person","data":{"name":"Ada"}}\n' +
-    '{"edge":"Knows","from":"ada","to":"grace","data":{}}\n',
+    '{"type":"Person","data":{"name":"Ada","age":30}}\n' +
+    '{"type":"Person","data":{"name":"Grace","age":35}}\n' +
+    '{"edge":"Knows","from":"Ada","to":"Grace","data":{}}\n',
 });
 ```
 
@@ -111,7 +136,7 @@ Each nonblank line is exactly one node envelope (`{"type":...,"data":{...}}`) or
 ### Stream a branch as NDJSON
 
 ```ts
-for await (const row of og.export({ branch: 'main' })) {
+for await (const row of og.export({ branch: 'main', typeNames: ['Person'] })) {
   // row keys reflect your schema verbatim
 }
 ```
@@ -134,9 +159,64 @@ await og.commits.list({ branch: 'main' });
 await og.commits.retrieve(commitId);
 ```
 
+Snapshots expose `graphBranch`, `graphManifestVersion`, and `datasets`.
+Each dataset reports `entityKind`, `typeName`, `entityCount`, `datasetPath`,
+`publishedDatasetVersion`, and optional `nativeDatasetBranch`. The published
+version is graph authority, not an observation of the current physical head.
+
+### Entity changes and baselines
+
+```ts
+const diff = await og.commits.changes(commitId, { kind: ['node'], limit: 100 });
+const page = await og.changes.poll({ branch: 'main', start: 'now' });
+// Resume a later poll using the terminal page's cursor:
+if (page.cursor) await og.changes.poll({ branch: 'main', cursor: page.cursor });
+```
+
+These return **one bounded page**, not an automatically accumulated history.
+Follow `nextPageToken` with `pageToken`, preserving branch and filters; omit
+`start` and `cursor` while continuing pages. Entity `properties` remain verbatim,
+including underscore keys. Commit-diff page tokens are not feed cursors.
+Apply feed blocks idempotently by `graphCommitId` and persist the terminal
+cursor atomically with the applied data. HTTP 410 `GoneError.changeFeedGap`
+requires a fresh baseline, not a retry of the same cursor.
+
+`og.changes.baseline({ branch: 'main' })` streams typed `ChangeBaselineRecord`
+values: node/edge export records followed by `{ baseline: { snapshotCommitId,
+resumeCursor } }`. It exposes the terminal record only after clean stream
+completion and rejects a missing or malformed terminal record. Install the
+complete entity snapshot durably **before** saving its resume cursor. The SDK
+does not own consumer storage or checkpoint durability.
+
+### Blob bytes and metadata
+
+```ts
+const selector = { entity: 'node' as const, type: 'Document', id: 'manual', property: 'content' };
+const metadata = await og.blobs.stat(selector); // HEAD, no payload
+const response = await og.blobs.get({ ...selector, range: 'bytes=0-1023' });
+if (response.status === 200 || response.status === 206) {
+  // response.body is a ReadableStream; consume incrementally for large blobs.
+} else if (response.status === 302) {
+  // External reference only. Decide separately whether to access Location.
+} else if (response.status === 304) {
+  // Cached representation matched ifNoneMatch.
+}
+```
+
+Both methods return the raw `Response`, preserve headers/ETags, and never
+follow external redirects. Inputs support `branch` or `snapshot`, `ifMatch`,
+and `ifNoneMatch`; GET also supports `range` and `ifRange`. `snapshot` takes a
+graph commit ID, such as `query().graphCommitId`; the opaque
+`Omnigraph-Snapshot-Id` response header is diagnostic identity, not a reusable
+request value. A failed condition
+or range throws a typed 412/416 error. HEAD errors have no JSON body, so inspect
+the status and response headers. Write Blob values through normal mutate/load;
+there is no Blob-write or full-text-index-rebuild HTTP endpoint.
+
 ## Errors
 
-Every method throws a typed error subclass on non-2xx. Catch the specific class you care about:
+Methods throw typed errors on HTTP failure (Blob 302/304 are explicit successes).
+Catch the specific class you care about:
 
 ```ts
 import {
@@ -163,6 +243,17 @@ try {
 ```
 
 Every error carries `status`, `code`, `requestId` (from the `X-Request-Id` response header), and the parsed response body for diagnostics.
+
+New status-specific classes are `GoneError` (410), `PreconditionFailedError`
+(412), `PayloadTooLargeError` (413), `RangeNotSatisfiableError` (416),
+`FailedDependencyError` (424), and `ServiceUnavailableError` (503). They retain
+their structured details, such as `resourceLimit` or `recoveryRequired`.
+HTTP status takes priority over the server's older broad `code` values.
+
+For 409s, inspect `ConflictError.publishedDatasetVersionConflict`,
+`readSetConflict`, `keyConflict`, `mergeConflicts`, `changeDiffRefusal`, or
+`fullTextIndexRebuildRequired`. A full-text rebuild refusal requires explicit
+operator maintenance on the relevant branch; retrying search cannot repair it.
 
 `ConfigurationError` is the one error thrown **client-side, before any request** — it means a graph-scoped method was called without a `graphId` configured (see [the required-`graphId` note](#first-call)). Its `status` is `0`, like `NetworkError`.
 
@@ -194,26 +285,48 @@ if (sdkMm !== srvMm) {
 }
 ```
 
-`@modernrelay/omnigraph@X.Y.Z` is built from `omnigraph-server@X.Y.Z` and is expected to work against any `>=X.Y.0, <X.(Y+1).0`. CI fetches the OpenAPI spec at the pinned tag, regenerates types, and runs the SDK's e2e suite against a live `omnigraph-server` of the same release — a published SDK is always faithful to a real server build.
+Published SDKs track server **major.minor**, with independent patch versions.
+`SERVER_VERSION` identifies the exact source contract. CI checks that contract
+and runs live e2e against the same release, or the exact immutable source pin
+while an upcoming release is being prepared.
+
+### Migrating from v0.9
+
+This is a coordinated upgrade, not a rolling one: stop application traffic
+while upgrading the CLI, server, and clients. Existing entities do not require
+export/import, but old full-text indexes need an explicit rebuild on each
+affected live branch. Follow the server's
+[upgrade guide](https://github.com/ModernRelay/omnigraph/blob/v0.10.0/docs/user/operations/upgrade.md#full-text-index-upgrade);
+the SDK does not perform this operator maintenance.
+
+No legacy-key aliases are fabricated; the public camelCase names follow v0.10.
+
+| v0.9 | v0.10 |
+|---|---|
+| Snapshot `branch`, `manifestVersion`, `tables` | `graphBranch`, `graphManifestVersion`, `datasets` |
+| `SnapshotTable` | `SnapshotDataset` |
+| Snapshot entry `tableKey`, `rowCount`, `tablePath`, `tableVersion`, `tableBranch` | `entityKind` + `typeName`, `entityCount`, `datasetPath`, `publishedDatasetVersion`, `nativeDatasetBranch` |
+| Load `tables`, `IngestTable` | `nodes`/`edges` of `GraphBatchDeclaration`, plus `totalEntities` |
+| Declaration `rowsLoaded` | `entitiesLoaded` |
+| Commit `manifestBranch`, `manifestVersion` | `graphBranch`, `graphManifestVersion` |
+| Conflict `tableKey`, `rowId` | `entityKind`, `typeName`, `entityId` |
+| `ManifestConflict`, `manifestConflict` | `PublishedDatasetVersionConflict`, `publishedDatasetVersionConflict` |
+| Publisher conflict `expected`, `actual` | `expectedPublishedDatasetVersion`, `actualPublishedDatasetVersion` |
+| Export `tableKeys` | Removed; use `typeNames` |
 
 ## Designing for safe retry
 
-Omnigraph is a database; idempotency belongs in the schema (`@key`, `@unique`), not in `Idempotency-Key` headers. The SDK ships single-shot requests; pick mutations that are idempotent under retry.
+The SDK makes single-shot requests. There is no request-deduplication header.
+Stable keys and deterministic upserts help make repeated data equivalent, but
+they do not make every replay safe: a retry can overwrite intervening work,
+publish another commit, or duplicate unkeyed entities.
 
-| Operation | Retry semantics |
-|---|---|
-| `og.health()`, `og.snapshot()`, `og.query()`, `og.export()`, `og.branches.list()`, `og.commits.list()`, `og.commits.retrieve()`, `og.schema.get()`, `og.graphs.list()` | Read-only — always safe. |
-| `og.branches.create({ name })` | Throws `ConflictError` on retry (branch exists). Catch and treat as success. |
-| `og.branches.merge({ source, target })` | Idempotent — re-merge yields `outcome: 'already_up_to_date'`. |
-| `og.branches.delete(name)` | Idempotent — delete-of-deleted is a no-op. |
-| `og.schema.apply({ schemaSource })` | **Rejected (409) on a cluster-managed graph** — evolve schema via `omnigraph cluster apply`, not over HTTP. |
-| `og.load({ data, mode: 'merge' })` | **Idempotent** — use this mode for at-least-once pipelines. Requires `@key` constraints. |
-| `og.load({ data, mode: 'overwrite' })` | Idempotent — same input → same final state. |
-| `og.load({ data, mode: 'append' })` | **Not idempotent on 0.8.x and earlier** — blind insert. On a 0.9.0+ server, a duplicate id is rejected with a key conflict instead of absorbed. Prefer `merge` for retry-prone callers either way. |
-| `og.loadNdjson({ ndjson, mode: 'merge' })` | **Idempotent** — same rules as `og.load()`; `merge` is the default mode. |
-| `og.mutate({ query })` | Depends on the query. `update X set ... where ...` is idempotent; `insert X { ... }` is idempotent only with `@unique` / `@key`. |
-
-If a mutation isn't naturally idempotent, fix the schema (add `@unique` or `@key`) — not the SDK.
+A successful write's receipt proves its own publication. An unchanged branch
+head does not prove a failed write, and an advanced head does not identify the
+writer. After a timeout or lost response, reconcile intended content and commit
+history before deciding whether to replay. For read-modify-write use the exact
+read position and a conditional mutation. Treat 412 as a stale decision, 410 as
+a required baseline reset, and a full-text 409 as required maintenance.
 
 ## Cluster graphs
 
@@ -262,8 +375,8 @@ Authorization is Cedar policy declared in the cluster's `cluster.yaml` `policies
 Each `new Omnigraph(...)` is an isolated client. There is no shared state.
 
 ```ts
-const eu = new Omnigraph({ baseUrl: 'https://eu.example' });
-const us = new Omnigraph({ baseUrl: 'https://us.example' });
+const eu = new Omnigraph({ baseUrl: 'https://eu.example', graphId: 'alpha' });
+const us = new Omnigraph({ baseUrl: 'https://us.example', graphId: 'alpha' });
 
 await Promise.all([eu.branches.list(), us.branches.list()]);
 ```

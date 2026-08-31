@@ -46,7 +46,9 @@ describe('runtime enum constants', () => {
         branch: 'feat',
         branch_created: false,
         mode: 'merge',
-        tables: [],
+        nodes: [],
+        edges: [],
+        total_entities: 0,
         uri: 's3://x',
       },
     });

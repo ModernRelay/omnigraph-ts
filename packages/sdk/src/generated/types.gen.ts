@@ -4,6 +4,33 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {});
 };
 
+/**
+ * Logical graph entity selected by the Blob delivery surface.
+ *
+ * This is intentionally graph vocabulary: callers select a node or edge.
+ */
+export const BlobEntityKind = { NODE: "node", EDGE: "edge" } as const;
+
+/**
+ * Logical graph entity selected by the Blob delivery surface.
+ *
+ * This is intentionally graph vocabulary: callers select a node or edge.
+ */
+export type BlobEntityKind =
+  (typeof BlobEntityKind)[keyof typeof BlobEntityKind];
+
+/**
+ * Normalized half-open range details for an unsatisfiable managed Blob read.
+ *
+ * HTTP also returns `Content-Range: bytes *N`; these fields let SDKs inspect
+ * the failure without parsing either that header or the human-readable text.
+ */
+export type BlobRangeOutput = {
+  end: number;
+  length: number;
+  start: number;
+};
+
 export type BranchCreateOutput = {
   actor_id?: string | null;
   from: string;
@@ -78,11 +105,193 @@ export type BranchMergeRequest = {
   target?: string | null;
 };
 
+/**
+ * Terminal payload of a baseline stream: the captured snapshot commit and
+ * the cursor that resumes the feed immediately after it.
+ */
+export type ChangeBaselineOutput = {
+  resume_cursor: string;
+  snapshot_commit_id: string;
+};
+
+/**
+ * Wire envelope of the FINAL baseline stream line: `{"baseline": {...}}`,
+ * distinguishable from snapshot records (which carry `type`/`edge` keys).
+ * Emitted exactly once, only after every snapshot record — an interrupted
+ * stream has no terminal record and therefore no usable cursor.
+ */
+export type ChangeBaselineRecord = {
+  baseline: ChangeBaselineOutput;
+};
+
+/**
+ * Body for the change baseline handshake.
+ */
+export type ChangeBaselineRequest = {
+  /**
+   * Branch to capture. Defaults to `main`.
+   */
+  branch?: string | null;
+  /**
+   * Feed scope the resume cursor is bound to. The snapshot honors `kind`
+   * and `type`; `op` constrains only subsequent polls.
+   */
+  kind?: Array<EntityKindOutput>;
+  op?: Array<ChangeOpOutput>;
+  type?: Array<string>;
+};
+
+/**
+ * One commit block inside a feed page.
+ */
+export type ChangeBlockOutput = {
+  cause: ChangeCauseOutput;
+  changes: Array<EntityChangeOutput>;
+};
+
+/**
+ * The commit cause of one change block, stated once.
+ */
+export type ChangeCauseOutput = {
+  actor_id?: string | null;
+  /**
+   * Authorship time as Unix epoch microseconds — minted before dataset
+   * effects and stable across retries; deliberately not labeled a commit or
+   * publication time.
+   */
+  authored_at: number;
+  /**
+   * The branch the commit originally landed on (not the requested branch).
+   */
+  authored_branch: string;
+  graph_commit_id: string;
+  merged_parent_commit_id?: string | null;
+  parent_commit_id?: string | null;
+};
+
+/**
+ * A well-formed entity-diff request this commit cannot satisfy (HTTP 409).
+ */
+export type ChangeDiffRefusalOutput = {
+  graph_commit_id: string;
+  reason: ChangeDiffRefusalReason;
+  /**
+   * The graph type at the schema boundary, when the reason names one.
+   */
+  type_name?: string | null;
+};
+
+/**
+ * Why a well-formed entity-diff request was refused (HTTP 409).
+ */
+export const ChangeDiffRefusalReason = {
+  PARENTLESS_COMMIT: "parentless_commit",
+  SCHEMA_BOUNDARY: "schema_boundary",
+  UNKNOWN: "unknown",
+} as const;
+
+/**
+ * Why a well-formed entity-diff request was refused (HTTP 409).
+ */
+export type ChangeDiffRefusalReason =
+  (typeof ChangeDiffRefusalReason)[keyof typeof ChangeDiffRefusalReason];
+
+/**
+ * Edge endpoints as graph references. Endpoints belong to each image, so an
+ * endpoint-moving update has distinct before and after endpoints.
+ */
+export type ChangeEndpointsOutput = {
+  from: string;
+  to: string;
+};
+
+/**
+ * Error envelope for the read-only change surfaces (`…/changes`,
+ * `…/changes/baseline`, `…/commits/{commit_id}/changes`): a wire-compatible
+ * projection of [`ErrorOutput`] restricted to the graph-vocabulary details
+ * those routes can produce after their error projection. The write-path
+ * conflict shapes (key / published-dataset-version / merge / read-set) are
+ * structurally absent because change routes cannot produce them. Servers
+ * serialize [`ErrorOutput`]; every field a change route can populate appears
+ * here with the same name and meaning, and absent optionals are wire-compatible.
+ */
+export type ChangeErrorOutput = {
+  change_diff_refusal?: null | ChangeDiffRefusalOutput;
+  change_feed_gap?: null | ChangeFeedGapOutput;
+  code?: null | ErrorCode;
+  error: string;
+  recovery_required?: null | RecoveryRequiredOutput;
+  resource_limit?: null | ResourceLimitOutput;
+};
+
+/**
+ * A change continuation can no longer be reconstructed from retained history
+ * (HTTP 410). Recovery is the baseline handshake; retrying the same cursor
+ * cannot succeed. `code` stays unset: [`ErrorCode`] is closed and this
+ * additive detail is the machine-readable discriminator (the same rolling
+ * contract as `external_blob_source`).
+ */
+export type ChangeFeedGapOutput = {
+  cursor?: string | null;
+  first_unreadable_commit_id: string;
+};
+
+/**
+ * One bounded feed poll result.
+ */
+export type ChangeFeedOutput = {
+  blocks: Array<ChangeBlockOutput>;
+  /**
+   * Present with `cursor` on a terminal page: true when the page reached
+   * its captured head, false when more complete commits already wait.
+   */
+  caught_up?: boolean | null;
+  /**
+   * Durable caller-owned cursor, advanced only over complete commits and
+   * returned only on a terminal page — an interrupted poll never advances
+   * it.
+   */
+  cursor?: string | null;
+  /**
+   * Continue this poll's captured cut. Absent on a terminal page.
+   */
+  next_page_token?: string | null;
+};
+
+/**
+ * One exact logical entity image, decoded with the commit-era schema.
+ */
+export type ChangeImageOutput = {
+  endpoints?: null | ChangeEndpointsOutput;
+  /**
+   * Exact logical property values; user-schema keys verbatim.
+   */
+  properties: unknown;
+};
+
+/**
+ * Logical operation of one change. Ordering rank is frozen:
+ * insert before update before delete within one entity.
+ */
+export const ChangeOpOutput = {
+  INSERT: "insert",
+  UPDATE: "update",
+  DELETE: "delete",
+} as const;
+
+/**
+ * Logical operation of one change. Ordering rank is frozen:
+ * insert before update before delete within one entity.
+ */
+export type ChangeOpOutput =
+  (typeof ChangeOpOutput)[keyof typeof ChangeOpOutput];
+
 export type ChangeOutput = {
   actor_id?: string | null;
   affected_edges: number;
   affected_nodes: number;
   branch: string;
+  commit?: null | CommitOutput;
   query_name: string;
 };
 
@@ -110,6 +319,28 @@ export type ChangeRequest = {
   query: string;
 };
 
+/**
+ * Graph-scoped type identity. `id` is opaque: it survives a supported rename
+ * and changes after drop/re-add. It is not a type-name selector or path.
+ */
+export type ChangeTypeOutput = {
+  id: string;
+  name: string;
+};
+
+/**
+ * One bounded page of the finite commit entity diff.
+ */
+export type CommitChangesOutput = {
+  cause: ChangeCauseOutput;
+  changes: Array<EntityChangeOutput>;
+  /**
+   * Continue THIS bounded response. Absent on the final page. Never a feed
+   * cursor.
+   */
+  next_page_token?: string | null;
+};
+
 export type CommitListOutput = {
   commits: Array<CommitOutput>;
 };
@@ -120,12 +351,37 @@ export type CommitOutput = {
    * Commit creation time as Unix epoch microseconds.
    */
   created_at: number;
+  graph_branch?: string | null;
   graph_commit_id: string;
-  manifest_branch?: string | null;
-  manifest_version: number;
+  graph_manifest_version: number;
   merged_parent_commit_id?: string | null;
   parent_commit_id?: string | null;
 };
+
+/**
+ * One entity change. Cause is stated once on the enclosing block, never here.
+ * An insert carries only `after`, an update exact `before` and `after`, a
+ * delete only `before`.
+ */
+export type EntityChangeOutput = {
+  after?: null | ChangeImageOutput;
+  before?: null | ChangeImageOutput;
+  id: string;
+  kind: EntityKindOutput;
+  op: ChangeOpOutput;
+  type: ChangeTypeOutput;
+};
+
+/**
+ * Logical graph entity namespace.
+ */
+export const EntityKindOutput = { NODE: "node", EDGE: "edge" } as const;
+
+/**
+ * Logical graph entity namespace.
+ */
+export type EntityKindOutput =
+  (typeof EntityKindOutput)[keyof typeof EntityKindOutput];
 
 export const ErrorCode = {
   UNAUTHORIZED: "unauthorized",
@@ -141,11 +397,17 @@ export const ErrorCode = {
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export type ErrorOutput = {
+  blob_range?: null | BlobRangeOutput;
+  change_diff_refusal?: null | ChangeDiffRefusalOutput;
+  change_feed_gap?: null | ChangeFeedGapOutput;
   code?: null | ErrorCode;
   error: string;
+  external_blob_source?: null | ExternalBlobSourceOutput;
+  full_text_index_rebuild_required?: null | FullTextIndexRebuildRequiredOutput;
   key_conflict?: null | KeyConflictOutput;
-  manifest_conflict?: null | ManifestConflictOutput;
   merge_conflicts?: Array<MergeConflictOutput>;
+  precondition_failure?: null | PreconditionFailureOutput;
+  published_dataset_version_conflict?: null | PublishedDatasetVersionConflictOutput;
   read_set_conflict?: null | ReadSetConflictOutput;
   recovery_required?: null | RecoveryRequiredOutput;
   resource_limit?: null | ResourceLimitOutput;
@@ -157,24 +419,52 @@ export type ExportRequest = {
    */
   branch?: string | null;
   /**
-   * Restrict the export to these table keys. Empty exports all tables.
-   */
-  table_keys?: Array<string>;
-  /**
    * Restrict the export to these node/edge type names. Empty exports all types.
    */
   type_names?: Array<string>;
 };
 
 /**
+ * Structured details for an allowed external Blob source that could not be
+ * probed or read. The top-level `code` remains optional so this additive
+ * detail can roll out without extending the closed [`ErrorCode`] enum.
+ */
+export type ExternalBlobSourceOutput = {
+  /**
+   * Source-side failure diagnosis. Clients should branch on the presence of
+   * `external_blob_source`, not parse this human-readable text.
+   */
+  reason: string;
+  /**
+   * Normalized, credential-free URI spelling (or a redacted placeholder).
+   */
+  uri: string;
+};
+
+/**
+ * A selected full-text index cannot safely serve the current analyzer (HTTP 409).
+ * This is not a retryable write conflict: an operator must rebuild the live
+ * branch's indexes. Historical snapshots stay unchanged; branch old content
+ * and rebuild that branch to search it.
+ */
+export type FullTextIndexRebuildRequiredOutput = {
+  index: string;
+  /**
+   * Human-readable diagnosis; branch on the enclosing detail's presence,
+   * not this text, to distinguish the operator-action-required condition.
+   */
+  reason: string;
+};
+
+/**
  * One logical declaration touched by a graph-batch load.
  *
- * This deliberately carries the accepted-schema name, not the backing
- * manifest table key, dataset path, or Lance identity.
+ * This deliberately carries the accepted-schema name, not a backing dataset
+ * selector, path, or Lance identity.
  */
 export type GraphBatchDeclarationOutput = {
+  entities_loaded: number;
   name: string;
-  rows_loaded: number;
 };
 
 /**
@@ -189,6 +479,7 @@ export type GraphBatchLoadOutput = {
   base_branch?: string | null;
   branch: string;
   branch_created: boolean;
+  commit?: null | CommitOutput;
   /**
    * Logical edge declarations touched by this batch, sorted by name.
    */
@@ -198,7 +489,7 @@ export type GraphBatchLoadOutput = {
    * Logical node declarations touched by this batch, sorted by name.
    */
   nodes: Array<GraphBatchDeclarationOutput>;
-  total_rows: number;
+  total_entities: number;
 };
 
 /**
@@ -240,8 +531,17 @@ export type IngestOutput = {
   base_branch?: string | null;
   branch: string;
   branch_created: boolean;
+  commit?: null | CommitOutput;
+  /**
+   * Logical edge declarations touched by this load, sorted by name.
+   */
+  edges: Array<GraphBatchDeclarationOutput>;
   mode: LoadMode;
-  tables: Array<IngestTableOutput>;
+  /**
+   * Logical node declarations touched by this load, sorted by name.
+   */
+  nodes: Array<GraphBatchDeclarationOutput>;
+  total_entities: number;
   uri: string;
 };
 
@@ -263,11 +563,6 @@ export type IngestRequest = {
    */
   from?: string | null;
   mode?: null | LoadMode;
-};
-
-export type IngestTableOutput = {
-  rows_loaded: number;
-  table_key: string;
 };
 
 /**
@@ -310,13 +605,27 @@ export type InvokeStoredQueryRequest = {
 export type InvokeStoredQueryResponse = ReadOutput | ChangeOutput;
 
 /**
- * A strict insert rejected because `key` already names a row in the keyed
- * graph table.  The operation is effect-free when this output is returned;
+ * A strict insert rejected because `entity_id` already names an entity in the
+ * selected node or edge type. The operation is effect-free when this output is returned;
  * partial or ambiguous attempts surface `recovery_required` instead.
  */
 export type KeyConflictOutput = {
-  key?: string | null;
-  table_key: string;
+  entity_id?: string | null;
+  entity_kind: EntityKindOutput;
+  type_name: string;
+};
+
+/**
+ * Indefinitely byte-stable response shape for the deprecated `POST /read`
+ * route. The canonical [`ReadOutput`] may grow additive fields; this legacy
+ * envelope deliberately cannot carry them.
+ */
+export type LegacyReadOutput = {
+  columns?: Array<string>;
+  query_name: string;
+  row_count: number;
+  rows: unknown;
+  target: ReadTargetOutput;
 };
 
 /**
@@ -333,18 +642,6 @@ export const LoadMode = {
  */
 export type LoadMode = (typeof LoadMode)[keyof typeof LoadMode];
 
-/**
- * Structured details for a publisher-level OCC failure. Surfaces alongside
- * HTTP 409 when a write was rejected because the caller's pre-write view of
- * one table's manifest version was stale relative to the current head. The
- * expected/actual fields tell the client which table to refresh.
- */
-export type ManifestConflictOutput = {
-  actual: number;
-  expected: number;
-  table_key: string;
-};
-
 export const MergeConflictKindOutput = {
   DIVERGENT_INSERT: "divergent_insert",
   DIVERGENT_UPDATE: "divergent_update",
@@ -359,10 +656,11 @@ export type MergeConflictKindOutput =
   (typeof MergeConflictKindOutput)[keyof typeof MergeConflictKindOutput];
 
 export type MergeConflictOutput = {
+  entity_id?: string | null;
+  entity_kind: EntityKindOutput;
   kind: MergeConflictKindOutput;
   message: string;
-  row_id?: string | null;
-  table_key: string;
+  type_name: string;
 };
 
 /**
@@ -412,6 +710,30 @@ export const ParamKind = {
  * strings, Blob a blob-URI string.
  */
 export type ParamKind = (typeof ParamKind)[keyof typeof ParamKind];
+
+/**
+ * Structured details for a caller write-precondition failure: HTTP 412, a
+ * mutation carried `Omnigraph-If-Graph-Commit: <commit_id>`, and the branch
+ * head no longer matches that id. The write had no effect; the caller re-reads
+ * the branch and decides again. `actual` is `None` on a branch with no commits.
+ */
+export type PreconditionFailureOutput = {
+  actual?: string | null;
+  expected: string;
+};
+
+/**
+ * Structured details for a publisher-level OCC failure. Surfaces alongside
+ * HTTP 409 when a write was rejected because the caller's pre-write view of
+ * one backing dataset's published version was stale relative to the current
+ * head. The expected/actual fields tell the client which dataset to refresh.
+ */
+export type PublishedDatasetVersionConflictOutput = {
+  actual_published_dataset_version: number;
+  entity_kind: EntityKindOutput;
+  expected_published_dataset_version: number;
+  type_name: string;
+};
 
 /**
  * Response for `GET /queries`: every stored query in a graph's
@@ -480,6 +802,14 @@ export type QueryRequest = {
 
 export type ReadOutput = {
   columns?: Array<string>;
+  /**
+   * Effective graph head commit id of the exact snapshot this read was
+   * served from. On a fresh named branch this is the inherited source head,
+   * so it is immediately usable as `Omnigraph-If-Graph-Commit` (CLI:
+   * `--if-commit`) for the branch's first conditional write. The id and rows
+   * come from one pinned version, so no separate id fetch is needed.
+   */
+  graph_commit_id?: string | null;
   query_name: string;
   row_count: number;
   rows: unknown;
@@ -514,7 +844,7 @@ export type ReadRequest = {
 /**
  * Structured authority mismatch for a prepared write. Values are
  * strings because members include optional graph commit ids and future
- * authority tokens, not only numeric table versions.
+ * authority tokens, not only numeric published dataset versions.
  */
 export type ReadSetConflictOutput = {
   actual?: string | null;
@@ -533,7 +863,7 @@ export type RecoveryRequiredOutput = {
 
 /**
  * A write rejected before durable recovery ownership because its bounded
- * physical plan exceeded an explicit row, byte, or transaction-chain ceiling.
+ * physical plan exceeded an explicit entity, byte, or transaction-chain ceiling.
  */
 export type ResourceLimitOutput = {
   actual: number;
@@ -543,7 +873,7 @@ export type ResourceLimitOutput = {
 
 export type SchemaApplyOutput = {
   applied: boolean;
-  manifest_version: number;
+  graph_manifest_version: number;
   step_count: number;
   steps: Array<unknown>;
   supported: boolean;
@@ -553,7 +883,7 @@ export type SchemaApplyOutput = {
 export type SchemaApplyRequest = {
   /**
    * When true, promote every `DropMode::Soft` step in the plan to
-   * `DropMode::Hard`, making the prior column data unreachable
+   * `DropMode::Hard`, making the prior property data unreachable
    * after the apply. Matches the CLI's `--allow-data-loss` flag.
    * Defaults to `false` (drops remain reversible via time travel).
    */
@@ -569,23 +899,24 @@ export type SchemaOutput = {
   schema_source: string;
 };
 
+export type SnapshotDatasetOutput = {
+  dataset_path: string;
+  entity_count: number;
+  entity_kind: EntityKindOutput;
+  native_dataset_branch?: string | null;
+  published_dataset_version: number;
+  type_name: string;
+};
+
 export type SnapshotOutput = {
-  branch: string;
+  datasets: Array<SnapshotDatasetOutput>;
+  graph_branch: string;
+  graph_manifest_version: number;
   /**
    * The on-disk internal-schema (storage-format) version this graph's branch
    * is stamped at.
    */
   internal_schema_version: number;
-  manifest_version: number;
-  tables: Array<SnapshotTableOutput>;
-};
-
-export type SnapshotTableOutput = {
-  row_count: number;
-  table_branch?: string | null;
-  table_key: string;
-  table_path: string;
-  table_version: number;
 };
 
 export type ListGraphsData = {
@@ -620,6 +951,198 @@ export type ListGraphsResponses = {
 };
 
 export type ListGraphsResponse = ListGraphsResponses[keyof ListGraphsResponses];
+
+export type ClusterGetBlobData = {
+  body?: never;
+  headers?: {
+    /**
+     * Strong entity-tag-list precondition, including `*`, evaluated before If-None-Match and Range.
+     */
+    "If-Match"?: string | null;
+    /**
+     * One `bytes` range. Malformed, unknown-unit, and multiple ranges are ignored in V1.
+     */
+    Range?: string | null;
+    /**
+     * Weak entity-tag-list comparison, including `*`, evaluated before Range.
+     */
+    "If-None-Match"?: string | null;
+    /**
+     * One strong entity tag. A mismatch causes the complete representation to be served.
+     */
+    "If-Range"?: string | null;
+  };
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query: {
+    /**
+     * Select a logical node or edge cell.
+     */
+    entity: BlobEntityKind;
+    /**
+     * Accepted-schema node or edge type name.
+     */
+    type: string;
+    /**
+     * Logical entity id within the selected type.
+     */
+    id: string;
+    /**
+     * Accepted-schema Blob property name.
+     */
+    property: string;
+    /**
+     * Branch to read. Mutually exclusive with `snapshot`; defaults to `main`.
+     */
+    branch?: string;
+    /**
+     * Immutable graph snapshot id. Mutually exclusive with `branch`.
+     */
+    snapshot?: string;
+  };
+  url: "/graphs/{graph_id}/blob";
+};
+
+export type ClusterGetBlobErrors = {
+  /**
+   * Invalid selector, target, or non-Blob property
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Unknown entity or null Blob cell
+   */
+  404: ErrorOutput;
+  /**
+   * If-Match did not strongly match the selected managed Blob validator
+   */
+  412: ErrorOutput;
+  /**
+   * Requested managed byte range is unsatisfiable
+   */
+  416: ErrorOutput;
+  /**
+   * Stored Blob integrity or pre-header delivery refusal, including ranged external descriptors that cannot be redirected
+   */
+  500: ErrorOutput;
+};
+
+export type ClusterGetBlobError =
+  ClusterGetBlobErrors[keyof ClusterGetBlobErrors];
+
+export type ClusterGetBlobResponses = {
+  /**
+   * OpenAPI-only marker for an unstructured octet-stream response body.
+   */
+  200: Blob | File;
+  /**
+   * OpenAPI-only marker for an unstructured octet-stream response body.
+   */
+  206: Blob | File;
+};
+
+export type ClusterGetBlobResponse =
+  ClusterGetBlobResponses[keyof ClusterGetBlobResponses];
+
+export type ClusterHeadBlobData = {
+  body?: never;
+  headers?: {
+    /**
+     * Strong entity-tag-list precondition, including `*`, evaluated before If-None-Match.
+     */
+    "If-Match"?: string | null;
+    /**
+     * Weak entity-tag-list comparison, including `*`. Range and If-Range are ignored for HEAD.
+     */
+    "If-None-Match"?: string | null;
+    /**
+     * Accepted but ignored for HEAD; metadata always describes the complete selected Blob.
+     */
+    Range?: string | null;
+    /**
+     * Accepted but ignored for HEAD together with Range.
+     */
+    "If-Range"?: string | null;
+  };
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query: {
+    /**
+     * Select a logical node or edge cell.
+     */
+    entity: BlobEntityKind;
+    /**
+     * Accepted-schema node or edge type name.
+     */
+    type: string;
+    /**
+     * Logical entity id within the selected type.
+     */
+    id: string;
+    /**
+     * Accepted-schema Blob property name.
+     */
+    property: string;
+    /**
+     * Branch to read. Mutually exclusive with `snapshot`; defaults to `main`.
+     */
+    branch?: string;
+    /**
+     * Immutable graph snapshot id. Mutually exclusive with `branch`.
+     */
+    snapshot?: string;
+  };
+  url: "/graphs/{graph_id}/blob";
+};
+
+export type ClusterHeadBlobErrors = {
+  /**
+   * Invalid selector, target, or non-Blob property; HEAD responses have no body
+   */
+  400: unknown;
+  /**
+   * Unauthorized; HEAD responses have no body
+   */
+  401: unknown;
+  /**
+   * Forbidden; HEAD responses have no body
+   */
+  403: unknown;
+  /**
+   * Unknown entity or null Blob cell; HEAD responses have no body
+   */
+  404: unknown;
+  /**
+   * If-Match did not strongly match the selected managed Blob validator; HEAD responses have no body
+   */
+  412: unknown;
+  /**
+   * Stored Blob integrity or pre-header delivery refusal, including ranged external descriptors that cannot be redirected; HEAD responses have no body
+   */
+  500: unknown;
+};
+
+export type ClusterHeadBlobResponses = {
+  /**
+   * Managed Blob metadata with no response body
+   */
+  200: unknown;
+};
 
 export type ClusterListBranchesData = {
   body?: never;
@@ -739,9 +1262,13 @@ export type ClusterMergeBranchesErrors = {
    */
   409: ErrorOutput;
   /**
-   * Merge row, byte, or recovery-chain ceiling exceeded before effects
+   * Merge entity, byte, or recovery-chain ceiling exceeded before effects
    */
   413: ErrorOutput;
+  /**
+   * A merge could not probe or read an allowed external Blob source
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -847,9 +1374,13 @@ export type ClusterChangeErrors = {
    */
   409: ErrorOutput;
   /**
-   * Keyed write exceeds the per-commit row or byte ceiling
+   * Keyed write exceeds the per-commit entity or byte ceiling
    */
   413: ErrorOutput;
+  /**
+   * An allowed external Blob source could not be probed or read
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -871,6 +1402,150 @@ export type ClusterChangeResponses = {
 
 export type ClusterChangeResponse =
   ClusterChangeResponses[keyof ClusterChangeResponses];
+
+export type ClusterPollChangesData = {
+  body?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: {
+    /**
+     * Branch whose first-parent history is polled. Defaults to `main`.
+     */
+    branch?: string;
+    /**
+     * Durable cursor from a prior terminal page. Mutually exclusive with
+     * `start` and `page_token`.
+     */
+    cursor?: string;
+    /**
+     * Explicit start mode: `now` (default) | `beginning` |
+     * `after:<commit_id>`. Mutually exclusive with `cursor` and `page_token`.
+     */
+    start?: string;
+    /**
+     * Continuation of one bounded poll (keeps its captured cut). Mutually
+     * exclusive with `cursor` and `start`.
+     */
+    page_token?: string;
+    limit?: number;
+    kind?: Array<EntityKindOutput>;
+    type?: Array<string>;
+    op?: Array<ChangeOpOutput>;
+  };
+  url: "/graphs/{graph_id}/changes";
+};
+
+export type ClusterPollChangesErrors = {
+  /**
+   * Invalid start/filter combination, or a rejected cursor or page token
+   */
+  400: ChangeErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ChangeErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ChangeErrorOutput;
+  /**
+   * Branch not found
+   */
+  404: ChangeErrorOutput;
+  /**
+   * The feed crossed an unprovable schema boundary; see change_diff_refusal
+   */
+  409: ChangeErrorOutput;
+  /**
+   * Feed gap: required history was reclaimed; reset via the baseline handshake
+   */
+  410: ChangeErrorOutput;
+  /**
+   * Requested limit exceeds the public change ceiling
+   */
+  413: ChangeErrorOutput;
+  /**
+   * Internal failure while reading changes
+   */
+  500: ChangeErrorOutput;
+  /**
+   * Recovery required before changes can be read
+   */
+  503: ChangeErrorOutput;
+};
+
+export type ClusterPollChangesError =
+  ClusterPollChangesErrors[keyof ClusterPollChangesErrors];
+
+export type ClusterPollChangesResponses = {
+  /**
+   * Change blocks in first-parent order. The durable cursor appears only on a terminal page, advanced only over complete commits; a mid-block page carries only next_page_token
+   */
+  200: ChangeFeedOutput;
+};
+
+export type ClusterPollChangesResponse =
+  ClusterPollChangesResponses[keyof ClusterPollChangesResponses];
+
+export type ClusterCaptureChangeBaselineData = {
+  body: ChangeBaselineRequest;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/changes/baseline";
+};
+
+export type ClusterCaptureChangeBaselineErrors = {
+  /**
+   * Invalid scope
+   */
+  400: ChangeErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ChangeErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ChangeErrorOutput;
+  /**
+   * Branch not found
+   */
+  404: ChangeErrorOutput;
+  /**
+   * Baseline cut or transport capacity exhausted
+   */
+  413: ChangeErrorOutput;
+  /**
+   * Internal failure while capturing the baseline
+   */
+  500: ChangeErrorOutput;
+  /**
+   * Recovery required
+   */
+  503: ChangeErrorOutput;
+};
+
+export type ClusterCaptureChangeBaselineError =
+  ClusterCaptureChangeBaselineErrors[keyof ClusterCaptureChangeBaselineErrors];
+
+export type ClusterCaptureChangeBaselineResponses = {
+  /**
+   * NDJSON entity snapshot pinned at one captured commit. Every preceding record is one type-keyed entity record (the load/export NDJSON shape); the FINAL record is the ChangeBaselineRecord envelope — an interrupted stream has no terminal record and therefore no usable cursor. Install the snapshot durably before the cursor.
+   */
+  200: ChangeBaselineRecord;
+};
+
+export type ClusterCaptureChangeBaselineResponse =
+  ClusterCaptureChangeBaselineResponses[keyof ClusterCaptureChangeBaselineResponses];
 
 export type ClusterListCommitsData = {
   body?: never;
@@ -954,6 +1629,92 @@ export type ClusterGetCommitResponses = {
 export type ClusterGetCommitResponse =
   ClusterGetCommitResponses[keyof ClusterGetCommitResponses];
 
+export type ClusterGetCommitChangesData = {
+  body?: never;
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+    /**
+     * Commit identifier
+     */
+    commit_id: string;
+  };
+  query?: {
+    /**
+     * Opaque continuation from the preceding page of this response.
+     */
+    page_token?: string;
+    /**
+     * Maximum changes per page. Server default applies when absent; above
+     * the public ceiling the request fails with 413.
+     */
+    limit?: number;
+    /**
+     * Repeatable filter: node | edge.
+     */
+    kind?: Array<EntityKindOutput>;
+    /**
+     * Repeatable filter: accepted-schema type name.
+     */
+    type?: Array<string>;
+    /**
+     * Repeatable filter: insert | update | delete.
+     */
+    op?: Array<ChangeOpOutput>;
+  };
+  url: "/graphs/{graph_id}/commits/{commit_id}/changes";
+};
+
+export type ClusterGetCommitChangesErrors = {
+  /**
+   * Invalid filter or limit, or a rejected page token
+   */
+  400: ChangeErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ChangeErrorOutput;
+  /**
+   * Commit not found, or the actor cannot read the commit's branch
+   */
+  404: ChangeErrorOutput;
+  /**
+   * Commit cannot be entity-diffed (parentless commit or schema boundary); see change_diff_refusal
+   */
+  409: ChangeErrorOutput;
+  /**
+   * Required retained history is no longer readable; see change_feed_gap and capture a new baseline
+   */
+  410: ChangeErrorOutput;
+  /**
+   * Requested limit exceeds the public change ceiling
+   */
+  413: ChangeErrorOutput;
+  /**
+   * Internal failure while reading changes
+   */
+  500: ChangeErrorOutput;
+  /**
+   * Recovery required before changes can be read
+   */
+  503: ChangeErrorOutput;
+};
+
+export type ClusterGetCommitChangesError =
+  ClusterGetCommitChangesErrors[keyof ClusterGetCommitChangesErrors];
+
+export type ClusterGetCommitChangesResponses = {
+  /**
+   * Entity changes this commit made relative to its first parent, in frozen (kind, type, id, op) order with the cause stated once
+   */
+  200: CommitChangesOutput;
+};
+
+export type ClusterGetCommitChangesResponse =
+  ClusterGetCommitChangesResponses[keyof ClusterGetCommitChangesResponses];
+
 export type ClusterExportData = {
   body: ExportRequest;
   path: {
@@ -991,6 +1752,10 @@ export type ClusterExportErrors = {
    * Export cut or transport capacity exhausted
    */
   413: ErrorOutput;
+  /**
+   * Request body must use application/json
+   */
+  415: ErrorOutput;
   /**
    * Recovery required
    */
@@ -1036,9 +1801,13 @@ export type ClusterIngestErrors = {
    */
   409: ErrorOutput;
   /**
-   * Keyed load exceeds the per-commit row or byte ceiling
+   * Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling
    */
   413: ErrorOutput;
+  /**
+   * An allowed external Blob source could not be probed or read
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -1091,9 +1860,13 @@ export type ClusterLoadErrors = {
    */
   409: ErrorOutput;
   /**
-   * Keyed load exceeds the per-commit row or byte ceiling
+   * Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling
    */
   413: ErrorOutput;
+  /**
+   * An allowed external Blob source could not be probed or read
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -1137,7 +1910,7 @@ export type ClusterLoadNdjsonData = {
      */
     from?: string | null;
     /**
-     * How existing rows are handled. Defaults to `merge`.
+     * How existing entities are handled. Defaults to `merge`.
      */
     mode?: null | LoadMode;
   };
@@ -1166,13 +1939,17 @@ export type ClusterLoadNdjsonErrors = {
    */
   409: ErrorOutput;
   /**
-   * Request or keyed load exceeds a bounded ceiling
+   * Request, load, or external Blob admission exceeds a bounded ceiling
    */
   413: ErrorOutput;
   /**
    * Content-Type must be application/x-ndjson
    */
   415: ErrorOutput;
+  /**
+   * An allowed external Blob source could not be probed or read
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -1226,9 +2003,13 @@ export type ClusterMutateErrors = {
    */
   409: ErrorOutput;
   /**
-   * Keyed write exceeds the per-commit row or byte ceiling
+   * Keyed write exceeds the per-commit entity or byte ceiling
    */
   413: ErrorOutput;
+  /**
+   * An allowed external Blob source could not be probed or read
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -1250,6 +2031,76 @@ export type ClusterMutateResponses = {
 
 export type ClusterMutateResponse =
   ClusterMutateResponses[keyof ClusterMutateResponses];
+
+export type ClusterMutateIfGraphCommitData = {
+  body: ChangeRequest;
+  headers: {
+    /**
+     * Required raw graph-head commit id. The mutation runs only while the branch's effective head still equals it.
+     */
+    "Omnigraph-If-Graph-Commit": string;
+  };
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/mutate/if-graph-commit";
+};
+
+export type ClusterMutateIfGraphCommitErrors = {
+  /**
+   * Missing, duplicate, malformed, or invalid request
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden
+   */
+  403: ErrorOutput;
+  /**
+   * Write-authority conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Graph-commit precondition failed; the write had no effect
+   */
+  412: ErrorOutput;
+  /**
+   * Keyed write exceeds the per-commit entity or byte ceiling
+   */
+  413: ErrorOutput;
+  /**
+   * An allowed external Blob source could not be probed or read
+   */
+  424: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+  /**
+   * An overlapping durable recovery intent must be resolved before retry
+   */
+  503: ErrorOutput;
+};
+
+export type ClusterMutateIfGraphCommitError =
+  ClusterMutateIfGraphCommitErrors[keyof ClusterMutateIfGraphCommitErrors];
+
+export type ClusterMutateIfGraphCommitResponses = {
+  /**
+   * Conditional mutation results
+   */
+  200: ChangeOutput;
+};
+
+export type ClusterMutateIfGraphCommitResponse =
+  ClusterMutateIfGraphCommitResponses[keyof ClusterMutateIfGraphCommitResponses];
 
 export type ClusterListQueriesData = {
   body?: never;
@@ -1321,13 +2172,17 @@ export type ClusterInvokeQueryErrors = {
    */
   404: ErrorOutput;
   /**
-   * Stored mutation write-authority conflict
+   * Stored mutation write-authority conflict, or a full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying
    */
   409: ErrorOutput;
   /**
-   * Stored keyed mutation exceeds the per-commit row or byte ceiling
+   * Stored keyed mutation exceeds the per-commit entity or byte ceiling
    */
   413: ErrorOutput;
+  /**
+   * A stored mutation could not probe or read an allowed external Blob source
+   */
+  424: ErrorOutput;
   /**
    * Per-actor admission cap exceeded; honor `Retry-After` header
    */
@@ -1355,6 +2210,88 @@ export type ClusterInvokeQueryResponses = {
 export type ClusterInvokeQueryResponse =
   ClusterInvokeQueryResponses[keyof ClusterInvokeQueryResponses];
 
+export type ClusterInvokeQueryIfGraphCommitData = {
+  body?: null | InvokeStoredQueryRequest;
+  headers: {
+    /**
+     * Required raw graph-head commit id. The stored mutation runs only while the branch's effective head still equals it.
+     */
+    "Omnigraph-If-Graph-Commit": string;
+  };
+  path: {
+    /**
+     * Graph id to route the request to.
+     */
+    graph_id: string;
+    /**
+     * Stored mutation name (the registry key)
+     */
+    name: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/queries/{name}/if-graph-commit";
+};
+
+export type ClusterInvokeQueryIfGraphCommitErrors = {
+  /**
+   * Missing, duplicate, malformed, read-only, or invalid invocation
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Forbidden (the inner `change` gate)
+   */
+  403: ErrorOutput;
+  /**
+   * Unknown stored mutation, or `invoke_query` denied
+   */
+  404: ErrorOutput;
+  /**
+   * Stored mutation write-authority conflict
+   */
+  409: ErrorOutput;
+  /**
+   * Stored mutation graph-commit precondition failed; the write had no effect
+   */
+  412: ErrorOutput;
+  /**
+   * Stored keyed mutation exceeds the per-commit entity or byte ceiling
+   */
+  413: ErrorOutput;
+  /**
+   * A stored mutation could not probe or read an allowed external Blob source
+   */
+  424: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header
+   */
+  429: ErrorOutput;
+  /**
+   * Policy evaluation error (a denial is reported as 404, not 500)
+   */
+  500: ErrorOutput;
+  /**
+   * A stored mutation is blocked by a durable recovery intent
+   */
+  503: ErrorOutput;
+};
+
+export type ClusterInvokeQueryIfGraphCommitError =
+  ClusterInvokeQueryIfGraphCommitErrors[keyof ClusterInvokeQueryIfGraphCommitErrors];
+
+export type ClusterInvokeQueryIfGraphCommitResponses = {
+  /**
+   * Stored conditional mutation result
+   */
+  200: ChangeOutput;
+};
+
+export type ClusterInvokeQueryIfGraphCommitResponse =
+  ClusterInvokeQueryIfGraphCommitResponses[keyof ClusterInvokeQueryIfGraphCommitResponses];
+
 export type ClusterQueryData = {
   body: QueryRequest;
   path: {
@@ -1380,6 +2317,10 @@ export type ClusterQueryErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying
+   */
+  409: ErrorOutput;
 };
 
 export type ClusterQueryError = ClusterQueryErrors[keyof ClusterQueryErrors];
@@ -1419,15 +2360,19 @@ export type ClusterReadErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying
+   */
+  409: ErrorOutput;
 };
 
 export type ClusterReadError = ClusterReadErrors[keyof ClusterReadErrors];
 
 export type ClusterReadResponses = {
   /**
-   * Query results (response includes `Deprecation: true` + `Link: <query>; rel="successor-version"`)
+   * Legacy token-free query results (response includes `Deprecation: true` + `Link: <query>; rel="successor-version"`)
    */
-  200: ReadOutput;
+  200: LegacyReadOutput;
 };
 
 export type ClusterReadResponse =
@@ -1547,7 +2492,7 @@ export type ClusterGetSnapshotError =
 
 export type ClusterGetSnapshotResponses = {
   /**
-   * Database snapshot
+   * Graph snapshot
    */
   200: SnapshotOutput;
 };

@@ -18,7 +18,7 @@ describe('schema resource', () => {
     const { fetch, calls } = stubFetch({
       body: {
         applied: true,
-        manifest_version: 5,
+        graph_manifest_version: 5,
         steps: [],
         supported: true,
       },
@@ -31,12 +31,12 @@ describe('schema resource', () => {
       schema_source: 'node Foo { id: String @key }',
     });
     expect(r.applied).toBe(true);
-    expect(r.manifestVersion).toBe(5);
+    expect(r.graphManifestVersion).toBe(5);
   });
 
   it('apply returns applied=false on no-op', async () => {
     const { fetch } = stubFetch({
-      body: { applied: false, manifest_version: 5, steps: [], supported: true },
+      body: { applied: false, graph_manifest_version: 5, steps: [], supported: true },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const r = await og.schema.apply({ schemaSource: 'node Foo { id: String @key }' });
@@ -45,7 +45,7 @@ describe('schema resource', () => {
 
   it('apply serializes allowDataLoss → allow_data_loss on the wire', async () => {
     const { fetch, calls } = stubFetch({
-      body: { applied: true, manifest_version: 6, steps: [], supported: true },
+      body: { applied: true, graph_manifest_version: 6, steps: [], supported: true },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.schema.apply({
@@ -60,7 +60,7 @@ describe('schema resource', () => {
 
   it('apply omits allow_data_loss when allowDataLoss is unset', async () => {
     const { fetch, calls } = stubFetch({
-      body: { applied: true, manifest_version: 6, steps: [], supported: true },
+      body: { applied: true, graph_manifest_version: 6, steps: [], supported: true },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await og.schema.apply({ schemaSource: 'node Foo { id: String @key }' });
@@ -71,7 +71,7 @@ describe('schema resource', () => {
 
   it('maps a bare 409 (schema apply disabled for cluster graph) to ConflictError', async () => {
     // Server 0.7.0 refuses schema apply on a cluster-managed graph with a plain
-    // 409 — no merge_conflicts / manifest_conflict payload. The conflict fields
+    // 409 — no merge_conflicts / published_dataset_version_conflict payload. The conflict fields
     // must stay undefined, not throw.
     const { fetch } = stubFetch({
       status: 409,
@@ -87,7 +87,7 @@ describe('schema resource', () => {
     } catch (e) {
       expect(e).toBeInstanceOf(ConflictError);
       expect((e as ConflictError).mergeConflicts).toBeUndefined();
-      expect((e as ConflictError).manifestConflict).toBeUndefined();
+      expect((e as ConflictError).publishedDatasetVersionConflict).toBeUndefined();
     }
   });
 });

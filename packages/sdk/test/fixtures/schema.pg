@@ -1,6 +1,7 @@
 node Person {
     name: String @key
     age: I32?
+    avatar: Blob?
 }
 
 node Company {

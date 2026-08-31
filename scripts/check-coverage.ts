@@ -21,7 +21,7 @@ interface Spec {
   paths?: Record<string, Record<string, SpecOperation>>;
 }
 
-const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch']);
+const HTTP_METHODS = new Set(['get', 'head', 'post', 'put', 'delete', 'patch', 'options', 'trace']);
 
 interface SpecEndpoint {
   method: string;
