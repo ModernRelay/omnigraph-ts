@@ -501,6 +501,8 @@ describe('branch statements (server 0.11)', () => {
     ['branches', false],
     ['branch_x', false],
     ['/* unterminated branch create "x"', false],
+    ['\u00a0branch list', false], // not engine whitespace: the server would not parse it as a statement
+    ['\t\r\nbranch list', true],
   ])('isBranchStatement(%j) is %s', (text, expected) => {
     expect(isBranchStatement(text)).toBe(expected);
   });

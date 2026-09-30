@@ -41,7 +41,7 @@ That's the whole pattern: instantiate once (with a `graphId`), call methods, get
 
 > **`graphId` is required (server 0.7.0).** `omnigraph-server` is cluster-only: every graph-scoped operation is served under `/graphs/{graphId}/…`. A graph-scoped call without a `graphId` throws `ConfigurationError` before hitting the network. Only `og.health()` and `og.graphs.list()` work without one — use the latter to discover ids, then [`og.graph(id)`](#multi-graph-clusters). This SDK targets the matching server release (see [Server compatibility](#server-compatibility)); for a 0.6.x (flat-route) server, stay on `@modernrelay/omnigraph@0.6.x`.
 
-Use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk load). Deprecated aliases were removed from the SDK in v0.7; v0.10 does not promise compatibility with older server minor versions.
+Use **`og.query()`** (read), **`og.mutate()`** (write), and **`og.load()`** (bulk load). Deprecated aliases were removed from the SDK in v0.7; v0.11 does not promise compatibility with older server minor versions.
 
 ## What you can do
 
@@ -68,9 +68,14 @@ const { affectedNodes, affectedEdges } = await og.mutate({
 });
 ```
 
-Multi-statement mutations publish atomically. Successful mutations return an
+Multi-statement mutations publish atomically. Successful data mutations return an
 exact `commit` receipt; `commit: null` means a successful no-op. Load methods
 also return their exact commit, plus `nodes`, `edges`, and `totalEntities`.
+
+A branch statement (`og.mutate({ query: 'branch create "x" from "main"' })`, server 0.11)
+is sent without `branch` and reports its effect in `outcome`. Its `commit` is not a
+receipt: create and delete return `null` although they changed state, and a merge's
+`commit` is the target head after the merge, which a concurrent writer may already have moved.
 
 ### Conditional mutations
 

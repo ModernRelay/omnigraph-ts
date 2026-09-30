@@ -122,7 +122,7 @@ const FeedStart = z.union([
 export function isBranchStatement(text: string): boolean {
   let i = 0;
   for (;;) {
-    while (i < text.length && /\s/.test(text[i]!)) i++;
+    while (i < text.length && ' \t\r\n'.includes(text[i]!)) i++; // the engine's WHITESPACE
     if (text.startsWith('//', i)) {
       const nl = text.indexOf('\n', i);
       if (nl < 0) return false;
