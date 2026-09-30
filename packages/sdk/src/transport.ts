@@ -25,8 +25,9 @@ export interface TransportOptions {
 // Paths that are flat management endpoints in every server mode. They must
 // never be rewritten under a `graphId` prefix, even when one is configured.
 //   - `/healthz` is unauthenticated and graph-independent.
+//   - `/readyz`  is the unauthenticated readiness probe (server v0.11+).
 //   - `/graphs`  is the registry endpoint that lists graphs themselves.
-const FLAT_PATHS: ReadonlySet<string> = new Set(['/healthz', '/graphs']);
+const FLAT_PATHS: ReadonlySet<string> = new Set(['/healthz', '/readyz', '/graphs']);
 
 export interface RequestOptions {
   headers?: Record<string, string>;

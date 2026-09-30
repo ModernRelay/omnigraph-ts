@@ -77,10 +77,15 @@ Mutating (`destructiveHint: true` where appropriate — hosts should surface con
 
 There is **no `schema_apply` tool**: a cluster-managed graph rejects HTTP schema apply (409). Schema is read-only here (`schema_get`); evolve it via `omnigraph cluster apply`.
 
-### v0.10 writes, errors, and change pages
+### v0.11 writes, errors, and change pages
 
 Successful `mutate` and `load` results include the exact `commit` receipt from
-publication. `mutate` returning `commit: null` means a successful no-op. Comparing
+publication. A data `mutate` returning `commit: null` means a successful no-op.
+A branch statement (`branch create|delete|merge …`, server 0.11) is sent without
+a branch — the server refuses one with a target — and reports its effect in
+`outcome`: create and delete return `commit: null` although they changed state,
+and a merge's `commit` is the target head after the merge, which a concurrent
+writer may already have moved. Comparing
 branch heads before and after is not a receipt: another writer may advance the
 head, and a timed-out operation may still be running.
 
@@ -118,7 +123,7 @@ Best-practice references are fetched from the same pinned upstream contract as
 the SDK, not moving `main`. Operator/CLI examples are not additional MCP tools;
 available types, properties, and vector dimensions come from the live schema.
 The older `remote-ops` reference is intentionally excluded until its blanket
-retry and branch-head verification advice is refreshed for v0.10. The write/error
+retry and branch-head verification advice is refreshed for v0.11. The write/error
 rules above and the server's initialization instructions are authoritative for
 this MCP version.
 

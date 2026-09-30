@@ -14,6 +14,7 @@ import type {
   ExportInput,
   GraphBatchLoad,
   Health,
+  Readiness,
   Ingest,
   IngestInput,
   LoadNdjsonInput,
@@ -106,6 +107,18 @@ export default class Omnigraph {
   }
 
   /**
+   * Readiness probe (`GET /readyz`, server v0.11+). Unauthenticated. A draining
+   * server answers 503 with the same body, so both are returned rather than
+   * thrown: check `ready` / `status`.
+   */
+  readiness(opts: CallOptions = {}): Promise<Readiness> {
+    return this.t.request<Readiness>('GET', '/readyz', {
+      signal: opts.signal,
+      acceptedStatuses: [503],
+    });
+  }
+
+  /**
    * Run a GQ read query (`POST /query`). Read-only. Field names are
    * `query` / `name`; `params` is a free-form map matched to `$var`
    * placeholders in the query source.
@@ -126,7 +139,15 @@ export default class Omnigraph {
    * Pass `opts.ifGraphCommit` from a preceding read to reject stale decisions
    * with HTTP 412. Uses the dedicated capability route; never falls back to
    * an unconditional write on an older server. No requests are auto-retried.
-   * `commit` identifies this publication; `null` means a successful no-op.
+   * For a data mutation, `commit` identifies this publication; `null` means a
+   * successful no-op.
+   *
+   * A branch statement (`branch create|delete|merge …`, server >= 0.11) names
+   * its branches itself: send it without `branch`, `name`, `params` or
+   * `ifGraphCommit` (the server refuses them with HTTP 400). Its effect is in
+   * `outcome`; create and delete return `commit: null` although they changed
+   * state, and a merge's `commit` is the target's head read after the merge —
+   * a concurrent writer may already have moved it.
    */
   mutate(input: MutationInput, opts: ConditionalCallOptions = {}): Promise<Change> {
     if (opts.ifGraphCommit !== undefined) {

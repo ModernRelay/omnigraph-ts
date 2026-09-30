@@ -25,7 +25,7 @@ TypeScript packages for the [Omnigraph](https://github.com/ModernRelay/omnigraph
 
 The SDK targets the `omnigraph-server` version in **`package.json#omnigraph.serverVersion`**. By default, the source is the matching `vX.Y.Z` tag. Before a server release exists, **`omnigraph.serverRef`** may temporarily pin a full immutable commit SHA. The OpenAPI spec, MCP reference documents, and live CI server all use that same source. Branch names and abbreviated SHAs are rejected.
 
-The **v0.10** line targets `omnigraph-server` **v0.10.0**. Upgrade the CLI, server, and client integrations together; see the [v0.9 migration notes](packages/sdk/README.md#migrating-from-v09). Development source pins remain supported, but block publishing through both the release workflow and each package's `prepublishOnly` hook.
+The **v0.11** line targets `omnigraph-server` **v0.11.0**. Upgrade the CLI, server, and client integrations together; see the [v0.10 migration notes](packages/sdk/README.md#migrating-from-v010). Development source pins remain supported, but block publishing through both the release workflow and each package's `prepublishOnly` hook.
 
 `scripts/gen-version.ts` stamps the target version as `SERVER_VERSION`. CI checks that the bundled spec matches the pinned source byte for byte and runs live e2e tests against it: a checksum-verified release binary for tags, or a source build for commit pins.
 
@@ -37,7 +37,7 @@ In practice: server cuts `0.4.2`, SDK ships `0.4.0` (and `0.4.1`, `0.4.2`, … a
 
 ## Workflow when omnigraph cuts a new release
 
-1. Bump `package.json#omnigraph.serverVersion` to the new tag (e.g., `0.10.0`). If upgrading from a source-pinned candidate, remove `omnigraph.serverRef` after the release tag exists.
+1. Bump `package.json#omnigraph.serverVersion` to the new tag (e.g., `0.11.0`). If upgrading from a source-pinned candidate, remove `omnigraph.serverRef` after the release tag exists.
 2. `pnpm run sync-spec` — fetches the matching `openapi.json` into `spec/`.
 3. `pnpm run generate` — regenerates `packages/sdk/src/generated/` and `packages/sdk/src/version.gen.ts`.
 4. Commit `spec/openapi.json`, `packages/sdk/src/generated/`, `packages/sdk/src/version.gen.ts`, and the bumped `package.json`. The PR shows the full upstream change.

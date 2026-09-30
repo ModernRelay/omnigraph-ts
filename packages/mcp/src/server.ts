@@ -33,7 +33,7 @@ After schema, consult the matching best-practices resource for the task at hand:
   - omnigraph://best-practices/schema      — to understand the .pg schema before writing
   - omnigraph://best-practices/search      — before nearest/bm25/rrf queries
 
-These references also contain operator/CLI examples, not additional MCP tools. The live schema determines available types, properties, and vector dimensions; example models and node names are not deployment guarantees. The write and error rules below are the v0.10 MCP contract.
+These references also contain operator/CLI examples, not additional MCP tools. The live schema determines available types, properties, and vector dimensions; example models and node names are not deployment guarantees. The write and error rules below are the v0.11 MCP contract.
 
 Workflow norms (violating these breaks things or silently corrupts data):
 
@@ -41,7 +41,7 @@ Workflow norms (violating these breaks things or silently corrupts data):
 2. Parameterize. Pass values via \`params\`, never interpolate into the query body. Declare typed params: \`query foo($slug: String) { ... }\`.
 3. \`nearest\`, \`bm25\`, and \`rrf\` require a trailing \`limit N\` — they are ordering operators, not filters.
 4. \`load mode: "merge"\` upserts stable keys; it is not request deduplication. Reconcile an ambiguous outcome before replaying. \`"overwrite"\` replaces supplied types. \`"append"\` fails on key collision.
-5. Successful mutations and loads return an exact \`commit\` receipt. A mutation with \`commit: null\` is a successful no-op, not a failed write. A separate branch-head read cannot prove which writer committed. A timeout or lost response leaves the outcome unknown: verify the intended content and relevant commit history before considering a replay; never infer retry safety from an unchanged head or node type name.
+5. Successful mutations and loads return an exact \`commit\` receipt. A data mutation with \`commit: null\` is a successful no-op, not a failed write. A branch statement (\`branch create|delete|merge …\`) reports its effect in \`outcome\`: create and delete return \`commit: null\` although they changed state, and a merge's \`commit\` is the target head after the merge, which a concurrent writer may already have moved. A separate branch-head read cannot prove which writer committed. A timeout or lost response leaves the outcome unknown: verify the intended content and relevant commit history before considering a replay; never infer retry safety from an unchanged head or node type name.
 6. For read-modify-write, use \`query.graphCommitId\` as \`mutate.ifGraphCommit\`. It selects the dedicated conditional-write route; HTTP 412 with \`preconditionFailure\` means no effects. Re-read and reconsider the change instead of blindly replaying it. Never fall back to an unconditional mutation when the conditional route is unavailable.
 7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`.
 8. Schema is read-only over this MCP. \`schema_get\` returns the active .pg source; there is no \`schema_apply\` tool. A cluster-managed graph rejects HTTP schema apply (409) — schema changes go through \`omnigraph cluster apply\` (an operator/CLI action), not an agent tool.
@@ -112,6 +112,29 @@ const FeedStart = z.union([
   z.literal('beginning'),
   z.string().startsWith('after:').min(7).transform((value) => value as `after:${string}`),
 ]);
+
+/**
+ * Whether a query text is a v0.11 branch statement (`branch create|delete|merge|list …`, RFC 0055).
+ * Mirrors the engine grammar: leading whitespace and `//` / `/* *\/` comments, then the keyword
+ * `branch` on a word boundary. A statement names its branches itself, and the server refuses one
+ * sent with a request target — so the configured default branch must not be applied to it.
+ */
+export function isBranchStatement(text: string): boolean {
+  let i = 0;
+  for (;;) {
+    while (i < text.length && ' \t\r\n'.includes(text[i]!)) i++; // the engine's WHITESPACE
+    if (text.startsWith('//', i)) {
+      const nl = text.indexOf('\n', i);
+      if (nl < 0) return false;
+      i = nl + 1;
+    } else if (text.startsWith('/*', i)) {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) return false;
+      i = end + 2;
+    } else break;
+  }
+  return text.startsWith('branch', i) && !/[A-Za-z0-9_]/.test(text[i + 6] ?? '');
+}
 
 export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
   const og = new Omnigraph({
@@ -188,7 +211,8 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
         query,
         name,
         params,
-        branch: snapshot ? branch : (branch ?? defaultBranch),
+        // A branch statement names its branches itself; never add the default target to it.
+        branch: snapshot || isBranchStatement(query) ? branch : (branch ?? defaultBranch),
         snapshot,
       }));
     },
@@ -298,7 +322,10 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
         'Run a .gq mutation (insert/update/delete) against a branch. Canonical write ' +
         'endpoint as of server 0.6.0 (successor to `change`). Multi-statement mutations ' +
         'are atomic at the commit boundary. Returns affectedNodes / affectedEdges counts and an exact ' +
-        'commit receipt (null for a successful no-op). ifGraphCommit requires the branch head from a prior ' +
+        'commit receipt (null for a successful no-op). A branch statement (`branch create|delete|merge …`, ' +
+        'server 0.11) is sent without a branch and reports its effect in `outcome` instead: create and ' +
+        'delete return commit null although they changed state, and a merge\'s commit is the target head ' +
+        'read after the merge, not proof the merge alone published it. ifGraphCommit requires the branch head from a prior ' +
         'query and uses the dedicated conditional route; stale heads fail with 412 before effects.',
       inputSchema: {
         query: z.string().min(1),
@@ -313,7 +340,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
         query,
         name,
         params,
-        branch: branch ?? defaultBranch,
+        branch: isBranchStatement(query) ? branch : (branch ?? defaultBranch),
       }, { ifGraphCommit })),
   );
 

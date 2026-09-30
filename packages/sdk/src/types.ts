@@ -23,6 +23,9 @@ import type {
   GraphInfo as GraphInfoOutput,
   GraphListResponse,
   HealthOutput,
+  ReadinessOutput,
+  BranchOutcomeOutput,
+  SystemColumnsOutput,
   IngestOutput,
   IngestRequest,
   InvokeStoredQueryRequest,
@@ -66,6 +69,14 @@ export type CommitList = Camelize<CommitListOutput>;
 export type GraphInfo = Camelize<GraphInfoOutput>;
 export type GraphList = Camelize<GraphListResponse>;
 export type Health = Camelize<HealthOutput>;
+// Readiness (GET /readyz, server v0.11+): `ready` and `status` ("serving" | "draining"), plus
+// served/quarantined graph counts. Returned for both 200 and 503.
+export type Readiness = Camelize<ReadinessOutput>;
+// What a branch statement run through POST /mutate did (server v0.11+): `Change.outcome`.
+export type BranchOutcome = Camelize<BranchOutcomeOutput>;
+// The graph's identity column spellings (`__id`/`__src`/`__dst` on format-9 graphs), from
+// `Schema.systemColumns` (server v0.11+).
+export type SystemColumns = Camelize<SystemColumnsOutput>;
 export type Ingest = Camelize<IngestOutput>;
 // Strict graph-level NDJSON batch load (POST /load/ndjson).
 export type GraphBatchLoad = Camelize<GraphBatchLoadOutput>;
@@ -111,10 +122,14 @@ export type ChangeBaseline = Camelize<
 export type ChangeBaselineInput = Camelize<
   import('./generated/types.gen').ChangeBaselineRequest
 >;
-/** Entity NDJSON envelopes; user property names inside data are never converted. */
+/**
+ * Entity NDJSON envelopes; user property names inside data are never converted.
+ * `id` is the entity's identity (server >= 0.11), separate from `data` — where an `id` key is an
+ * ordinary user property.
+ */
 export type ExportRecord =
-  | { type: string; data: Record<string, unknown> }
-  | { edge: string; from: string; to: string; data: Record<string, unknown> };
+  | { type: string; id: string; data: Record<string, unknown> }
+  | { edge: string; id: string; from: string; to: string; data: Record<string, unknown> };
 /** The OpenAPI record describes the terminal envelope only; entities precede it. */
 export type ChangeBaselineRecord =
   | ExportRecord
