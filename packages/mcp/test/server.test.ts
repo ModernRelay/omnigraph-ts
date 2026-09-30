@@ -364,6 +364,7 @@ describe('omnigraph-mcp server', () => {
     const uris = r.resources.map((res) => res.uri).sort();
     expect(uris).toEqual(
       [
+        'omnigraph://best-practices/changes',
         'omnigraph://best-practices/data',
         'omnigraph://best-practices/index',
         'omnigraph://best-practices/queries',

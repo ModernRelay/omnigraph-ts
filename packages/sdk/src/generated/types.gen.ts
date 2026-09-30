@@ -106,6 +106,28 @@ export type BranchMergeRequest = {
 };
 
 /**
+ * The effect of a branch statement sent to `POST /mutate`, tagged by `kind`.
+ * A merge conflict has no kind: it is the 409 `POST /branches/merge` answers.
+ * The statement grammar is `BranchStmt` in `omnigraph-compiler`.
+ */
+export type BranchOutcomeOutput =
+  | {
+      from: string;
+      kind: "created";
+      name: string;
+    }
+  | {
+      kind: "deleted";
+      name: string;
+    }
+  | {
+      kind: "merged";
+      merge: BranchMergeOutcome;
+      source: string;
+      target: string;
+    };
+
+/**
  * Terminal payload of a baseline stream: the captured snapshot commit and
  * the cursor that resumes the feed immediately after it.
  */
@@ -264,7 +286,8 @@ export type ChangeFeedOutput = {
 export type ChangeImageOutput = {
   endpoints?: null | ChangeEndpointsOutput;
   /**
-   * Exact logical property values; user-schema keys verbatim.
+   * Exact logical property values, user-schema keys verbatim; a null cell
+   * keeps its key, an absent key was outside that commit's schema.
    */
   properties: unknown;
 };
@@ -288,10 +311,27 @@ export type ChangeOpOutput =
 
 export type ChangeOutput = {
   actor_id?: string | null;
+  /**
+   * Edges the mutation touched, under the `affected_nodes` rule.
+   */
   affected_edges: number;
+  /**
+   * Nodes the mutation touched. Not reported for a branch statement,
+   * which moves refs, not nodes or edges: `0` whenever `outcome` is present.
+   */
   affected_nodes: number;
+  /**
+   * The branch that received the effect. For a branch statement: the
+   * created branch, the deleted branch (gone by the time this is read),
+   * or the merge target.
+   */
   branch: string;
   commit?: null | CommitOutput;
+  outcome?: null | BranchOutcomeOutput;
+  /**
+   * The declared mutation's name, or a branch statement's two keywords
+   * (`branch create`, `branch delete`, `branch merge`).
+   */
   query_name: string;
 };
 
@@ -312,7 +352,9 @@ export type ChangeRequest = {
   params?: unknown;
   /**
    * GQ mutation source containing `insert`, `update`, or `delete` statements.
-   * May declare multiple named mutations; pick one with `name`.
+   * May declare multiple named mutations; pick one with `name`. May instead
+   * be one branch statement (grammar: `BranchStmt` in `omnigraph-compiler`),
+   * sent with no `name`, `params`, or `branch`.
    *
    * Accepts the legacy field name `query_source` as a deserialization alias.
    */
@@ -510,11 +552,18 @@ export type GraphInfo = {
  */
 export type GraphListResponse = {
   graphs: Array<GraphInfo>;
+  /**
+   * Graphs the applied revision names that this process does not serve,
+   * for any reason, sorted (RFC 0049). Empty when every applied graph is
+   * served.
+   */
+  quarantined?: Array<string>;
 };
 
 export type HealthOutput = {
   /**
-   * The internal-schema (storage-format) version this binary writes and reads.
+   * The newest internal-schema (storage-format) version this binary serves;
+   * it also reads and writes the preceding legacy-vintage version.
    */
   internal_schema_version: number;
   source_version?: string | null;
@@ -616,9 +665,9 @@ export type KeyConflictOutput = {
 };
 
 /**
- * Indefinitely byte-stable response shape for the deprecated `POST /read`
- * route. The canonical [`ReadOutput`] may grow additive fields; this legacy
- * envelope deliberately cannot carry them.
+ * Indefinitely byte-stable envelope of the deprecated `POST /read` route; cell
+ * spelling follows the JSON writer. The canonical [`ReadOutput`] may grow
+ * additive fields; this legacy envelope deliberately cannot carry them.
  */
 export type LegacyReadOutput = {
   columns?: Array<string>;
@@ -791,7 +840,9 @@ export type QueryRequest = {
    * GQ read-query source. May declare one or more named queries; pick one
    * with `name` when more than one is declared. Mutations
    * (`insert`/`update`/`delete`) get 400 — use `POST /mutate` (or its
-   * deprecated alias `POST /change`) instead.
+   * deprecated alias `POST /change`) instead. May instead be the branch
+   * statement `branch list`, sent with no `name`, `params`, `branch`, or
+   * `snapshot`.
    */
   query: string;
   /**
@@ -857,6 +908,49 @@ export type ReadTargetOutput = {
   snapshot?: string | null;
 };
 
+/**
+ * The readiness witness of one replica (`GET /readyz`, RFC 0049): whether
+ * it is serving or draining, the applied revision it booted from, and how
+ * many graphs it does and does not serve. Unauthenticated, so it carries
+ * no graph id: those stay behind `GET /graphs`.
+ */
+export type ReadinessOutput = {
+  /**
+   * The `config_digest` of the applied revision this process booted from.
+   * Fixed for the life of the process: the server never reloads.
+   */
+  booted_serving_digest?: string | null;
+  /**
+   * How many graphs the applied revision names that this process does
+   * not serve, for any reason. `GET /graphs` names them.
+   */
+  quarantined_graph_count: number;
+  /**
+   * False once shutdown has begun; the response is then 503.
+   */
+  ready: boolean;
+  /**
+   * How many graphs this process serves.
+   */
+  served_graph_count: number;
+  /**
+   * The bound on graceful shutdown, after which the process exits 2.
+   */
+  shutdown_grace_seconds: number;
+  /**
+   * The ledger CAS (`sha256:<hex>`) the process booted from.
+   */
+  state_cas?: string | null;
+  /**
+   * The ledger revision the process booted from.
+   */
+  state_revision: number;
+  /**
+   * `serving` or `draining`.
+   */
+  status: string;
+};
+
 export type RecoveryRequiredOutput = {
   operation_id: string;
 };
@@ -897,6 +991,7 @@ export type SchemaApplyRequest = {
 
 export type SchemaOutput = {
   schema_source: string;
+  system_columns?: null | SystemColumnsOutput;
 };
 
 export type SnapshotDatasetOutput = {
@@ -917,6 +1012,15 @@ export type SnapshotOutput = {
    * is stamped at.
    */
   internal_schema_version: number;
+};
+
+/**
+ * A graph's system column spellings (see `SchemaOutput::system_columns`).
+ */
+export type SystemColumnsOutput = {
+  dst: string;
+  id: string;
+  src: string;
 };
 
 export type ListGraphsData = {
@@ -1891,7 +1995,7 @@ export type ClusterLoadResponse =
 
 export type ClusterLoadNdjsonData = {
   /**
-   * Strict raw graph-level NDJSON. Each nonblank line is exactly one node envelope {"type":"<Node>","data":{...}} or edge envelope {"edge":"<Edge>","from":"<src-id>","to":"<dst-id>","data":{...}}. `data` defaults to {}; optional `data.id` follows ordinary ID semantics. Duplicate, unknown, reserved physical, and noncanonical supplied node-ID members are refused.
+   * Strict raw graph-level NDJSON. Each nonblank line is exactly one node envelope {"type":"<Node>","id":"<entity-id>","data":{...}} or edge envelope {"edge":"<Edge>","id":"<entity-id>","from":"<src-id>","to":"<dst-id>","data":{...}}. `data` defaults to {} and holds user properties; the optional top-level `id` follows ordinary ID semantics. Legacy-vintage graphs also accept `data.id` as identity when top-level `id` is absent and refuse both placements together. Duplicate, unknown, reserved physical, and noncanonical supplied entity-ID members are refused.
    */
   body: string;
   path: {
@@ -1987,7 +2091,7 @@ export type ClusterMutateData = {
 
 export type ClusterMutateErrors = {
   /**
-   * Bad request
+   * Bad request - also returned when `branch list` arrives here instead of POST /query, when a request target accompanies a branch statement, when a name or parameters accompany a branch statement, and when a commit precondition accompanies a branch statement
    */
   400: ErrorOutput;
   /**
@@ -1999,7 +2103,11 @@ export type ClusterMutateErrors = {
    */
   403: ErrorOutput;
   /**
-   * Write-authority conflict
+   * `branch delete` of a branch that does not exist, as DELETE /branches/{branch} answers
+   */
+  404: ErrorOutput;
+  /**
+   * Write-authority conflict; also `branch create` of a branch that already exists, and a conflicting `branch merge`, whose body carries `merge_conflicts`
    */
   409: ErrorOutput;
   /**
@@ -2306,7 +2414,7 @@ export type ClusterQueryData = {
 
 export type ClusterQueryErrors = {
   /**
-   * Bad request - also returned when the query body contains mutations; use POST /mutate (or its deprecated alias POST /change) for write queries
+   * Bad request - also returned when the query body contains mutations (use POST /mutate, or its deprecated alias POST /change, for write queries), when a control write statement (`branch create`, `branch delete`, `branch merge`) arrives here instead of POST /mutate, when a request target accompanies a branch statement, and when a name or parameters accompany a branch statement
    */
   400: ErrorOutput;
   /**
@@ -2515,3 +2623,28 @@ export type HealthResponses = {
 };
 
 export type HealthResponse = HealthResponses[keyof HealthResponses];
+
+export type ReadinessData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/readyz";
+};
+
+export type ReadinessErrors = {
+  /**
+   * Draining
+   */
+  503: ReadinessOutput;
+};
+
+export type ReadinessError = ReadinessErrors[keyof ReadinessErrors];
+
+export type ReadinessResponses = {
+  /**
+   * Serving
+   */
+  200: ReadinessOutput;
+};
+
+export type ReadinessResponse = ReadinessResponses[keyof ReadinessResponses];

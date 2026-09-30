@@ -14,6 +14,7 @@ import type {
   ExportInput,
   GraphBatchLoad,
   Health,
+  Readiness,
   Ingest,
   IngestInput,
   LoadNdjsonInput,
@@ -103,6 +104,18 @@ export default class Omnigraph {
    */
   health(opts: CallOptions = {}): Promise<Health> {
     return this.t.request<Health>('GET', '/healthz', { signal: opts.signal });
+  }
+
+  /**
+   * Readiness probe (`GET /readyz`, server v0.11+). Unauthenticated. A draining
+   * server answers 503 with the same body, so both are returned rather than
+   * thrown: check `ready` / `status`.
+   */
+  readiness(opts: CallOptions = {}): Promise<Readiness> {
+    return this.t.request<Readiness>('GET', '/readyz', {
+      signal: opts.signal,
+      acceptedStatuses: [503],
+    });
   }
 
   /**

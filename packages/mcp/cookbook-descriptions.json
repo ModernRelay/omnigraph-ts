@@ -15,6 +15,10 @@
     "search": {
       "title": "Vector and full-text search",
       "description": "Read before using nearest/bm25/rrf. Covers scope-first-rank-second queries, schema-declared embeddings, and the trailing-`limit` requirement. Match vector dimensions and models to the live deployment; CLI examples are not MCP tools."
+    },
+    "changes": {
+      "title": "Commits, change feeds and branch statements",
+      "description": "Read before `commits_changes`, `changes_poll`, or a conditional `mutate`. Covers exact read/write positions (`graphCommitId` → `ifGraphCommit`, 412 means no effects), durable feed consumption, 410 baseline resets, and the v0.11 branch statements accepted by `mutate` (their `outcome` receipts, and why a merge's `commit` is not an exact-attempt receipt)."
     }
   },
   "skipped": {
@@ -24,6 +28,7 @@
     "server-policy": "Server-deployment concerns (Cedar policy, auth tokens), out of scope for an MCP client.",
     "cluster": "Operator/CLI concern — declaring and converging a deployment via cluster.yaml + `omnigraph cluster apply`. The MCP wraps the data-plane HTTP API, which cannot apply cluster config.",
     "migrations": "Pre-0.7.0 → 0.7.0 migration reference for config files, CLI flags, and command spellings — a CLI/operator guide, not actionable through the HTTP API the MCP wraps.",
-    "stored-queries": "Stored-query declaration is a cluster/operator concern (cluster.yaml); the MCP wraps the data-plane HTTP API and does not currently expose a stored-query invoke tool."
+    "stored-queries": "Stored-query declaration is a cluster/operator concern (cluster.yaml); the MCP wraps the data-plane HTTP API and does not currently expose a stored-query invoke tool.",
+    "blobs": "Blob cells are read through the dedicated `GET`/`HEAD /blob` endpoints, which this MCP does not wrap; writing a Blob (`base64:` or URI) uses the ordinary `mutate`/`load` paths the other references cover."
   }
 }
