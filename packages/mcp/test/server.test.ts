@@ -2,7 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it } from 'vitest';
 import { SERVER_VERSION } from '@modernrelay/omnigraph';
-import { createOmnigraphMcpServer, type CreateServerOptions } from '../src/server';
+import { createOmnigraphMcpServer, isBranchStatement, type CreateServerOptions } from '../src/server';
 import { MCP_PACKAGE_VERSION } from '../src/version.gen';
 
 const COMMIT = {
@@ -488,5 +488,41 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     // query is required on `query`.
     const r = await client.callTool({ name: 'query', arguments: {} });
     expect(r.isError).toBe(true);
+  });
+});
+
+describe('branch statements (server 0.11)', () => {
+  it.each([
+    ['branch create "x" from "main"', true],
+    ['  // note\nbranch merge "x" into "main"', true],
+    ['/* c */ branch delete "x"', true],
+    ['branch list', true],
+    ['query branches() { match { $p: Person } return { $p.name } }', false],
+    ['branches', false],
+    ['branch_x', false],
+    ['/* unterminated branch create "x"', false],
+  ])('isBranchStatement(%j) is %s', (text, expected) => {
+    expect(isBranchStatement(text)).toBe(expected);
+  });
+
+  it.each([
+    ['mutate', '/mutate', 'branch create "x" from "main"'],
+    ['query', '/query', 'branch list'],
+  ])('%s sends a statement without the default branch, and a data op with it', async (tool, route, statement) => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const { client } = await setup({ defaultBranch: 'review', fetch: async (input, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      expect(flatPath(String(input))).toBe(route);
+      const body = tool === 'mutate'
+        ? { branch: 'x', affected_nodes: 0, affected_edges: 0, commit: null, outcome: { kind: 'created', name: 'x', from: 'main' } }
+        : { columns: [], rows: [] };
+      return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    } });
+    const result = await client.callTool({ name: tool, arguments: { query: statement } });
+    expect(result.isError).toBeFalsy();
+    expect(bodies[0]).not.toHaveProperty('branch');
+    if (tool === 'mutate') expect(toolJson(result).outcome).toEqual({ kind: 'created', name: 'x', from: 'main' });
+    await client.callTool({ name: tool, arguments: { query: 'query q() { match { $p: Person } return { $p.name } }' } });
+    expect(bodies[1]?.branch).toBe('review');
   });
 });

@@ -104,9 +104,11 @@ describe('change baseline stream', () => {
     const records = [
       {
         type: 'Person',
-        data: { first_name: 'Ada', nested_value: { raw_key: 1 } },
+        id: 'ada',
+        // A user property named `id` is not the identity (format-9 graphs).
+        data: { id: 'employee-7', first_name: 'Ada', nested_value: { raw_key: 1 } },
       },
-      { edge: 'Knows', from: 'a', to: 'b', data: { since_year: 2020 } },
+      { edge: 'Knows', id: 'knows-1', from: 'a', to: 'b', data: { since_year: 2020 } },
       { baseline: { snapshot_commit_id: 'c', resume_cursor: 'resume' } },
     ];
     const { fetch, calls } = stubFetch({
@@ -136,6 +138,9 @@ describe('change baseline stream', () => {
       records[1],
       { baseline: { snapshotCommitId: 'c', resumeCursor: 'resume' } },
     ]);
+    // Identity is typed on the entity envelopes, apart from user data.
+    const ids = actual.flatMap((r) => ('baseline' in r ? [] : [[r.id, r.data.id]]));
+    expect(ids).toEqual([['ada', 'employee-7'], ['knows-1', undefined]]);
   });
 
   it.each([

@@ -122,10 +122,14 @@ export type ChangeBaseline = Camelize<
 export type ChangeBaselineInput = Camelize<
   import('./generated/types.gen').ChangeBaselineRequest
 >;
-/** Entity NDJSON envelopes; user property names inside data are never converted. */
+/**
+ * Entity NDJSON envelopes; user property names inside data are never converted.
+ * `id` is the entity's identity (server >= 0.11), separate from `data` — where an `id` key is an
+ * ordinary user property.
+ */
 export type ExportRecord =
-  | { type: string; data: Record<string, unknown> }
-  | { edge: string; from: string; to: string; data: Record<string, unknown> };
+  | { type: string; id: string; data: Record<string, unknown> }
+  | { edge: string; id: string; from: string; to: string; data: Record<string, unknown> };
 /** The OpenAPI record describes the terminal envelope only; entities precede it. */
 export type ChangeBaselineRecord =
   | ExportRecord

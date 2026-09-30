@@ -13,8 +13,8 @@ npm install @modernrelay/omnigraph
 
 Requires **Node 22+** (uses native `fetch` and web streams). Browser support depends on server CORS; browsers also hide manual cross-origin redirects, so inspecting external Blob descriptors requires a server-side runtime.
 
-**v0.10 targets omnigraph-server v0.10.0.** Upgrade the CLI, server, and client
-integrations together; see [Migrating from v0.9](#migrating-from-v09).
+**v0.11 targets omnigraph-server v0.11.0.** Upgrade the CLI, server, and client
+integrations together; see [Migrating from v0.10](#migrating-from-v010).
 
 ## First call
 
@@ -289,6 +289,21 @@ Published SDKs track server **major.minor**, with independent patch versions.
 `SERVER_VERSION` identifies the exact source contract. CI checks that contract
 and runs live e2e against the same release, or the exact immutable source pin
 while an upcoming release is being prepared.
+
+### Migrating from v0.10
+
+Additive on the wire; no public name changed. What to know:
+
+- **Entity identity** on graphs created by v0.11 (format 9) is a top-level `id` in load, export and
+  baseline envelopes — `ExportRecord` now carries it. `data.id` is an ordinary user property there;
+  legacy graphs still accept it as identity when top-level `id` is absent. Before rebuilding an older
+  export into a new graph, move `data.id` to the top level
+  ([upgrade procedure](https://github.com/ModernRelay/omnigraph/blob/v0.11.0/docs/user/operations/upgrade.md#rebuild)).
+  In queries, identity is `@id` (edges: `@src`, `@dst`).
+- **Branch statements** (`branch create|delete|merge …`) run through `og.mutate()` without `branch`;
+  the effect is `Change.outcome` (`BranchOutcome`). See the `mutate` doc comment for receipt semantics.
+- **New:** `og.readiness()` (`GET /readyz`, a 503 is an answer, not an error), `GraphList.quarantined`,
+  `Schema.systemColumns` (`SystemColumns`).
 
 ### Migrating from v0.9
 
