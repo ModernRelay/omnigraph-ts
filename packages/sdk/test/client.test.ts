@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Omnigraph from '../src';
-import { stubFetch } from './helpers';
+import { stubFetch, withContract } from './helpers';
 
 describe('top-level client operations', () => {
   it('health sends GET /healthz', async () => {
@@ -20,7 +20,7 @@ describe('top-level client operations', () => {
     const { fetch, calls } = stubFetch({
       body: { graph_branch: 'main', graph_manifest_version: 3, internal_schema_version: 6, datasets: [] },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const s = await og.snapshot({ branch: 'main' });
     expect(calls[0]?.method).toBe('GET');
     expect(calls[0]?.url).toBe('http://x/graphs/g/snapshot?branch=main');
@@ -33,7 +33,7 @@ describe('top-level client operations', () => {
     const { fetch, calls } = stubFetch({
       body: { graph_branch: 'main', graph_manifest_version: 3, internal_schema_version: 6, datasets: [] },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await og.snapshot();
     expect(calls[0]?.url).toBe('http://x/graphs/g/snapshot');
   });
@@ -53,7 +53,7 @@ describe('top-level client operations', () => {
         uri: 's3://x',
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const r = await og.load({
       branch: 'main',
       mode: 'merge',
@@ -85,7 +85,7 @@ describe('top-level client operations', () => {
         commit: { graph_commit_id: 'c2', graph_manifest_version: 5, created_at: 1714000000000001 },
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const r = await og.loadNdjson({ ndjson, branch: 'main', mode: 'merge' });
     expect(calls[0]?.method).toBe('POST');
     expect(calls[0]?.url).toBe('http://x/graphs/g/load/ndjson?branch=main&mode=merge');
@@ -104,7 +104,7 @@ describe('top-level client operations', () => {
     const { fetch, calls } = stubFetch({
       body: { branch: 'main', branch_created: false, mode: 'merge', nodes: [], edges: [] },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await og.loadNdjson({ ndjson: '{"type":"Person","data":{}}\n' });
     // No `?` — branch/from/mode fall back to server defaults on the wire.
     expect(calls[0]?.url).toBe('http://x/graphs/g/load/ndjson');
@@ -116,7 +116,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     const { fetch, calls } = stubFetch({
       body: { branch: 'main', query_name: 'q', affected_nodes: 0, affected_edges: 0, commit: null },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const result = await og.mutate(
       { query: 'query q($userId: String) { delete Person where id = $userId }', params: { userId: 'absent' } },
       { ifGraphCommit: 'commit-1' },
@@ -130,7 +130,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
 
   it('never falls back to an unconditional mutation on an older server', async () => {
     const { fetch, calls } = stubFetch({ status: 404, body: { error: 'not found' } });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await expect(og.mutate({ query: 'query q() { delete Person where id = "a" }' }, { ifGraphCommit: 'old' }))
       .rejects.toMatchObject({ status: 404 });
     expect(calls).toHaveLength(1);
@@ -139,7 +139,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
 
   it('an empty conditional token still selects the guarded route, never an ordinary write', async () => {
     const { fetch, calls } = stubFetch({ status: 400, body: { error: 'invalid commit' } });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await expect(og.mutate({ query: 'query q() {}' }, { ifGraphCommit: '' })).rejects.toMatchObject({ status: 400 });
     expect(calls[0]?.url).toBe('http://x/graphs/g/mutate/if-graph-commit');
   });
@@ -155,7 +155,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
         rows: [{ '$p.name': 'Alice' }],
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const r = await og.query({
       query: 'query find($name: String) { match { $p: Person { name: $name } } return { $p.name } }',
       name: 'find',
@@ -178,7 +178,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
     const { fetch, calls } = stubFetch({
       body: { query_name: 'q', target: { branch: 'main', snapshot: null }, row_count: 0, columns: [], rows: [] },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await og.query({
       query: 'query q($keyName: String) { match { $u: User { id: $keyName } } return { $u.name } }',
       params: { keyName: 'value', $internal: 1 },
@@ -198,7 +198,7 @@ describe('og.query and og.mutate (canonical successors to read/change)', () => {
         commit: { graph_commit_id: 'c3', graph_branch: 'feature', graph_manifest_version: 6, created_at: 1714000000000002 },
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const r = await og.mutate({
       query: 'query addPerson($name: String) { insert Person { name: $name } }',
       name: 'addPerson',
@@ -260,7 +260,7 @@ describe('export streaming options', () => {
       body: ndjson,
       headers: { 'content-type': 'application/x-ndjson' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const rows: PersonRow[] = [];
     for await (const row of og.export<PersonRow>({ branch: 'main', typeNames: ['Person'] })) {
       rows.push(row);
@@ -296,7 +296,7 @@ describe('export streaming options', () => {
     const og = new Omnigraph({
       baseUrl: 'http://x',
       graphId: 'g',
-      fetch: abortablefetch as unknown as typeof globalThis.fetch,
+      fetch: withContract(abortablefetch as unknown as typeof globalThis.fetch),
     });
     const rows: unknown[] = [];
     let caught: unknown;
@@ -311,4 +311,18 @@ describe('export streaming options', () => {
     expect(rows).toEqual([{ a: 1 }]);
     expect(caught).toBeDefined();
   });
+});
+
+it('serializes request settings while preserving query parameters and result keys', async () => {
+  const { fetch, calls } = stubFetch({ body: { rows: [{ userName: 'Alice', user_id: '1' }], columns: ['userName', 'user_id'], graph_commit_id: 'c', target: { branch: 'main' }, query_name: 'q', row_count: 1 } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  const result = await og.query({ query: 'query q() {}', params: { userName: 'Alice' }, settings: { engine: 'v2', annNprobes: 4, traversalWorkLimit: 100 } });
+  expect(JSON.parse(calls[0]!.body!)).toMatchObject({ params: { userName: 'Alice' }, settings: { engine: 'v2', ann_nprobes: 4, traversal_work_limit: 100 } });
+  expect(result.rows).toEqual([{ userName: 'Alice', user_id: '1' }]);
+});
+
+it('exposes unsupported server-side embedding generation instead of implying it ran', async () => {
+  const { fetch } = stubFetch({ body: { branch: 'main', mode: 'merge', nodes: [], edges: [], embedding_generation: 'unsupported' } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect((await og.load({ data: '{}\n' })).embeddingGeneration).toBe('unsupported');
 });

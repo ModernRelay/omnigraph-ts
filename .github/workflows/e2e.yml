@@ -47,7 +47,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # Until the server release exists, run the same e2e suite against the
-      # exact source used by sync-spec and the MCP references, never main.
+      # exact source used by sync-spec, never a moving branch.
       - name: Check out immutable server candidate
         if: steps.ver.outputs.source_pinned == 'true'
         uses: actions/checkout@v4
@@ -84,126 +84,13 @@ jobs:
             -p omnigraph-server --bin omnigraph-server
           echo "$PWD/target/debug" >> "$GITHUB_PATH"
 
-      - name: Verify server binary version matches pin
-        run: |
-          set -euo pipefail
-          v="${{ steps.ver.outputs.version }}"
-          got=$(omnigraph --version 2>&1 | awk '{print $2}')
-          if [ "$got" != "$v" ]; then
-            echo "version mismatch: pinned $v, got $got"; exit 1
-          fi
+      - run: pnpm run build
+      - name: Qualify SDK and MCP against the pinned server
+        run: pnpm run test:e2e
 
-      # 0.7.0 is cluster-only: the server boots solely from `--cluster <dir>` and
-      # serves every graph under /graphs/{id}/…. Build a local-filesystem cluster
-      # (no object storage) declaring two graphs, alpha + beta, with Cedar policy
-      # bundles: a `cluster`-scoped bundle granting `graph_list` (so GET /graphs
-      # works) and a per-graph bundle granting the data-plane actions the SDK
-      # exercises. Auth is on (token → actor `default`) so the UnauthorizedError
-      # path is covered too.
-      - name: Build local cluster (alpha + beta) with policy
-        run: |
-          set -euo pipefail
-          dir=/tmp/cluster
-          mkdir -p "$dir"
-          cp packages/sdk/test/fixtures/schema.pg "$dir/graph.pg"
-          cp packages/sdk/test/fixtures/queries.gq "$dir/queries.gq"
-          omnigraph lint --schema "$dir/graph.pg" --query "$dir/queries.gq"
-
-          cat > "$dir/server.policy.yaml" <<'YAML'
-          version: 1
-          groups:
-            ci: [default]
-          rules:
-            - id: ci-graph-list
-              allow:
-                actors: { group: ci }
-                actions: [graph_list]
-          YAML
-
-          cat > "$dir/graph.policy.yaml" <<'YAML'
-          version: 1
-          groups:
-            ci: [default]
-          rules:
-            - id: ci-data-plane
-              allow:
-                actors: { group: ci }
-                actions: [read, export, change, schema_apply, branch_create, branch_delete, branch_merge, invoke_query]
-          YAML
-
-          cat > "$dir/cluster.yaml" <<'YAML'
-          version: 1
-          metadata:
-            name: e2e
-          state:
-            backend: cluster
-            lock: true
-          graphs:
-            alpha:
-              schema: ./graph.pg
-              queries: [./queries.gq]
-            beta:
-              schema: ./graph.pg
-              queries: [./queries.gq]
-          policies:
-            server:
-              file: ./server.policy.yaml
-              applies_to: [cluster]
-            data:
-              file: ./graph.policy.yaml
-              applies_to: [alpha, beta]
-          YAML
-
-          omnigraph cluster import --config "$dir"
-          omnigraph cluster plan   --config "$dir"
-          omnigraph cluster apply  --config "$dir"
-
-      - name: Seed fixture data into each graph
-        run: |
-          set -euo pipefail
-          dir=/tmp/cluster
-          # `--mode` is required on load; local file:// writes need no `--yes`.
-          for g in alpha beta; do
-            omnigraph load \
-              --data packages/sdk/test/fixtures/data.jsonl \
-              --mode overwrite \
-              "$dir/graphs/${g}.omni"
-          done
-
-      - name: Start omnigraph-server (cluster) in background
-        run: |
-          set -euo pipefail
-          dir=/tmp/cluster
-          OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token \
-            nohup omnigraph-server --cluster "$dir" --bind 127.0.0.1:18080 \
-            > "$dir/server.log" 2>&1 &
-          echo $! > "$dir/server.pid"
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:18080/healthz > /dev/null; then
-              echo "server up after ${i}s"; exit 0
-            fi
-            sleep 1
-          done
-          echo "server failed to start within 30s"; cat "$dir/server.log"; exit 1
-
-      - name: Run e2e tests (cluster, graphId=alpha)
-        env:
-          OMNIGRAPH_E2E: '1'
-          OMNIGRAPH_BASE_URL: http://127.0.0.1:18080
-          OMNIGRAPH_TOKEN: ci-token
-          OMNIGRAPH_GRAPH_ID: alpha
-        run: pnpm --filter @modernrelay/omnigraph run test
-
-      - name: Stop server
-        if: always()
-        run: |
-          if [ -f /tmp/cluster/server.pid ]; then
-            kill "$(cat /tmp/cluster/server.pid)" || true
-          fi
-
-      - name: Upload server log on failure
+      - name: Upload server logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: omnigraph-server-log
-          path: /tmp/cluster/server.log
+          name: omnigraph-server-logs
+          path: /tmp/omnigraph-sdk-e2e-*/server.log

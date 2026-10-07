@@ -1,131 +1,85 @@
 # @modernrelay/omnigraph-mcp
 
-MCP server exposing an [Omnigraph](https://github.com/ModernRelay/omnigraph) database to LLM clients via the [Model Context Protocol](https://modelcontextprotocol.io/). Built on `@modelcontextprotocol/sdk` v1.x and the `@modernrelay/omnigraph` SDK.
+MCP server for **OmniGraph 0.13**, using the TypeScript SDK over HTTP and stdio
+with MCP hosts. Requires Node.js 22 or newer.
 
-## Usage
-
-### Claude Desktop / any MCP host with stdio
+## Configure
 
 ```json
 {
   "mcpServers": {
     "omnigraph": {
       "command": "npx",
-      "args": ["-y", "@modernrelay/omnigraph-mcp"],
+      "args": ["-y", "@modernrelay/omnigraph-mcp@0.13"],
       "env": {
         "OMNIGRAPH_BASE_URL": "http://127.0.0.1:8080",
-        "OMNIGRAPH_TOKEN": "your-bearer-token",
-        "OMNIGRAPH_DEFAULT_BRANCH": "main",
-        "OMNIGRAPH_GRAPH_ID": "alpha"
+        "OMNIGRAPH_GRAPH_ID": "alpha",
+        "OMNIGRAPH_TOKEN": "your-bearer-token"
       }
     }
   }
 }
 ```
 
-### Programmatic embedding
+The URL must be the server root. `OMNIGRAPH_GRAPH_ID` is required;
+`OMNIGRAPH_DEFAULT_BRANCH` defaults to `main`. A token is required when the
+server enables authentication. Upgrade clients and server together: discovery
+and every data response must advertise the exact 0.13 HTTP contract.
 
-```ts
-import { createOmnigraphMcpServer } from '@modernrelay/omnigraph-mcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+For programmatic use, pass `{ baseUrl, graphId, token?, defaultBranch?, fetch? }`
+to `createOmnigraphMcpServer`, then connect an MCP transport.
 
-const server = createOmnigraphMcpServer({
-  baseUrl: 'http://127.0.0.1:8080',
-  token: process.env.OMNIGRAPH_TOKEN,
-  graphId: 'alpha', // required — omnigraph-server 0.7.0 is cluster-only
-});
-await server.connect(new StdioServerTransport());
-```
+## Tools and resources
 
-### Env vars
-
-| Variable | Purpose |
+| Tools | Purpose |
 |---|---|
-| `OMNIGRAPH_BASE_URL` | Required. `omnigraph-server` URL. |
-| `OMNIGRAPH_GRAPH_ID` | Required (server 0.7.0+ is cluster-only). Graph this server operates on — routes every graph-scoped call under `/graphs/${id}/...`. The `bin` entrypoint refuses to start without it. |
-| `OMNIGRAPH_TOKEN` | Optional bearer token. Required against a server with auth enabled. |
-| `OMNIGRAPH_DEFAULT_BRANCH` | Branch used when a tool input omits one. Defaults to `main`. |
+| `health`, `graphs_list` | Liveness and authorized graph listing |
+| `schema_get`, `snapshot` | Active schema and branch datasets/counts |
+| `query` | Parameterized GQ reads and exact `graphCommitId` |
+| `commits_list`, `commits_get`, `commits_changes` | Commit history, receipts, bounded entity changes |
+| `changes_poll` | One bounded change-feed page |
+| `branches_list` | Branch names |
+| `mutate`, `load` | Atomic mutations and bounded NDJSON batches |
+| `branches_create`, `branches_delete`, `branches_merge` | Branch workflow |
 
-## Surface
+Read-only tools carry `readOnlyHint`; mutating tools declare their side effects.
+Schema and deployment writes remain operator-owned: use
+`omnigraph cluster plan/apply --server …` for live configuration changes.
 
-### Tools
+Resources expose `omnigraph://schema`, `omnigraph://branches`,
+`omnigraph://graphs`, and `omnigraph://best-practices/index`. The index links
+task-specific schema, query, data, search, and change-feed guidance. References
+are bundled from an immutable upstream revision. Examples use illustrative
+models; the live schema determines the actual types and properties.
 
-Read-only (`readOnlyHint: true`):
+## Write and error contract
 
-| Tool | Purpose |
-|---|---|
-| `health` | Server liveness + version |
-| `snapshot` | Snapshot of a branch (`datasets`, type names, entity counts, graph manifest version) |
-| `query` | Run a `.gq` read query; returns the exact read's `graphCommitId` |
-| `schema_get` | Active `.pg` schema source |
-| `branches_list` | List user-visible branches |
-| `commits_list` | List commits on a branch |
-| `commits_get` | Retrieve a single commit |
-| `commits_changes` | One bounded page of a commit's entity changes relative to its first parent |
-| `changes_poll` | One bounded page of the branch's at-least-once change feed |
-| `graphs_list` | List registered graphs in the cluster (requires a `graph_list` policy grant) |
+Read the schema first and parameterize values. Successful mutations, loads,
+and publishing merges return their own exact commit receipt. `commit: null`
+on a data mutation means a successful no-op. Branch create/delete report an
+`outcome` without a commit; an already-up-to-date merge publishes no commit.
 
-Mutating (`destructiveHint: true` where appropriate — hosts should surface confirmation):
+For read-modify-write, pass the read's `graphCommitId` as `mutate.ifGraphCommit`.
+A 412 refusal means no effects: re-read and reconsider. No unconditional
+fallback is attempted.
 
-| Tool | Purpose |
-|---|---|
-| `mutate` | Run a `.gq` mutation; optional `ifGraphCommit` selects the conditional-write route |
-| `load` | Bulk-load NDJSON (`mode: 'merge'` for upserts). Without `from`, a missing branch is a 404. |
-| `branches_create` | Create a new branch |
-| `branches_delete` | Delete a branch |
-| `branches_merge` | Merge `source` into `target` |
+The MCP never retries automatically. An abort or lost response does not cancel
+an accepted server operation. Reconcile intended content and relevant history
+before replaying; separately reading the head cannot identify the writer.
+`load` mode `merge` upserts keys but does not deduplicate requests.
 
-There is **no `schema_apply` tool**: a cluster-managed graph rejects HTTP schema apply (409). Schema is read-only here (`schema_get`); evolve it via `omnigraph cluster apply`.
+Errors set `isError: true` and return `error`, `status`, `code`, `requestId`,
+structured `body`, and dispatch/outcome certainty when available. Request
+objects and authorization headers are not serialized. A contract refusal
+before dispatch says `requestDispatched: false`; `outcomeUnknown: true`
+requires reconciliation. Merge/key conflicts need a decision, full-text
+refusals need operator maintenance, and recovery refusals need recovery.
 
-### v0.11 writes, errors, and change pages
-
-Successful `mutate` and `load` results include the exact `commit` receipt from
-publication. A data `mutate` returning `commit: null` means a successful no-op.
-A branch statement (`branch create|delete|merge …`, server 0.11) is sent without
-a branch — the server refuses one with a target — and reports its effect in
-`outcome`: create and delete return `commit: null` although they changed state,
-and a merge's `commit` is the target head after the merge, which a concurrent
-writer may already have moved. Comparing
-branch heads before and after is not a receipt: another writer may advance the
-head, and a timed-out operation may still be running.
-
-For read-modify-write, pass `query`'s `graphCommitId` as `mutate`'s
-`ifGraphCommit` argument. The SDK uses `/mutate/if-graph-commit`; it never silently
-falls back to an unconditional write. HTTP 412 with `body.preconditionFailure`
-means no effects: re-read and reconsider the mutation.
-
-SDK request failures set `isError: true` and return JSON with `error`, `status`, `code`,
-`requestId` when available, and the structured server `body`. Request headers and
-request/response objects are not included. No request is retried automatically.
-A 409 is not one universal retry condition: `fullTextIndexRebuildRequired` needs
-an operator's branch-scoped `rebuild-full-text-indexes`, `keyConflict` needs an
-identity/operation decision, and merge conflicts need reconciliation.
-`recoveryRequired` needs operator recovery. A lost response leaves the outcome
-unknown; inspect intended content and relevant history before deciding to replay.
-
-`commits_changes` accepts `commitId`, optional `pageToken`, `limit`, and array
-filters `kind`, `type`, and `op`. `changes_poll` accepts the same filters plus
-`branch` and exactly one of `start`, `cursor`, or `pageToken` (or none, meaning
-`start: "now"`). Follow `nextPageToken` with unchanged branch/filters. Only a
-terminal feed `cursor` is durable; apply complete commit blocks idempotently by
-`graphCommitId` and persist that cursor with the applied data. A 410
-`changeFeedGap` requires the SDK's streamed baseline/reset workflow. Full baseline
-exports and binary Blob payloads are deliberately not buffered into MCP results.
-
-### Resources
-
-- `omnigraph://schema` — text/plain `.pg` source
-- `omnigraph://branches` — application/json branch name list
-- `omnigraph://graphs` — application/json `[{ graphId, uri }]` (requires a `graph_list` policy grant; the management surface is closed by default)
-- `omnigraph://best-practices/index` — index of the bundled query, data, schema, and search references
-
-Best-practice references are fetched from the same pinned upstream contract as
-the SDK, not moving `main`. Operator/CLI examples are not additional MCP tools;
-available types, properties, and vector dimensions come from the live schema.
-The older `remote-ops` reference is intentionally excluded until its blanket
-retry and branch-head verification advice is refreshed for v0.11. The write/error
-rules above and the server's initialization instructions are authoritative for
-this MCP version.
+Change methods return one page. Follow `nextPageToken` with unchanged
+branch/filters; only the terminal cursor is durable. Apply complete commit
+blocks idempotently and persist the cursor with their data. A 410 gap requires
+a complete SDK/operator baseline. Large baseline exports and binary Blob
+payloads are not buffered into MCP results.
 
 ## License
 

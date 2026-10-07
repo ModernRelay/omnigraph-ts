@@ -7,7 +7,7 @@
 // side effects. Mutating tools (mutate, load, branch create/delete/merge) are
 // annotated with `destructiveHint: true` so MCP hosts can surface a
 // confirmation UI. Schema is read-only here (`schema_get`): a cluster-managed
-// graph evolves its schema via `omnigraph cluster apply`, not over HTTP.
+// graph evolves through operator-owned cluster deployments.
 //
 // Resources are an alternative read surface — agents that prefer to *read*
 // the schema or a branch snapshot rather than *call* a tool can use them.
@@ -20,39 +20,26 @@ import {
   SERVER_VERSION as SDK_SERVER_VERSION,
 } from '@modernrelay/omnigraph';
 import { z } from 'zod';
-import { COOKBOOK } from './best-practices.gen';
+import { COOKBOOK, COOKBOOK_SOURCE } from './best-practices.gen';
 import { MCP_PACKAGE_VERSION } from './version.gen';
 
-const INSTRUCTIONS = `Omnigraph is a versioned property graph. Reads are typed GQ queries; writes are server-orchestrated and branchable.
+const INSTRUCTIONS = `Omnigraph is a versioned property graph. This MCP requires the exact 0.13 HTTP contract and never retries requests automatically.
 
-ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before any query, mutation, or load. Schema declares node/edge types, @key fields, non-nullable properties, edge directions, and casing. Writing without seeing the schema produces queries that lint-fail or silently corrupt data.
+ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before queries, mutations, or loads. It defines the available types, properties, keys, directions, and vector dimensions.
+Consult the matching \`omnigraph://best-practices/\` resource: queries, data, schema, search, or changes. Operator/CLI examples in these resources are not MCP tools.
 
-After schema, consult the matching best-practices resource for the task at hand:
-  - omnigraph://best-practices/queries     — before .gq queries (query/mutate)
-  - omnigraph://best-practices/data        — before load (mode selection, branch loop)
-  - omnigraph://best-practices/schema      — to understand the .pg schema before writing
-  - omnigraph://best-practices/search      — before nearest/bm25/rrf queries
+1. Parameterize values and declare typed parameters. Every block uses \`query name($p: T) { ... }\`; send writes through \`mutate\`. GQ edges use lowerCamelCase. Search ordering operators \`nearest\`, \`bm25\`, and \`rrf\` require a trailing limit.
+2. A successful mutation, load, or publishing merge returns its exact \`commit\` receipt. A data mutation with \`commit: null\` is a successful no-op. Branch create/delete report their effects in \`outcome\` with no commit; an already-up-to-date merge publishes no commit. Branch statements name their own branches and must not carry a request branch.
+3. For read-modify-write, pass \`query.graphCommitId\` as \`mutate.ifGraphCommit\`. A 412 preconditionFailure means no effects: re-read and reconsider. Never fall back to an unconditional mutation.
+4. \`load mode: "merge"\` upserts keys; it is not request deduplication. \`"overwrite"\` replaces supplied types; \`"append"\` rejects key collisions. Large loads can use a branch → load → verify → merge workflow. Split oversized batches into separate commits.
+5. A timeout or lost response leaves the outcome unknown. Reconcile intended content and relevant history before deciding to replay. A separately read branch head cannot identify which writer committed. requestDispatched=false means the SDK did not send the data request; outcomeUnknown=true requires reconciliation.
+6. Schema and deployment management are operator-owned. This MCP exposes \`schema_get\`, not schema or deployment writes. Operators use \`omnigraph cluster plan/apply --server …\` for live configuration changes without a restart.
 
-These references also contain operator/CLI examples, not additional MCP tools. The live schema determines available types, properties, and vector dimensions; example models and node names are not deployment guarantees. The write and error rules below are the v0.11 MCP contract.
+Errors retain status, code, and structured body details. Do not retry every 409: merge/key conflicts require a decision; fullTextIndexRebuildRequired needs branch-scoped operator maintenance; recoveryRequired needs operator recovery. No request object or authorization header is included in tool errors.
 
-Workflow norms (violating these breaks things or silently corrupts data):
+commits_changes and changes_poll return one bounded page. Follow nextPageToken with unchanged branch/filters. Page tokens are not durable cursors. Apply completed feed commit blocks idempotently by graphCommitId and persist the terminal cursor with the data. A 410 changeFeedGap requires a complete SDK/operator baseline; this MCP does not buffer full baselines or Blob payloads.
 
-1. .gq edges use lowerCamelCase even though the schema declares them PascalCase. No top-level \`mutation { }\` wrapper — every block is \`query name($p: T) { insert|update|delete ... }\`. Dispatch writes via \`mutate\`, not \`query\`.
-2. Parameterize. Pass values via \`params\`, never interpolate into the query body. Declare typed params: \`query foo($slug: String) { ... }\`.
-3. \`nearest\`, \`bm25\`, and \`rrf\` require a trailing \`limit N\` — they are ordering operators, not filters.
-4. \`load mode: "merge"\` upserts stable keys; it is not request deduplication. Reconcile an ambiguous outcome before replaying. \`"overwrite"\` replaces supplied types. \`"append"\` fails on key collision.
-5. Successful mutations and loads return an exact \`commit\` receipt. A data mutation with \`commit: null\` is a successful no-op, not a failed write. A branch statement (\`branch create|delete|merge …\`) reports its effect in \`outcome\`: create and delete return \`commit: null\` although they changed state, and a merge's \`commit\` is the target head after the merge, which a concurrent writer may already have moved. A separate branch-head read cannot prove which writer committed. A timeout or lost response leaves the outcome unknown: verify the intended content and relevant commit history before considering a replay; never infer retry safety from an unchanged head or node type name.
-6. For read-modify-write, use \`query.graphCommitId\` as \`mutate.ifGraphCommit\`. It selects the dedicated conditional-write route; HTTP 412 with \`preconditionFailure\` means no effects. Re-read and reconsider the change instead of blindly replaying it. Never fall back to an unconditional mutation when the conditional route is unavailable.
-7. Risky/large writes: \`branches_create\` from main → \`load\` onto the branch → verify → \`branches_merge\` → \`branches_delete\`.
-8. Schema is read-only over this MCP. \`schema_get\` returns the active .pg source; there is no \`schema_apply\` tool. A cluster-managed graph rejects HTTP schema apply (409) — schema changes go through \`omnigraph cluster apply\` (an operator/CLI action), not an agent tool.
-
-Date format: ISO strings on \`mutate\` params; integer days-since-epoch in load JSONL \`Date\` fields. \`DateTime\` is ISO on both.
-
-Errors carry \`status\`, \`code\`, and structured \`body\` details. Do not retry every 409: \`fullTextIndexRebuildRequired\` needs an operator's branch-scoped \`rebuild-full-text-indexes\` action, not another search; \`keyConflict\` needs an identity/operation decision; merge conflicts need reconciliation. \`recoveryRequired\` needs operator recovery before retry. \`sync_branch()\`, if mentioned, is server-internal text, not an MCP tool. This MCP never retries requests automatically.
-
-\`commits_changes\` and \`changes_poll\` return one bounded page. Continue with \`nextPageToken\`, keeping branch and filters unchanged; a page token is not a durable cursor. Feed delivery is at-least-once: apply completed commit blocks idempotently by graphCommitId and persist the terminal cursor with the applied data. A 410 \`changeFeedGap\` requires a streamed baseline/reset through the SDK or operator workflow; this MCP does not buffer full baselines.
-
-Depth: https://github.com/ModernRelay/omnigraph/tree/main/skills/omnigraph`;
+Date values: ISO strings in mutation parameters; integer days since epoch in load JSONL. DateTime uses ISO in both.`;
 
 export interface CreateServerOptions {
   baseUrl: string;
@@ -62,7 +49,7 @@ export interface CreateServerOptions {
   /**
    * Target graph id. Threaded into the underlying `Omnigraph` client so every
    * graph-scoped tool call routes under `/graphs/${graphId}/...`. Required
-   * against omnigraph-server 0.7.0+ (cluster-only); the `bin` entrypoint
+   * for graph-scoped calls; the `bin` entrypoint
    * refuses to start without `OMNIGRAPH_GRAPH_ID`.
    */
   graphId?: string;
@@ -94,6 +81,8 @@ async function toolResult<T>(run: () => Promise<T>, render: (value: T) => Return
         status: error.status,
         code: error.code,
         requestId: error.requestId,
+        ...('requestDispatched' in error ? { requestDispatched: error.requestDispatched } : {}),
+        ...('outcomeUnknown' in error ? { outcomeUnknown: error.outcomeUnknown } : {}),
         body: error.body,
       }),
     };
@@ -114,7 +103,7 @@ const FeedStart = z.union([
 ]);
 
 /**
- * Whether a query text is a v0.11 branch statement (`branch create|delete|merge|list …`, RFC 0055).
+ * Whether a query text is a branch statement (`branch create|delete|merge|list …`, RFC 0055).
  * Mirrors the engine grammar: leading whitespace and `//` / `/* *\/` comments, then the keyword
  * `branch` on a word boundary. A statement names its branches itself, and the server refuses one
  * sent with a request target — so the configured default branch must not be applied to it.
@@ -189,7 +178,6 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       title: 'Run GQ read query',
       description:
         'Run a parameterized .gq read query against a branch. Read-only. ' +
-        'Canonical read endpoint as of server 0.6.0 (successor to `read`). ' +
         '`query` is the full query text. `params` is a free-form map matched ' +
         'by name to `$varName` placeholders in the query. Returns rows + columns; ' +
         'row keys are caller-defined and not transformed. graphCommitId identifies the exact read ' +
@@ -235,7 +223,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     'branches_list',
     {
       title: 'List branches',
-      description: 'Return all user-visible branch names. Internal branches (run, schema-apply lock) are filtered out.',
+      description: 'Return all user-visible branch names.',
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -319,13 +307,12 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'Run GQ mutation',
       description:
-        'Run a .gq mutation (insert/update/delete) against a branch. Canonical write ' +
-        'endpoint as of server 0.6.0 (successor to `change`). Multi-statement mutations ' +
+        'Run a .gq mutation (insert/update/delete) against a branch. Multi-statement mutations ' +
         'are atomic at the commit boundary. Returns affectedNodes / affectedEdges counts and an exact ' +
-        'commit receipt (null for a successful no-op). A branch statement (`branch create|delete|merge …`, ' +
-        'server 0.11) is sent without a branch and reports its effect in `outcome` instead: create and ' +
-        'delete return commit null although they changed state, and a merge\'s commit is the target head ' +
-        'read after the merge, not proof the merge alone published it. ifGraphCommit requires the branch head from a prior ' +
+        'commit receipt (null for a successful no-op). A branch statement (`branch create|delete|merge …`) ' +
+        'is sent without a branch and reports its effect in `outcome`: create and ' +
+        'delete return commit null although they changed state. Publishing merges return their own exact receipt. ' +
+        'ifGraphCommit requires the branch head from a prior ' +
         'query and uses the dedicated conditional route; stale heads fail with 412 before effects.',
       inputSchema: {
         query: z.string().min(1),
@@ -391,21 +378,17 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'Merge branch',
       description:
-        'Merge `source` into `target` (default `main`). Idempotent: re-merging an already-merged branch yields outcome=already_up_to_date.',
+        'Merge `source` into `target` (default `main`). A publishing merge returns its exact commit receipt; already_up_to_date returns no commit. Reconcile an unknown outcome before replaying.',
       inputSchema: {
         source: z.string().min(1),
         target: z.string().optional(),
       },
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
     async ({ source, target }) => toolResult(() => og.branches.merge({ source, target: target ?? defaultBranch })),
   );
 
-  // NOTE: no `schema_apply` tool. omnigraph-server 0.7.0 is cluster-only, and a
-  // cluster-managed graph rejects `POST /graphs/{id}/schema/apply` with 409 —
-  // schema is evolved declaratively via `omnigraph cluster apply`, an operator
-  // action outside the HTTP API this MCP wraps. Use `schema_get` to read the
-  // active schema; route migrations through the cluster workflow.
+  // Schema and deployment writes remain operator-owned.
 
   // ---------- Resources --------------------------------------------------
   // A schema-shaped read surface for agents that prefer reading over calling.
@@ -500,7 +483,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       const lines = [
         '# Omnigraph best-practices index',
         '',
-        'Vendored from https://github.com/ModernRelay/omnigraph/tree/main/skills/omnigraph.',
+        `Bundled from ${COOKBOOK_SOURCE}.`,
         '',
         '| Resource | Read before |',
         '|---|---|',

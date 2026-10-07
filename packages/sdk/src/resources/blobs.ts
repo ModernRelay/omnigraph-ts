@@ -59,7 +59,6 @@ export class BlobsResource {
         snapshot: input.snapshot,
       },
       headers: blobHeaders(input),
-      redirect: 'manual',
       acceptedStatuses: [302, 304],
       signal: opts.signal,
     });
@@ -81,7 +80,6 @@ export class BlobsResource {
         snapshot: input.snapshot,
       },
       headers: blobHeaders(input),
-      redirect: 'manual',
       acceptedStatuses: [302, 304],
       signal: opts.signal,
     });

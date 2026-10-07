@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import Omnigraph, { NotFoundError } from '../src';
-import { stubFetch } from './helpers';
+import { stubFetch, withContract } from './helpers';
 
 const cell = {
   entity: 'node' as const,
@@ -29,7 +29,7 @@ describe('blobs resource', () => {
       baseUrl: 'http://x',
       graphId: 'g',
       token: 'token',
-      fetch,
+      fetch: withContract(fetch),
     });
     const signal = new AbortController().signal;
     const result = await og.blobs.get(
@@ -78,7 +78,7 @@ describe('blobs resource', () => {
       const fetch = vi.fn(
         async (_url: string | URL | Request, _init?: RequestInit) => response,
       );
-      const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+      const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
       const result = await og.blobs[method](cell);
       expect(result.status).toBe(302);
       expect(result.headers.get('Location')).toBe(
@@ -96,7 +96,7 @@ describe('blobs resource', () => {
         status: 304,
         headers: { ETag: '"unchanged"' },
       });
-      const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+      const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
       const result = await og.blobs[method]({
         ...cell,
         ifNoneMatch: '"unchanged"',
@@ -118,7 +118,7 @@ describe('blobs resource', () => {
     const fetch = vi.fn(
       async (_url: string | URL | Request, _init?: RequestInit) => response,
     );
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const result = await og.blobs.stat({
       ...cell,
       entity: 'edge',
@@ -144,7 +144,7 @@ describe('blobs resource', () => {
       },
       headers: { 'Content-Range': 'bytes */5', ETag: '"value"' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await expect(
       og.blobs.get({ ...cell, range: 'bytes=10-10' }),
     ).rejects.toMatchObject({
@@ -157,7 +157,7 @@ describe('blobs resource', () => {
   it('maps a bodyless HEAD 404 to the correct status error', async () => {
     const fetch = async () =>
       new Response(null, { status: 404, headers: { 'X-Request-Id': 'r' } });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await expect(og.blobs.stat(cell)).rejects.toBeInstanceOf(NotFoundError);
     await expect(og.blobs.stat(cell)).rejects.toMatchObject({
       status: 404,

@@ -1,42 +1,16 @@
-// End-to-end tests against a real omnigraph-server (cluster-only, 0.7.0+).
-//
-// Skipped unless OMNIGRAPH_E2E=1. Local quick-start (a local-filesystem
-// cluster serving two graphs, alpha + beta):
-//
-//   dir=$(mktemp -d)
-//   cp packages/sdk/test/fixtures/schema.pg "$dir/graph.pg"
-//   cp packages/sdk/test/fixtures/queries.gq "$dir/queries.gq"
-//   cat > "$dir/cluster.yaml" <<'YAML'
-//   version: 1
-//   metadata: { name: e2e }
-//   state: { backend: cluster, lock: true }
-//   graphs:
-//     alpha: { schema: ./graph.pg, queries: [./queries.gq] }
-//     beta:  { schema: ./graph.pg, queries: [./queries.gq] }
-//   policies:
-//     server: { file: ./server.policy.yaml, applies_to: [cluster] }
-//     data:   { file: ./graph.policy.yaml,  applies_to: [alpha, beta] }
-//   YAML
-//   # server.policy.yaml grants `graph_list`; graph.policy.yaml grants the
-//   # per-graph data actions (read/export/change/schema_apply/branch_*/invoke_query).
-//   omnigraph lint --schema "$dir/graph.pg" --query "$dir/queries.gq"
-//   omnigraph cluster import --config "$dir"
-//   omnigraph cluster plan   --config "$dir"
-//   omnigraph cluster apply  --config "$dir"
-//   for g in alpha beta; do
-//     omnigraph load --data packages/sdk/test/fixtures/data.jsonl --mode overwrite "$dir/graphs/$g.omni"
-//   done
-//   OMNIGRAPH_SERVER_BEARER_TOKEN=ci-token omnigraph-server --cluster "$dir" --bind 127.0.0.1:18080 &
-//   OMNIGRAPH_E2E=1 OMNIGRAPH_BASE_URL=http://127.0.0.1:18080 OMNIGRAPH_TOKEN=ci-token \
-//     OMNIGRAPH_GRAPH_ID=alpha pnpm --filter @modernrelay/omnigraph run test
-//
-// CI runs this in `.github/workflows/e2e.yml` against the omnigraph-server
-// source pinned in the repo-root package.json (release tag or exact commit).
+// Run through `pnpm run test:e2e`: the shared fixture owns bootstrap, readiness,
+// policies, seed data, and server cleanup. No production roots are used.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { createServer } from 'node:http';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import Omnigraph, {
   BadRequestError,
+  ForbiddenError,
   BranchMergeOutcome,
   LoadMode,
   NotFoundError,
@@ -63,12 +37,61 @@ function findPerson(branch: string, name: string) {
   return og.query({ query: FIXTURE_QUERIES, name: 'find_person', params: { name }, branch });
 }
 
+// Capture the real CLI's frozen bundle through its existing served-plan path.
+// This avoids copying cluster source resolution and digest rules into the SDK.
+async function captureDeployment(dir: string): Promise<Record<string, unknown>> {
+  let captured: Record<string, unknown> | undefined;
+  const proxy = createServer(async (req, res) => {
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks);
+      if (req.url === '/cluster/plan') captured = JSON.parse(body.toString()).deployment;
+      const upstream = await fetch(`${BASE_URL}${req.url}`, {
+        method: req.method,
+        headers: { 'Omnigraph-Http-Api': '0.13', authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        body: body.length ? body : undefined,
+      });
+      res.writeHead(upstream.status, { 'Omnigraph-Http-Api': upstream.headers.get('Omnigraph-Http-Api') ?? '', 'content-type': 'application/json' });
+      res.end(await upstream.text());
+    } catch (error) { res.writeHead(502); res.end(String(error)); }
+  });
+  await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+  const address = proxy.address();
+  if (!address || typeof address === 'string') throw new Error('no proxy port');
+  try {
+    await promisify(execFile)(process.env.OMNIGRAPH_BIN ?? 'omnigraph', [
+      'cluster', 'plan', '--config', dir, '--server', `http://127.0.0.1:${address.port}`, '--json',
+    ], { env: process.env, timeout: 20_000 });
+    if (!captured) throw new Error('CLI did not submit its captured deployment');
+    return captured;
+  } finally { await new Promise<void>((resolve) => proxy.close(() => resolve())); }
+}
+
+async function deploymentId(): Promise<string> {
+  const { status } = await og.cluster.status();
+  return `${status.ledger_id}:${status.next_sequence}:01ARZ3NDEKTSV4RRFFQ69G5FAV`;
+}
+
+async function waitForDeployment(id: string) {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const result = await og.cluster.getDeployment(id);
+    if (!result.inProgress) {
+      expect(result.active).toBe(true);
+      expect(result.deployment).toMatchObject({ status: 'complete', result: { id, converged: true } });
+      return result;
+    }
+    if (Date.now() > deadline) throw new Error(`deployment ${id} did not activate`);
+    await delay(20);
+  }
+}
+
 describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   beforeAll(() => {
-    // 0.7.0 is cluster-only: graph-scoped ops require a graphId. Fail loud
-    // here rather than letting every test throw ConfigurationError.
-    if (!GRAPH_ID) {
-      throw new Error('OMNIGRAPH_E2E=1 requires OMNIGRAPH_GRAPH_ID (cluster-only server)');
+    // Fail before dispatch when the fixture is not configured.
+    if (!GRAPH_ID || !process.env.OMNIGRAPH_E2E_CLUSTER_DIR || !process.env.OMNIGRAPH_E2E_SERVER_PID) {
+      throw new Error('Run through pnpm test:e2e with its isolated local cluster fixture');
     }
     og = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID });
   });
@@ -89,6 +112,27 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       const h = await og.health();
       expect(h.status).toBe('ok');
       expect(typeof h.version).toBe('string');
+    });
+
+    it('refuses a wrong contract before mutation effects and never retries the write', async () => {
+      const before = await findPerson('main', 'contract-refusal');
+      let writes = 0;
+      const wrongContract = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID,
+        fetch: async (input, init) => {
+          if (init?.method === 'POST') {
+            writes++;
+            const headers = new Headers(init.headers);
+            headers.set('Omnigraph-Http-Api', '0.12');
+            return fetch(input, { ...init, headers });
+          }
+          return fetch(input, init);
+        },
+      });
+      await expect(wrongContract.mutate({ query: FIXTURE_QUERIES, name: 'add_person', params: { name: 'contract-refusal', age: 1 } })).rejects.toMatchObject({
+        status: 400, code: 'api_contract_mismatch',
+      });
+      expect(writes).toBe(1);
+      expect(await findPerson('main', 'contract-refusal')).toEqual(before);
     });
 
     it('SERVER_VERSION constant matches /healthz major.minor', async () => {
@@ -145,12 +189,21 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       branchesToCleanup.pop();
     });
 
-    it('merge returns fast_forward when target unchanged', async () => {
-      const src = `e2e-merge-src-${Date.now()}`;
-      branchesToCleanup.push(src);
-      await og.branches.create({ name: src, from: 'main' });
-      const m = await og.branches.merge({ source: src, target: 'main' });
-      expect([BranchMergeOutcome.FAST_FORWARD, BranchMergeOutcome.ALREADY_UP_TO_DATE]).toContain(m.outcome);
+    it('publishing merge returns its exact receipt and no-op merge returns null', async () => {
+      const source = `e2e-merge-src-${Date.now()}`;
+      const target = `e2e-merge-target-${Date.now()}`;
+      branchesToCleanup.push(source, target);
+      await og.branches.create({ name: source, from: 'main' });
+      await og.branches.create({ name: target, from: 'main' });
+      const changed = await og.mutate({ query: FIXTURE_QUERIES, name: 'add_person', params: { name: 'merge-person', age: 20 }, branch: source });
+      const merged = await og.branches.merge({ source, target });
+      expect(merged.outcome).toBe(BranchMergeOutcome.FAST_FORWARD);
+      expect(merged.commit?.graphBranch).toBe(target);
+      expect(merged.commit?.mergedParentCommitId).toBe(changed.commit?.graphCommitId);
+      expect(await og.commits.retrieve(merged.commit!.graphCommitId)).toEqual(merged.commit);
+      const unchanged = await og.branches.merge({ source, target });
+      expect(unchanged.outcome).toBe(BranchMergeOutcome.ALREADY_UP_TO_DATE);
+      expect(unchanged.commit).toBeNull();
     });
 
     it('idempotent re-merge yields already_up_to_date', async () => {
@@ -280,7 +333,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(r.graphCommitId).toBe(result.commit!.graphCommitId);
     });
 
-    // New endpoint in server 0.9.0: strict bounded graph-level NDJSON batch.
+    // Raw NDJSON must reach the actual server with its declared content type.
     // This is the one place the raw x-ndjson request body meets a real
     // server — the unit test only proves the shape against our own mock.
     it('loadNdjson commits a strict graph batch and the rows are queryable', async () => {
@@ -441,13 +494,15 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   });
 
   describe('export', () => {
-    it('streams rows as NDJSON via async iterator', async () => {
-      let count = 0;
-      for await (const _row of og.export({ branch: 'main' })) {
-        count += 1;
-        if (count > 100) break;
+    it('streams the complete snapshot after a paused consumer', async () => {
+      const records = [];
+      for await (const row of og.export({ branch: 'main' })) {
+        records.push(row);
+        if (records.length === 1) await delay(350);
       }
-      expect(count).toBeGreaterThanOrEqual(4);
+      const snapshot = await og.snapshot({ branch: 'main' });
+      expect(records.length).toBe(snapshot.datasets.reduce((sum, dataset) => sum + dataset.entityCount, 0));
+      expect(records.filter((row) => 'type' in row && row.type === 'Person')).toHaveLength(4);
     });
   });
 
@@ -465,4 +520,65 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       ).rejects.toBeInstanceOf(BadRequestError);
     });
   });
+  describe('live deployment lifecycle', () => {
+    it('plans, activates schema and policy, creates/deletes a graph, and observes a lost acceptance without replay', async () => {
+      const dir = process.env.OMNIGRAPH_E2E_CLUSTER_DIR;
+      if (!dir) throw new Error('run through pnpm test:e2e to enable lifecycle qualification');
+      for (const name of branchesToCleanup.splice(0)) await og.branches.delete(name);
+      const reader = new Omnigraph({ baseUrl: BASE_URL, token: 'reader-token', graphId: GRAPH_ID });
+      const mutation = { query: FIXTURE_QUERIES, name: 'set_age', params: { name: 'Alice', age: 41 }, branch: 'main' };
+      await expect(reader.mutate(mutation)).rejects.toBeInstanceOf(ForbiddenError);
+      const beforeSchema = await og.schema.get();
+      const schemaPath = join(dir, 'schema.pg');
+      writeFileSync(schemaPath, readFileSync(schemaPath, 'utf8').replace('age: I32?', 'age: I32?\n    bio: String?'));
+      const configPath = join(dir, 'cluster.yaml');
+      const config = readFileSync(configPath, 'utf8');
+      writeFileSync(configPath, config.replace('policies:', '  gamma:\n    schema: ./schema.pg\npolicies:').replace('applies_to: [alpha, beta]', 'applies_to: [alpha, beta, gamma]'));
+      const policyPath = join(dir, 'graph.policy.yaml');
+      const policy = readFileSync(policyPath, 'utf8');
+      writeFileSync(policyPath, policy.replace('actions: [read]','actions: [read, change]'));
+      const deployment = await captureDeployment(dir);
+      const plan = await og.cluster.plan({ deployment });
+      expect(plan).toMatchObject({ ok: true });
+      expect(await og.schema.get()).toEqual(beforeSchema);
+      await expect(og.graph('gamma').snapshot()).rejects.toBeInstanceOf(NotFoundError);
+      const id = await deploymentId();
+      let submissions = 0;
+      const disconnected = new Omnigraph({ baseUrl: BASE_URL, token: TOKEN, fetch: async (input, init) => {
+        const response = await fetch(input, init);
+        if (init?.method === 'POST' && new URL(String(input)).pathname === '/cluster/deployments') {
+          submissions++;
+          expect(response.status).toBe(202);
+          await response.text();
+          throw new TypeError('simulated lost acceptance response');
+        }
+        return response;
+      } });
+      await expect(disconnected.cluster.apply({ deploymentId: id, deployment })).rejects.toMatchObject({
+        name: 'NetworkError', requestDispatched: true, outcomeUnknown: true,
+      });
+      await waitForDeployment(id);
+      expect(submissions).toBe(1);
+      expect((await og.schema.get()).schemaSource).toContain('bio: String?');
+      expect((await og.graph('gamma').schema.get()).schemaSource).toContain('bio: String?');
+      expect((await reader.mutate(mutation)).affectedNodes).toBe(1);
+      const gamma = await og.graph('gamma').load({ branch: 'main', mode: 'merge', data: '{"type":"Person","data":{"name":"Temporary"}}\n' });
+      expect(gamma.commit).toBeTruthy();
+      const peerBefore = await og.graph('beta').query({ query: FIXTURE_QUERIES, name: 'find_person', params: { name: 'Alice' } });
+      writeFileSync(configPath, config);
+      writeFileSync(policyPath, policy);
+      const deletion = await captureDeployment(dir);
+      const deleteId = await deploymentId();
+      const accepted = await og.cluster.apply({ deploymentId: deleteId, deployment: deletion });
+      expect(accepted.inProgress).toBe(true);
+      await waitForDeployment(deleteId);
+      await expect(reader.mutate(mutation)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(og.graph('gamma').snapshot()).rejects.toBeInstanceOf(NotFoundError);
+      expect(existsSync(join(dir, 'graphs/gamma.omni'))).toBe(false);
+      expect(await og.graph('beta').query({ query: FIXTURE_QUERIES, name: 'find_person', params: { name: 'Alice' } })).toEqual(peerBefore);
+      expect((await og.readiness()).ready).toBe(true);
+      process.kill(Number(process.env.OMNIGRAPH_E2E_SERVER_PID), 0);
+    }, 60_000);
+  });
+
 });

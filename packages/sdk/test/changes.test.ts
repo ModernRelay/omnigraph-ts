@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Omnigraph, { ConfigurationError } from '../src';
-import { stubFetch } from './helpers';
+import { stubFetch, withContract } from './helpers';
 
 describe('changes resource', () => {
   it('poll sends the full repeated filter scope and preserves image property keys', async () => {
@@ -31,7 +31,7 @@ describe('changes resource', () => {
         next_page_token: 'continuation',
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const result = await og.changes.poll({
       branch: 'feature/a',
       cursor: 'cursor+/=',
@@ -61,7 +61,7 @@ describe('changes resource', () => {
       { body: { blocks: [], cursor: 'durable', caught_up: true } },
       { body: { blocks: [], cursor: 'now', caught_up: true } },
     ]);
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const first = await og.changes.poll({ start: 'after:c' });
     const last = await og.changes.poll({ pageToken: first.nextPageToken! });
     await og.changes.poll();
@@ -81,7 +81,7 @@ describe('changes resource', () => {
         change_feed_gap: { first_unreadable_commit_id: 'old', cursor: 'saved' },
       },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     await expect(og.changes.poll({ cursor: 'saved' })).rejects.toMatchObject({
       status: 410,
       body: {
@@ -115,7 +115,7 @@ describe('change baseline stream', () => {
       body: records.map((r) => JSON.stringify(r)).join('\n'),
       headers: { 'content-type': 'application/x-ndjson' },
     });
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const stream = og.changes.baseline({
       branch: 'feature',
       kind: ['node', 'edge'],
@@ -171,7 +171,7 @@ describe('change baseline stream', () => {
         body,
         headers: { 'content-type': 'application/x-ndjson' },
       });
-      const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+      const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
       const seen: unknown[] = [];
       const consume = async () => {
         for await (const record of og.changes.baseline()) seen.push(record);
@@ -199,7 +199,7 @@ describe('change baseline stream', () => {
           },
         }),
       );
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     const seen: unknown[] = [];
     const consume = async () => {
       for await (const record of og.changes.baseline()) seen.push(record);
@@ -227,7 +227,7 @@ describe('change baseline stream', () => {
         }),
       );
     };
-    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: withContract(fetch) });
     for await (const _record of og.changes.baseline({}, { signal: ac.signal }))
       break;
     expect(cancelled).toBe(true);

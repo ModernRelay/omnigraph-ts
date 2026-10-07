@@ -8,6 +8,8 @@ export interface OmnigraphErrorContext {
   request: { method: string; url: string };
   response?: Response;
   body?: ErrorOutput | unknown;
+  requestDispatched?: boolean;
+  outcomeUnknown?: boolean;
 }
 
 export abstract class OmnigraphError extends Error {
@@ -17,6 +19,13 @@ export abstract class OmnigraphError extends Error {
   readonly request: { method: string; url: string };
   readonly response?: Response;
   readonly body?: unknown;
+  readonly requestDispatched: boolean;
+  readonly outcomeUnknown: boolean;
+
+  /** Server guidance for caller-bounded retries of refused requests. */
+  get retryAfter(): string | undefined {
+    return this.response?.headers.get('Retry-After') ?? undefined;
+  }
 
   constructor(ctx: OmnigraphErrorContext) {
     super(ctx.message);
@@ -27,6 +36,8 @@ export abstract class OmnigraphError extends Error {
     this.request = ctx.request;
     this.response = ctx.response;
     this.body = ctx.body;
+    this.requestDispatched = ctx.requestDispatched ?? false;
+    this.outcomeUnknown = ctx.outcomeUnknown ?? false;
   }
 }
 
@@ -108,16 +119,11 @@ export class ServiceUnavailableError extends OmnigraphError {
 export class TooManyRequestsError extends OmnigraphError {}
 export class InternalServerError extends OmnigraphError {}
 export class NetworkError extends OmnigraphError {}
+/** Discovery failed, or an untrusted response was refused before exposing its body. */
+export class ApiContractError extends OmnigraphError {}
+export class GraphUnavailableError extends ServiceUnavailableError {}
 
-/**
- * Thrown client-side, before any request is sent, when the client is
- * misconfigured for the target server. As of omnigraph-server 0.7.0 the server
- * is cluster-only: every graph-scoped operation is served under
- * `/graphs/{graphId}/…`, so a `graphId` must be configured. Only `health()`
- * and `graphs.list()` are graph-independent and work without one.
- *
- * `status` is 0 (no HTTP exchange occurred), like {@link NetworkError}.
- */
+/** Invalid client configuration; no data request was dispatched. */
 export class ConfigurationError extends OmnigraphError {}
 
 const codeToClass: Record<
@@ -125,6 +131,9 @@ const codeToClass: Record<
   new (ctx: OmnigraphErrorContext) => OmnigraphError
 > = {
   bad_request: BadRequestError,
+  api_contract_mismatch: ApiContractError,
+  service_unavailable: ServiceUnavailableError,
+  graph_unavailable: GraphUnavailableError,
   unauthorized: UnauthorizedError,
   forbidden: ForbiddenError,
   not_found: NotFoundError,
@@ -160,13 +169,19 @@ export function fromResponse(args: {
   requestId?: string;
   request: { method: string; url: string };
   response: Response;
+  outcomeUnknown?: boolean;
 }): OmnigraphError {
   const body = args.body as ErrorOutput | undefined;
   const code = body?.code ?? null;
   const message = body?.error ?? `HTTP ${args.status}`;
-  // Several v0.10 statuses deliberately retain an older broad code (e.g.
-  // 413/416 use bad_request and Blob 412 uses conflict). Status is specific.
+  // Status distinguishes broad error codes: e.g. 413/416 use bad_request,
+  // while Blob 412 uses conflict. Availability and contract codes add detail.
   const Ctor =
+    (code === 'graph_unavailable'
+      ? GraphUnavailableError
+      : code === 'api_contract_mismatch'
+        ? ApiContractError
+        : undefined) ??
     statusToClass[args.status] ??
     (code && Object.hasOwn(codeToClass, code)
       ? codeToClass[code]
@@ -180,5 +195,7 @@ export function fromResponse(args: {
     request: args.request,
     response: args.response,
     body: args.body,
+    requestDispatched: true,
+    outcomeUnknown: args.outcomeUnknown,
   });
 }

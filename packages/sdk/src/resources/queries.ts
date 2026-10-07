@@ -35,7 +35,7 @@ export class QueriesResource {
    * unknown one — both surface as `NotFoundError`.
    *
    * Pass `expectMutation: true` (or `false`) to assert the stored query's kind
-   * (server 0.7.0+): the server rejects a mismatch with `BadRequestError`.
+   * : the server rejects a mismatch with `BadRequestError`.
    * Omit it to skip the check.
    * `opts.ifGraphCommit` selects the dedicated conditional mutation route;
    * a stored read is rejected there and an unsupported route never falls back.

@@ -45,3 +45,18 @@ describe('graphs resource', () => {
     expect(calls[0]?.headers['authorization']).toBe('Bearer tok-1');
   });
 });
+
+describe('graph availability and discovery', () => {
+  it('discovers minimal actor-visible identities without graph scope', async () => {
+    const { fetch, calls } = stubFetch({ body: { graphs: [{ graph_id: 'my_graph', display_name: 'My graph' }] } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'unused', fetch });
+    expect(await og.graphs.discover()).toEqual([{ graphId: 'my_graph', displayName: 'My graph' }]);
+    expect(calls[0]?.url).toBe('http://x/graphs/discovery');
+  });
+
+  it('retains runtime availability and failure details in the operator inventory', async () => {
+    const { fetch } = stubFetch({ body: { graphs: [{ graph_id: 'g', uri: 'file:///g', state: 'blocked', read_available: false, write_available: false, action: 'operator_action', failure: { code: 'storage', message: 'unavailable' } }] } });
+    const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+    expect((await og.graphs.list())[0]).toMatchObject({ state: 'blocked', readAvailable: false, writeAvailable: false, failure: { code: 'storage', message: 'unavailable' } });
+  });
+});
