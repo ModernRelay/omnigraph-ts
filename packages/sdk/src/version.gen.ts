@@ -3,7 +3,9 @@
 
 /**
  * The omnigraph-server release this build of the SDK was generated against.
- * The SDK targets the corresponding OpenAPI spec exactly; behaviour against
- * a different server major.minor is undefined.
+ * Requests require the corresponding major.minor HTTP contract; mismatched
+ * discovery or response headers fail closed.
  */
-export const SERVER_VERSION = "0.11.0";
+export const SERVER_VERSION = "0.13.0";
+export const HTTP_API_CONTRACT = "0.13";
+export const HTTP_API_CONTRACT_HEADER = 'Omnigraph-Http-Api';

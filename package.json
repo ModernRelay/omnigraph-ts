@@ -11,7 +11,8 @@
   },
   "packageManager": "pnpm@9.15.0",
   "omnigraph": {
-    "serverVersion": "0.11.0"
+    "serverVersion": "0.13.0",
+    "skillsRef": "2990fa3ae358b819ef680043b2284d5494b10c68"
   },
   "scripts": {
     "sync-spec": "tsx scripts/sync-spec.ts",
@@ -24,7 +25,8 @@
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm run test:tooling && pnpm -r run test",
     "test:tooling": "tsx --test scripts/*.test.ts",
-    "check-coverage": "tsx scripts/check-coverage.ts"
+    "check-coverage": "tsx scripts/check-coverage.ts",
+    "test:e2e": "tsx scripts/run-e2e.ts"
   },
   "devDependencies": {
     "glob": "^13.0.6",

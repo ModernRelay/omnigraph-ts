@@ -5,6 +5,20 @@ export type ClientOptions = {
 };
 
 /**
+ * Whether a suggested source edit can be applied mechanically.
+ */
+export const ApplicabilityOutput = {
+  MACHINE_APPLICABLE: "machine_applicable",
+  NEEDS_REVIEW: "needs_review",
+} as const;
+
+/**
+ * Whether a suggested source edit can be applied mechanically.
+ */
+export type ApplicabilityOutput =
+  (typeof ApplicabilityOutput)[keyof typeof ApplicabilityOutput];
+
+/**
  * Logical graph entity selected by the Blob delivery surface.
  *
  * This is intentionally graph vocabulary: callers select a node or edge.
@@ -70,18 +84,15 @@ export type BranchMergeOutcome =
 
 export type BranchMergeOutput = {
   actor_id?: string | null;
-  /**
-   * Why the requested source-branch deletion did not happen. Present iff
-   * `branch_deleted` is `false`.
-   */
-  branch_delete_error?: string | null;
+  branch_delete_error_details?: null | ErrorOutput;
   /**
    * Result of the requested post-merge source-branch deletion. Absent when
    * `delete_branch` was not requested; `true` when the source branch was
    * deleted; `false` when the deletion was refused or failed (the merge
-   * itself still succeeded — see `branch_delete_error`).
+   * itself still succeeded — see `branch_delete_error_details`).
    */
   branch_deleted?: boolean | null;
+  commit: null | CommitOutput;
   outcome: BranchMergeOutcome;
   source: string;
   target: string;
@@ -91,10 +102,11 @@ export type BranchMergeRequest = {
   /**
    * Delete the source branch after a successful merge. The deletion runs
    * under its own `branch_delete` policy check; a refusal or failure is
-   * reported via `branch_deleted` / `branch_delete_error` on the response
+   * reported via `branch_deleted` / `branch_delete_error_details` on the response
    * and never fails the already-landed merge.
    */
   delete_branch?: boolean;
+  settings?: null | SettingsRequest;
   /**
    * Source branch whose commits will be merged.
    */
@@ -249,9 +261,8 @@ export type ChangeErrorOutput = {
 /**
  * A change continuation can no longer be reconstructed from retained history
  * (HTTP 410). Recovery is the baseline handshake; retrying the same cursor
- * cannot succeed. `code` stays unset: [`ErrorCode`] is closed and this
- * additive detail is the machine-readable discriminator (the same rolling
- * contract as `external_blob_source`).
+ * cannot succeed. `code` stays unset: this structured detail is the
+ * machine-readable discriminator, as with `external_blob_source`.
  */
 export type ChangeFeedGapOutput = {
   cursor?: string | null;
@@ -326,7 +337,7 @@ export type ChangeOutput = {
    * or the merge target.
    */
   branch: string;
-  commit?: null | CommitOutput;
+  commit: null | CommitOutput;
   outcome?: null | BranchOutcomeOutput;
   /**
    * The declared mutation's name, or a branch statement's two keywords
@@ -342,8 +353,6 @@ export type ChangeRequest = {
   branch?: string | null;
   /**
    * Name of the mutation to run when `query` declares multiple.
-   *
-   * Accepts the legacy field name `query_name` as a deserialization alias.
    */
   name?: string | null;
   /**
@@ -355,10 +364,9 @@ export type ChangeRequest = {
    * May declare multiple named mutations; pick one with `name`. May instead
    * be one branch statement (grammar: `BranchStmt` in `omnigraph-compiler`),
    * sent with no `name`, `params`, or `branch`.
-   *
-   * Accepts the legacy field name `query_source` as a deserialization alias.
    */
   query: string;
+  settings?: null | SettingsRequest;
 };
 
 /**
@@ -400,6 +408,47 @@ export type CommitOutput = {
   parent_commit_id?: string | null;
 };
 
+export type DeploymentRequest = {
+  deployment: {
+    [key: string]: unknown;
+  };
+  deployment_id: string;
+};
+
+export type DeploymentResponse = {
+  active: boolean;
+  deployment: {
+    [key: string]: unknown;
+  };
+  in_progress: boolean;
+};
+
+export type DeploymentStatusResponse = {
+  active: boolean;
+  in_progress: boolean;
+  status: {
+    [key: string]: unknown;
+  };
+};
+
+/**
+ * The diagnostics contract for a refused query (RFC 0047): a stable code
+ * (`Q…` parse, `T…` typecheck); where the failure is, as a source position
+ * or as the stage and expression when it is post-parse; what was expected or
+ * violated; and one concrete fix, absent when `expected` names the decision.
+ * Rides `ErrorOutput.diagnostic` as an additive detail because
+ * [`ErrorCode`] is a closed compatibility contract.
+ */
+export type DiagnosticOutput = {
+  code: string;
+  expected: string;
+  expression?: string | null;
+  fix?: string | null;
+  position?: null | PositionOutput;
+  stage?: string | null;
+  suggestion?: null | SuggestionOutput;
+};
+
 /**
  * One entity change. Cause is stated once on the enclosing block, never here.
  * An insert carries only `after`, an update exact `before` and `after`, a
@@ -429,10 +478,13 @@ export const ErrorCode = {
   UNAUTHORIZED: "unauthorized",
   FORBIDDEN: "forbidden",
   BAD_REQUEST: "bad_request",
+  API_CONTRACT_MISMATCH: "api_contract_mismatch",
   NOT_FOUND: "not_found",
   METHOD_NOT_ALLOWED: "method_not_allowed",
   CONFLICT: "conflict",
   TOO_MANY_REQUESTS: "too_many_requests",
+  SERVICE_UNAVAILABLE: "service_unavailable",
+  GRAPH_UNAVAILABLE: "graph_unavailable",
   INTERNAL: "internal",
 } as const;
 
@@ -443,6 +495,7 @@ export type ErrorOutput = {
   change_diff_refusal?: null | ChangeDiffRefusalOutput;
   change_feed_gap?: null | ChangeFeedGapOutput;
   code?: null | ErrorCode;
+  diagnostic?: null | DiagnosticOutput;
   error: string;
   external_blob_source?: null | ExternalBlobSourceOutput;
   full_text_index_rebuild_required?: null | FullTextIndexRebuildRequiredOutput;
@@ -498,6 +551,28 @@ export type FullTextIndexRebuildRequiredOutput = {
   reason: string;
 };
 
+export const GraphAvailability = {
+  LOADING: "loading",
+  READY: "ready",
+  TRANSITIONING: "transitioning",
+  BLOCKED: "blocked",
+  STOPPING: "stopping",
+} as const;
+
+export type GraphAvailability =
+  (typeof GraphAvailability)[keyof typeof GraphAvailability];
+
+export const GraphAvailabilityAction = {
+  NONE: "none",
+  WAIT_FOR_STARTUP: "wait_for_startup",
+  WAIT_FOR_TRANSITION: "wait_for_transition",
+  APPLY_CORRECTION_OR_RESTART: "apply_correction_or_restart",
+  WAIT_FOR_RESTART: "wait_for_restart",
+} as const;
+
+export type GraphAvailabilityAction =
+  (typeof GraphAvailabilityAction)[keyof typeof GraphAvailabilityAction];
+
 /**
  * One logical declaration touched by a graph-batch load.
  *
@@ -526,6 +601,7 @@ export type GraphBatchLoadOutput = {
    * Logical edge declarations touched by this batch, sorted by name.
    */
   edges: Array<GraphBatchDeclarationOutput>;
+  embedding_generation: null | LoadEmbeddingGeneration;
   mode: LoadMode;
   /**
    * Logical node declarations touched by this batch, sorted by name.
@@ -535,14 +611,40 @@ export type GraphBatchLoadOutput = {
 };
 
 /**
+ * A graph's existence, without storage, schema, data, or serving metadata.
+ */
+export type GraphDiscoveryEntry = {
+  /**
+   * Currently the graph identifier; no separate display name is configured.
+   */
+  display_name: string;
+  graph_id: string;
+};
+
+/**
+ * Authenticated minimal inventory from `GET /graphs/discovery`.
+ */
+export type GraphDiscoveryResponse = {
+  graphs: Array<GraphDiscoveryEntry>;
+};
+
+/**
  * One entry in the response from `GET /graphs`. Cluster operators
  * consume this list to discover which graphs the server is currently
- * serving. The shape is intentionally minimal — `graph_id` and `uri`
- * are the only fields a routing client needs.
+ * serving. This legacy metadata includes the storage `uri`; identity-only
+ * existence discovery uses [`GraphDiscoveryEntry`] instead.
  */
 export type GraphInfo = {
+  action: GraphAvailabilityAction;
+  failure?: null | GraphStartupFailure;
   graph_id: string;
+  /**
+   * Runtime availability; actor policy still gates every operation.
+   */
+  read_available: boolean;
+  state: GraphAvailability;
   uri: string;
+  write_available: boolean;
 };
 
 /**
@@ -552,18 +654,30 @@ export type GraphInfo = {
  */
 export type GraphListResponse = {
   graphs: Array<GraphInfo>;
-  /**
-   * Graphs the applied revision names that this process does not serve,
-   * for any reason, sorted (RFC 0049). Empty when every applied graph is
-   * served.
-   */
-  quarantined?: Array<string>;
 };
+
+/**
+ * Bounded startup classification, without storage paths or error text.
+ */
+export const GraphStartupFailure = {
+  INVALID_CONFIGURATION: "invalid_configuration",
+  INVALID_POLICY: "invalid_policy",
+  INVALID_EXTERNAL_BLOB_POLICY: "invalid_external_blob_policy",
+  OPEN_FAILED: "open_failed",
+  INVALID_STORED_QUERIES: "invalid_stored_queries",
+} as const;
+
+/**
+ * Bounded startup classification, without storage paths or error text.
+ */
+export type GraphStartupFailure =
+  (typeof GraphStartupFailure)[keyof typeof GraphStartupFailure];
 
 export type HealthOutput = {
   /**
-   * The newest internal-schema (storage-format) version this binary serves;
-   * it also reads and writes the preceding legacy-vintage version.
+   * The internal-schema (storage-format) version this binary writes and
+   * the only one it serves; a graph at any other version is refused until
+   * it is upgraded offline or rebuilt.
    */
   internal_schema_version: number;
   source_version?: string | null;
@@ -585,6 +699,7 @@ export type IngestOutput = {
    * Logical edge declarations touched by this load, sorted by name.
    */
   edges: Array<GraphBatchDeclarationOutput>;
+  embedding_generation: null | LoadEmbeddingGeneration;
   mode: LoadMode;
   /**
    * Logical node declarations touched by this load, sorted by name.
@@ -665,17 +780,15 @@ export type KeyConflictOutput = {
 };
 
 /**
- * Indefinitely byte-stable envelope of the deprecated `POST /read` route; cell
- * spelling follows the JSON writer. The canonical [`ReadOutput`] may grow
- * additive fields; this legacy envelope deliberately cannot carry them.
+ * Load capability for a batch touching a node type with declared `@embed`.
  */
-export type LegacyReadOutput = {
-  columns?: Array<string>;
-  query_name: string;
-  row_count: number;
-  rows: unknown;
-  target: ReadTargetOutput;
-};
+export const LoadEmbeddingGeneration = { UNSUPPORTED: "unsupported" } as const;
+
+/**
+ * Load capability for a batch touching a node type with declared `@embed`.
+ */
+export type LoadEmbeddingGeneration =
+  (typeof LoadEmbeddingGeneration)[keyof typeof LoadEmbeddingGeneration];
 
 /**
  * Shadow enum for documenting [`LoadMode`] in the OpenAPI schema.
@@ -760,6 +873,22 @@ export const ParamKind = {
  */
 export type ParamKind = (typeof ParamKind)[keyof typeof ParamKind];
 
+export type PlanRequest = {
+  deployment: {
+    [key: string]: unknown;
+  };
+};
+
+/**
+ * A source position: 1-based line and column (in characters) and the byte
+ * offset.
+ */
+export type PositionOutput = {
+  byte: number;
+  column: number;
+  line: number;
+};
+
 /**
  * Structured details for a caller write-precondition failure: HTTP 412, a
  * mutation carried `Omnigraph-If-Graph-Commit: <commit_id>`, and the branch
@@ -816,9 +945,7 @@ export type QueryCatalogEntry = {
 /**
  * Inline read-query request for `POST /query`.
  *
- * Friendlier-named alternative to [`ReadRequest`] for ad-hoc reads and
- * AI-agent integration. Mutations are rejected with 400 — use `POST
- * /mutate` (or its deprecated alias `POST /change`) for write queries.
+ * Mutations are rejected with 400 — use `POST /mutate` for write queries.
  * Field names are deliberately short (`query`, `name`) to match the GQ
  * keyword and the CLI `-e` flag.
  */
@@ -839,12 +966,17 @@ export type QueryRequest = {
   /**
    * GQ read-query source. May declare one or more named queries; pick one
    * with `name` when more than one is declared. Mutations
-   * (`insert`/`update`/`delete`) get 400 — use `POST /mutate` (or its
-   * deprecated alias `POST /change`) instead. May instead be the branch
+   * (`insert`/`update`/`delete`) get 400 — use `POST /mutate` instead. May be the branch
    * statement `branch list`, sent with no `name`, `params`, `branch`, or
-   * `snapshot`.
+   * `snapshot`; or one `explain` statement (`explain query …`), which
+   * answers the v2 plan instead of
+   * running it, as one result per plan node (fields `tree`, `depth`, `node`,
+   * `detail`: the logical, physical and available DataFusion trees, then `plan` entries for
+   * the passes and the document's other fields), under the same `params`,
+   * `branch`, or `snapshot` as the query itself.
    */
   query: string;
+  settings?: null | SettingsRequest;
   /**
    * Snapshot id to read from. Mutually exclusive with `branch`.
    */
@@ -865,31 +997,6 @@ export type ReadOutput = {
   row_count: number;
   rows: unknown;
   target: ReadTargetOutput;
-};
-
-export type ReadRequest = {
-  /**
-   * Branch to read from. Mutually exclusive with `snapshot`. Defaults to `main`.
-   */
-  branch?: string | null;
-  /**
-   * JSON object whose keys match the query's declared parameters.
-   */
-  params?: unknown;
-  /**
-   * Name of the query to run when `query_source` declares multiple. Optional
-   * when only one query is declared.
-   */
-  query_name?: string | null;
-  /**
-   * GQ query source. May declare one or more named queries; pick one with
-   * `query_name` if there is more than one.
-   */
-  query_source: string;
-  /**
-   * Snapshot id to read from. Mutually exclusive with `branch`.
-   */
-  snapshot?: string | null;
 };
 
 /**
@@ -916,21 +1023,28 @@ export type ReadTargetOutput = {
  */
 export type ReadinessOutput = {
   /**
+   * Unavailable graphs outside startup, including closed transitions.
+   */
+  blocked_graph_count: number;
+  /**
    * The `config_digest` of the applied revision this process booted from.
    * Fixed for the life of the process: the server never reloads.
    */
   booted_serving_digest?: string | null;
   /**
-   * How many graphs the applied revision names that this process does
-   * not serve, for any reason. `GET /graphs` names them.
+   * Registered graphs waiting for their initial startup admission.
    */
-  quarantined_graph_count: number;
+  loading_graph_count: number;
   /**
-   * False once shutdown has begun; the response is then 503.
+   * False during shutdown or when a nonempty inventory has no ready graph.
    */
   ready: boolean;
   /**
-   * How many graphs this process serves.
+   * Registered graphs whose startup completed successfully.
+   */
+  ready_graph_count: number;
+  /**
+   * Number of registered graphs, including blocked entries.
    */
   served_graph_count: number;
   /**
@@ -946,7 +1060,7 @@ export type ReadinessOutput = {
    */
   state_revision: number;
   /**
-   * `serving` or `draining`.
+   * `loading`, `serving`, `degraded`, `blocked` or `draining`.
    */
   status: string;
 };
@@ -965,33 +1079,39 @@ export type ResourceLimitOutput = {
   resource: string;
 };
 
-export type SchemaApplyOutput = {
-  applied: boolean;
-  graph_manifest_version: number;
-  step_count: number;
-  steps: Array<unknown>;
-  supported: boolean;
-  uri: string;
-};
-
-export type SchemaApplyRequest = {
-  /**
-   * When true, promote every `DropMode::Soft` step in the plan to
-   * `DropMode::Hard`, making the prior property data unreachable
-   * after the apply. Matches the CLI's `--allow-data-loss` flag.
-   * Defaults to `false` (drops remain reversible via time travel).
-   */
-  allow_data_loss?: boolean;
-  /**
-   * Project schema in `.pg` source form. The diff against the current
-   * schema produces the migration steps that will be applied.
-   */
-  schema_source: string;
-};
-
 export type SchemaOutput = {
   schema_source: string;
   system_columns?: null | SystemColumnsOutput;
+};
+
+/**
+ * The `settings` field of a request: one optional value per `request`-scope
+ * setting of the definition, applied to the request's session before the
+ * source's own `set` lines, so a `set` line in the request's text overrides
+ * the field. An absent field is empty. A `process` setting has no field
+ * here, so `{"stage_write_concurrency": 64}` is refused as an unknown field.
+ */
+export type SettingsRequest = {
+  /**
+   * the partition cap per index delta of a `nearest` scan; `0` is no cap
+   */
+  ann_nprobes?: number;
+  /**
+   * the engine a read query runs on; `v2`, the plan runner, is the one value; this setting does not change change-feed or merge execution
+   */
+  engine?: "v2";
+  /**
+   * the byte budget of a branch's buffer of unreleased commits; a mutate, load or branch merge of this session whose buffer and head reach it closes a history block and the publish after it writes the block under `__history`; query results never change, only where settled commits are stored and how many requests a publish makes
+   */
+  history_release_bytes?: number;
+  /**
+   * how a merge finds the entities it classifies: the full-scan walk, the lineage path, or both compared
+   */
+  merge_lineage?: "off" | "on" | "verify";
+  /**
+   * the finite work budget shared by edge selections in one query; exhaustion terminates the query with an error
+   */
+  traversal_work_limit?: number;
 };
 
 export type SnapshotDatasetOutput = {
@@ -1009,9 +1129,18 @@ export type SnapshotOutput = {
   graph_manifest_version: number;
   /**
    * The on-disk internal-schema (storage-format) version this graph's branch
-   * is stamped at.
+   * is stamped at. This binary serves only its own storage-format version; a
+   * graph at any other version is refused until it is upgraded offline or rebuilt.
    */
   internal_schema_version: number;
+};
+
+/**
+ * Non-overlapping edits against the original request source.
+ */
+export type SuggestionOutput = {
+  applicability: ApplicabilityOutput;
+  edits: Array<TextEditOutput>;
 };
 
 /**
@@ -1023,14 +1152,239 @@ export type SystemColumnsOutput = {
   src: string;
 };
 
+/**
+ * A UTF-8 byte range in the original source, with an exclusive end.
+ */
+export type TextEditOutput = {
+  end: number;
+  replacement: string;
+  start: number;
+};
+
+export type OauthProtectedResourceMetadataData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/.well-known/oauth-protected-resource";
+};
+
+export type OauthProtectedResourceMetadataErrors = {
+  /**
+   * OAuth resource identity is not configured
+   */
+  404: unknown;
+};
+
+export type OauthProtectedResourceMetadataResponses = {
+  /**
+   * Public OAuth protected resource metadata
+   */
+  200: unknown;
+};
+
+export type DeploymentStatusData = {
+  body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
+  path?: never;
+  query?: never;
+  url: "/cluster/deployments";
+};
+
+export type DeploymentStatusErrors = {
+  /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type DeploymentStatusError =
+  DeploymentStatusErrors[keyof DeploymentStatusErrors];
+
+export type DeploymentStatusResponses = {
+  200: DeploymentStatusResponse;
+};
+
+export type DeploymentStatusResponse2 =
+  DeploymentStatusResponses[keyof DeploymentStatusResponses];
+
+export type DeploymentApplyData = {
+  body: DeploymentRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
+  path?: never;
+  query?: never;
+  url: "/cluster/deployments";
+};
+
+export type DeploymentApplyErrors = {
+  /**
+   * ; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  409: ErrorOutput;
+  /**
+   * ; Request body exceeds its route limit before operation admission
+   */
+  413: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * ; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type DeploymentApplyError =
+  DeploymentApplyErrors[keyof DeploymentApplyErrors];
+
+export type DeploymentApplyResponses = {
+  200: DeploymentResponse;
+  /**
+   * Durably accepted; poll the exact receipt until in_progress is false and inspect active
+   */
+  202: DeploymentResponse;
+};
+
+export type DeploymentApplyResponse =
+  DeploymentApplyResponses[keyof DeploymentApplyResponses];
+
+export type DeploymentLookupData = {
+  body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
+  path: {
+    /**
+     * Original deployment identity
+     */
+    id: string;
+  };
+  query?: never;
+  url: "/cluster/deployments/{id}";
+};
+
+export type DeploymentLookupErrors = {
+  /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type DeploymentLookupError =
+  DeploymentLookupErrors[keyof DeploymentLookupErrors];
+
+export type DeploymentLookupResponses = {
+  200: DeploymentResponse;
+};
+
+export type DeploymentLookupResponse =
+  DeploymentLookupResponses[keyof DeploymentLookupResponses];
+
+export type DeploymentPlanData = {
+  body: PlanRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
+  path?: never;
+  query?: never;
+  url: "/cluster/plan";
+};
+
+export type DeploymentPlanErrors = {
+  /**
+   * ; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  409: ErrorOutput;
+  /**
+   * ; Request body exceeds its route limit before operation admission
+   */
+  413: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type DeploymentPlanError =
+  DeploymentPlanErrors[keyof DeploymentPlanErrors];
+
+export type DeploymentPlanResponses = {
+  200: {
+    [key: string]: unknown;
+  };
+};
+
+export type DeploymentPlanResponse =
+  DeploymentPlanResponses[keyof DeploymentPlanResponses];
+
 export type ListGraphsData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path?: never;
   query?: never;
   url: "/graphs";
 };
 
 export type ListGraphsErrors = {
+  /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
   /**
    * Unauthorized
    */
@@ -1056,9 +1410,50 @@ export type ListGraphsResponses = {
 
 export type ListGraphsResponse = ListGraphsResponses[keyof ListGraphsResponses];
 
+export type DiscoverGraphsData = {
+  body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
+  path?: never;
+  query?: never;
+  url: "/graphs/discovery";
+};
+
+export type DiscoverGraphsErrors = {
+  /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
+   * Unauthorized
+   */
+  401: ErrorOutput;
+  /**
+   * Identity credential required
+   */
+  403: ErrorOutput;
+};
+
+export type DiscoverGraphsError =
+  DiscoverGraphsErrors[keyof DiscoverGraphsErrors];
+
+export type DiscoverGraphsResponses = {
+  /**
+   * Authenticated minimal graph inventory
+   */
+  200: GraphDiscoveryResponse;
+};
+
+export type DiscoverGraphsResponse =
+  DiscoverGraphsResponses[keyof DiscoverGraphsResponses];
+
 export type ClusterGetBlobData = {
   body?: never;
-  headers?: {
+  headers: {
     /**
      * Strong entity-tag-list precondition, including `*`, evaluated before If-None-Match and Range.
      */
@@ -1075,6 +1470,10 @@ export type ClusterGetBlobData = {
      * One strong entity tag. A mismatch causes the complete representation to be served.
      */
     "If-Range"?: string | null;
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
   };
   path: {
     /**
@@ -1113,7 +1512,7 @@ export type ClusterGetBlobData = {
 
 export type ClusterGetBlobErrors = {
   /**
-   * Invalid selector, target, or non-Blob property
+   * Invalid selector, target, or non-Blob property; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -1137,9 +1536,17 @@ export type ClusterGetBlobErrors = {
    */
   416: ErrorOutput;
   /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
    * Stored Blob integrity or pre-header delivery refusal, including ranged external descriptors that cannot be redirected
    */
   500: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterGetBlobError =
@@ -1161,7 +1568,7 @@ export type ClusterGetBlobResponse =
 
 export type ClusterHeadBlobData = {
   body?: never;
-  headers?: {
+  headers: {
     /**
      * Strong entity-tag-list precondition, including `*`, evaluated before If-None-Match.
      */
@@ -1178,6 +1585,10 @@ export type ClusterHeadBlobData = {
      * Accepted but ignored for HEAD together with Range.
      */
     "If-Range"?: string | null;
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
   };
   path: {
     /**
@@ -1216,7 +1627,7 @@ export type ClusterHeadBlobData = {
 
 export type ClusterHeadBlobErrors = {
   /**
-   * Invalid selector, target, or non-Blob property; HEAD responses have no body
+   * Invalid selector, target, or non-Blob property; HEAD responses have no body; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: unknown;
   /**
@@ -1236,9 +1647,17 @@ export type ClusterHeadBlobErrors = {
    */
   412: unknown;
   /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: unknown;
+  /**
    * Stored Blob integrity or pre-header delivery refusal, including ranged external descriptors that cannot be redirected; HEAD responses have no body
    */
   500: unknown;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: unknown;
 };
 
 export type ClusterHeadBlobResponses = {
@@ -1250,6 +1669,12 @@ export type ClusterHeadBlobResponses = {
 
 export type ClusterListBranchesData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1262,6 +1687,10 @@ export type ClusterListBranchesData = {
 
 export type ClusterListBranchesErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -1269,6 +1698,14 @@ export type ClusterListBranchesErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterListBranchesError =
@@ -1286,6 +1723,12 @@ export type ClusterListBranchesResponse =
 
 export type ClusterCreateBranchData = {
   body: BranchCreateRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1298,7 +1741,7 @@ export type ClusterCreateBranchData = {
 
 export type ClusterCreateBranchErrors = {
   /**
-   * Bad request
+   * Bad request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -1310,15 +1753,23 @@ export type ClusterCreateBranchErrors = {
    */
   403: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Branch already exists
    */
   409: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Request body exceeds its route limit before operation admission
+   */
+  413: ErrorOutput;
+  /**
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -1338,6 +1789,12 @@ export type ClusterCreateBranchResponse =
 
 export type ClusterMergeBranchesData = {
   body: BranchMergeRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1350,7 +1807,7 @@ export type ClusterMergeBranchesData = {
 
 export type ClusterMergeBranchesErrors = {
   /**
-   * Bad request
+   * Bad request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -1362,11 +1819,15 @@ export type ClusterMergeBranchesErrors = {
    */
   403: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Merge conflict
    */
   409: ErrorOutput;
   /**
-   * Merge entity, byte, or recovery-chain ceiling exceeded before effects
+   * Merge entity, byte, or recovery-chain ceiling exceeded before effects; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -1374,11 +1835,11 @@ export type ClusterMergeBranchesErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -1398,6 +1859,12 @@ export type ClusterMergeBranchesResponse =
 
 export type ClusterDeleteBranchData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1414,6 +1881,10 @@ export type ClusterDeleteBranchData = {
 
 export type ClusterDeleteBranchErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -1426,11 +1897,11 @@ export type ClusterDeleteBranchErrors = {
    */
   404: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -1448,67 +1919,14 @@ export type ClusterDeleteBranchResponses = {
 export type ClusterDeleteBranchResponse =
   ClusterDeleteBranchResponses[keyof ClusterDeleteBranchResponses];
 
-export type ClusterChangeData = {
-  body: ChangeRequest;
-  path: {
-    /**
-     * Graph id to route the request to.
-     */
-    graph_id: string;
-  };
-  query?: never;
-  url: "/graphs/{graph_id}/change";
-};
-
-export type ClusterChangeErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Write-authority conflict
-   */
-  409: ErrorOutput;
-  /**
-   * Keyed write exceeds the per-commit entity or byte ceiling
-   */
-  413: ErrorOutput;
-  /**
-   * An allowed external Blob source could not be probed or read
-   */
-  424: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-  /**
-   * An overlapping durable recovery intent must be resolved before retry
-   */
-  503: ErrorOutput;
-};
-
-export type ClusterChangeError = ClusterChangeErrors[keyof ClusterChangeErrors];
-
-export type ClusterChangeResponses = {
-  /**
-   * Mutation results (response includes `Deprecation: true` + `Link: <mutate>; rel="successor-version"`)
-   */
-  200: ChangeOutput;
-};
-
-export type ClusterChangeResponse =
-  ClusterChangeResponses[keyof ClusterChangeResponses];
-
 export type ClusterPollChangesData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1539,13 +1957,20 @@ export type ClusterPollChangesData = {
     kind?: Array<EntityKindOutput>;
     type?: Array<string>;
     op?: Array<ChangeOpOutput>;
+    /**
+     * Repeatable session setting, `name=value` in GQ spelling
+     * (`set=merge_lineage=off`); only `request`-scope settings are accepted.
+     * Values are validated as session settings; `engine` does not change
+     * change-feed execution.
+     */
+    set?: Array<string>;
   };
   url: "/graphs/{graph_id}/changes";
 };
 
 export type ClusterPollChangesErrors = {
   /**
-   * Invalid start/filter combination, or a rejected cursor or page token
+   * Invalid start/filter combination, or a rejected cursor or page token; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ChangeErrorOutput;
   /**
@@ -1573,11 +1998,15 @@ export type ClusterPollChangesErrors = {
    */
   413: ChangeErrorOutput;
   /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ChangeErrorOutput;
+  /**
    * Internal failure while reading changes
    */
   500: ChangeErrorOutput;
   /**
-   * Recovery required before changes can be read
+   * Recovery required before changes can be read; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ChangeErrorOutput;
 };
@@ -1597,6 +2026,12 @@ export type ClusterPollChangesResponse =
 
 export type ClusterCaptureChangeBaselineData = {
   body: ChangeBaselineRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1609,7 +2044,7 @@ export type ClusterCaptureChangeBaselineData = {
 
 export type ClusterCaptureChangeBaselineErrors = {
   /**
-   * Invalid scope
+   * Invalid scope; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ChangeErrorOutput;
   /**
@@ -1625,15 +2060,23 @@ export type ClusterCaptureChangeBaselineErrors = {
    */
   404: ChangeErrorOutput;
   /**
-   * Baseline cut or transport capacity exhausted
+   * Request body deadline exceeded before operation admission
+   */
+  408: ChangeErrorOutput;
+  /**
+   * Baseline cut or transport capacity exhausted; Request body exceeds its route limit before operation admission
    */
   413: ChangeErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ChangeErrorOutput;
   /**
    * Internal failure while capturing the baseline
    */
   500: ChangeErrorOutput;
   /**
-   * Recovery required
+   * Recovery required; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ChangeErrorOutput;
 };
@@ -1653,6 +2096,12 @@ export type ClusterCaptureChangeBaselineResponse =
 
 export type ClusterListCommitsData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1667,6 +2116,10 @@ export type ClusterListCommitsData = {
 
 export type ClusterListCommitsErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -1674,6 +2127,14 @@ export type ClusterListCommitsErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterListCommitsError =
@@ -1691,6 +2152,12 @@ export type ClusterListCommitsResponse =
 
 export type ClusterGetCommitData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1707,6 +2174,10 @@ export type ClusterGetCommitData = {
 
 export type ClusterGetCommitErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -1718,6 +2189,14 @@ export type ClusterGetCommitErrors = {
    * Commit not found
    */
   404: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterGetCommitError =
@@ -1735,6 +2214,12 @@ export type ClusterGetCommitResponse =
 
 export type ClusterGetCommitChangesData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1767,13 +2252,20 @@ export type ClusterGetCommitChangesData = {
      * Repeatable filter: insert | update | delete.
      */
     op?: Array<ChangeOpOutput>;
+    /**
+     * Repeatable session setting, `name=value` in GQ spelling
+     * (`set=merge_lineage=off`); only `request`-scope settings are accepted.
+     * Values are validated as session settings; `engine` does not change
+     * change-feed execution.
+     */
+    set?: Array<string>;
   };
   url: "/graphs/{graph_id}/commits/{commit_id}/changes";
 };
 
 export type ClusterGetCommitChangesErrors = {
   /**
-   * Invalid filter or limit, or a rejected page token
+   * Invalid filter or limit, or a rejected page token; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ChangeErrorOutput;
   /**
@@ -1797,11 +2289,15 @@ export type ClusterGetCommitChangesErrors = {
    */
   413: ChangeErrorOutput;
   /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ChangeErrorOutput;
+  /**
    * Internal failure while reading changes
    */
   500: ChangeErrorOutput;
   /**
-   * Recovery required before changes can be read
+   * Recovery required before changes can be read; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ChangeErrorOutput;
 };
@@ -1821,6 +2317,12 @@ export type ClusterGetCommitChangesResponse =
 
 export type ClusterExportData = {
   body: ExportRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1833,7 +2335,7 @@ export type ClusterExportData = {
 
 export type ClusterExportErrors = {
   /**
-   * Bad request
+   * Bad request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -1849,11 +2351,15 @@ export type ClusterExportErrors = {
    */
   404: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Export authority conflict
    */
   409: ErrorOutput;
   /**
-   * Export cut or transport capacity exhausted
+   * Export cut or transport capacity exhausted; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -1861,7 +2367,11 @@ export type ClusterExportErrors = {
    */
   415: ErrorOutput;
   /**
-   * Recovery required
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Recovery required; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -1875,67 +2385,14 @@ export type ClusterExportResponses = {
   200: unknown;
 };
 
-export type ClusterIngestData = {
-  body: IngestRequest;
-  path: {
-    /**
-     * Graph id to route the request to.
-     */
-    graph_id: string;
-  };
-  query?: never;
-  url: "/graphs/{graph_id}/ingest";
-};
-
-export type ClusterIngestErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Prepared load authority changed before effects
-   */
-  409: ErrorOutput;
-  /**
-   * Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling
-   */
-  413: ErrorOutput;
-  /**
-   * An allowed external Blob source could not be probed or read
-   */
-  424: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-  /**
-   * An overlapping durable recovery intent must be resolved before retry
-   */
-  503: ErrorOutput;
-};
-
-export type ClusterIngestError = ClusterIngestErrors[keyof ClusterIngestErrors];
-
-export type ClusterIngestResponses = {
-  /**
-   * Load results (response includes `Deprecation: true` + `Link: <load>; rel="successor-version"`)
-   */
-  200: IngestOutput;
-};
-
-export type ClusterIngestResponse =
-  ClusterIngestResponses[keyof ClusterIngestResponses];
-
 export type ClusterLoadData = {
   body: IngestRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -1948,7 +2405,7 @@ export type ClusterLoadData = {
 
 export type ClusterLoadErrors = {
   /**
-   * Bad request
+   * Bad request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -1960,11 +2417,15 @@ export type ClusterLoadErrors = {
    */
   403: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Prepared load authority changed before effects
    */
   409: ErrorOutput;
   /**
-   * Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling
+   * Load input or external Blob admission exceeds a bounded per-operation entity or byte ceiling; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -1972,11 +2433,11 @@ export type ClusterLoadErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -1998,6 +2459,12 @@ export type ClusterLoadNdjsonData = {
    * Strict raw graph-level NDJSON. Each nonblank line is exactly one node envelope {"type":"<Node>","id":"<entity-id>","data":{...}} or edge envelope {"edge":"<Edge>","id":"<entity-id>","from":"<src-id>","to":"<dst-id>","data":{...}}. `data` defaults to {} and holds user properties; the optional top-level `id` follows ordinary ID semantics. Legacy-vintage graphs also accept `data.id` as identity when top-level `id` is absent and refuse both placements together. Duplicate, unknown, reserved physical, and noncanonical supplied entity-ID members are refused.
    */
   body: string;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2023,7 +2490,7 @@ export type ClusterLoadNdjsonData = {
 
 export type ClusterLoadNdjsonErrors = {
   /**
-   * Malformed query or graph batch
+   * Malformed query or graph batch; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -2039,11 +2506,15 @@ export type ClusterLoadNdjsonErrors = {
    */
   404: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Prepared load authority changed before effects
    */
   409: ErrorOutput;
   /**
-   * Request, load, or external Blob admission exceeds a bounded ceiling
+   * Request, load, or external Blob admission exceeds a bounded ceiling; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -2055,11 +2526,11 @@ export type ClusterLoadNdjsonErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2079,6 +2550,12 @@ export type ClusterLoadNdjsonResponse =
 
 export type ClusterMutateData = {
   body: ChangeRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2091,7 +2568,7 @@ export type ClusterMutateData = {
 
 export type ClusterMutateErrors = {
   /**
-   * Bad request - also returned when `branch list` arrives here instead of POST /query, when a request target accompanies a branch statement, when a name or parameters accompany a branch statement, and when a commit precondition accompanies a branch statement
+   * Bad request - also returned when `branch list` arrives here instead of POST /query, when a request target accompanies a branch statement, when a name or parameters accompany a branch statement, and when a commit precondition accompanies a branch statement; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -2107,11 +2584,15 @@ export type ClusterMutateErrors = {
    */
   404: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Write-authority conflict; also `branch create` of a branch that already exists, and a conflicting `branch merge`, whose body carries `merge_conflicts`
    */
   409: ErrorOutput;
   /**
-   * Keyed write exceeds the per-commit entity or byte ceiling
+   * Keyed write exceeds the per-commit entity or byte ceiling; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -2119,11 +2600,11 @@ export type ClusterMutateErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2147,6 +2628,10 @@ export type ClusterMutateIfGraphCommitData = {
      * Required raw graph-head commit id. The mutation runs only while the branch's effective head still equals it.
      */
     "Omnigraph-If-Graph-Commit": string;
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
   };
   path: {
     /**
@@ -2160,7 +2645,7 @@ export type ClusterMutateIfGraphCommitData = {
 
 export type ClusterMutateIfGraphCommitErrors = {
   /**
-   * Missing, duplicate, malformed, or invalid request
+   * Missing, duplicate, malformed, or invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -2172,6 +2657,10 @@ export type ClusterMutateIfGraphCommitErrors = {
    */
   403: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Write-authority conflict
    */
   409: ErrorOutput;
@@ -2180,7 +2669,7 @@ export type ClusterMutateIfGraphCommitErrors = {
    */
   412: ErrorOutput;
   /**
-   * Keyed write exceeds the per-commit entity or byte ceiling
+   * Keyed write exceeds the per-commit entity or byte ceiling; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -2188,11 +2677,11 @@ export type ClusterMutateIfGraphCommitErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
-   * An overlapping durable recovery intent must be resolved before retry
+   * An overlapping durable recovery intent must be resolved before retry; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2212,6 +2701,12 @@ export type ClusterMutateIfGraphCommitResponse =
 
 export type ClusterListQueriesData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2224,6 +2719,10 @@ export type ClusterListQueriesData = {
 
 export type ClusterListQueriesErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -2231,6 +2730,14 @@ export type ClusterListQueriesErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterListQueriesError =
@@ -2248,6 +2755,12 @@ export type ClusterListQueriesResponse =
 
 export type ClusterInvokeQueryData = {
   body?: null | InvokeStoredQueryRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2264,7 +2777,7 @@ export type ClusterInvokeQueryData = {
 
 export type ClusterInvokeQueryErrors = {
   /**
-   * Bad request (param type error; snapshot on a stored mutation)
+   * Bad request (param type error; snapshot on a stored mutation); api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -2280,11 +2793,15 @@ export type ClusterInvokeQueryErrors = {
    */
   404: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Stored mutation write-authority conflict, or a full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying
    */
   409: ErrorOutput;
   /**
-   * Stored keyed mutation exceeds the per-commit entity or byte ceiling
+   * Stored keyed mutation exceeds the per-commit entity or byte ceiling; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -2292,7 +2809,7 @@ export type ClusterInvokeQueryErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
@@ -2300,7 +2817,7 @@ export type ClusterInvokeQueryErrors = {
    */
   500: ErrorOutput;
   /**
-   * A stored mutation is blocked by a durable recovery intent
+   * A stored mutation is blocked by a durable recovery intent; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2325,6 +2842,10 @@ export type ClusterInvokeQueryIfGraphCommitData = {
      * Required raw graph-head commit id. The stored mutation runs only while the branch's effective head still equals it.
      */
     "Omnigraph-If-Graph-Commit": string;
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
   };
   path: {
     /**
@@ -2342,7 +2863,7 @@ export type ClusterInvokeQueryIfGraphCommitData = {
 
 export type ClusterInvokeQueryIfGraphCommitErrors = {
   /**
-   * Missing, duplicate, malformed, read-only, or invalid invocation
+   * Missing, duplicate, malformed, read-only, or invalid invocation; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -2358,6 +2879,10 @@ export type ClusterInvokeQueryIfGraphCommitErrors = {
    */
   404: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Stored mutation write-authority conflict
    */
   409: ErrorOutput;
@@ -2366,7 +2891,7 @@ export type ClusterInvokeQueryIfGraphCommitErrors = {
    */
   412: ErrorOutput;
   /**
-   * Stored keyed mutation exceeds the per-commit entity or byte ceiling
+   * Stored keyed mutation exceeds the per-commit entity or byte ceiling; Request body exceeds its route limit before operation admission
    */
   413: ErrorOutput;
   /**
@@ -2374,7 +2899,7 @@ export type ClusterInvokeQueryIfGraphCommitErrors = {
    */
   424: ErrorOutput;
   /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
+   * Per-actor admission cap exceeded; honor `Retry-After` header; Server observer, ingress or operation admission capacity exhausted; honor Retry-After
    */
   429: ErrorOutput;
   /**
@@ -2382,7 +2907,7 @@ export type ClusterInvokeQueryIfGraphCommitErrors = {
    */
   500: ErrorOutput;
   /**
-   * A stored mutation is blocked by a durable recovery intent
+   * A stored mutation is blocked by a durable recovery intent; Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2402,6 +2927,12 @@ export type ClusterInvokeQueryIfGraphCommitResponse =
 
 export type ClusterQueryData = {
   body: QueryRequest;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2414,7 +2945,7 @@ export type ClusterQueryData = {
 
 export type ClusterQueryErrors = {
   /**
-   * Bad request - also returned when the query body contains mutations (use POST /mutate, or its deprecated alias POST /change, for write queries), when a control write statement (`branch create`, `branch delete`, `branch merge`) arrives here instead of POST /mutate, when a request target accompanies a branch statement, and when a name or parameters accompany a branch statement
+   * Bad request - also returned when the query body contains mutations (use POST /mutate, for write queries), when a control write statement (`branch create`, `branch delete`, `branch merge`) arrives here instead of POST /mutate, when a request target accompanies a branch statement, and when a name or parameters accompany a branch statement; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
@@ -2426,9 +2957,25 @@ export type ClusterQueryErrors = {
    */
   403: ErrorOutput;
   /**
+   * Request body deadline exceeded before operation admission
+   */
+  408: ErrorOutput;
+  /**
    * Full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying
    */
   409: ErrorOutput;
+  /**
+   * Request body exceeds its route limit before operation admission
+   */
+  413: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterQueryError = ClusterQueryErrors[keyof ClusterQueryErrors];
@@ -2443,51 +2990,14 @@ export type ClusterQueryResponses = {
 export type ClusterQueryResponse =
   ClusterQueryResponses[keyof ClusterQueryResponses];
 
-export type ClusterReadData = {
-  body: ReadRequest;
-  path: {
-    /**
-     * Graph id to route the request to.
-     */
-    graph_id: string;
-  };
-  query?: never;
-  url: "/graphs/{graph_id}/read";
-};
-
-export type ClusterReadErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Full-text index requires explicit rebuilding; full_text_index_rebuild_required is not cleared by retrying
-   */
-  409: ErrorOutput;
-};
-
-export type ClusterReadError = ClusterReadErrors[keyof ClusterReadErrors];
-
-export type ClusterReadResponses = {
-  /**
-   * Legacy token-free query results (response includes `Deprecation: true` + `Link: <query>; rel="successor-version"`)
-   */
-  200: LegacyReadOutput;
-};
-
-export type ClusterReadResponse =
-  ClusterReadResponses[keyof ClusterReadResponses];
-
 export type ClusterGetSchemaData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2500,6 +3010,10 @@ export type ClusterGetSchemaData = {
 
 export type ClusterGetSchemaErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -2507,6 +3021,14 @@ export type ClusterGetSchemaErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterGetSchemaError =
@@ -2522,56 +3044,14 @@ export type ClusterGetSchemaResponses = {
 export type ClusterGetSchemaResponse =
   ClusterGetSchemaResponses[keyof ClusterGetSchemaResponses];
 
-export type ClusterApplySchemaData = {
-  body: SchemaApplyRequest;
-  path: {
-    /**
-     * Graph id to route the request to.
-     */
-    graph_id: string;
-  };
-  query?: never;
-  url: "/graphs/{graph_id}/schema/apply";
-};
-
-export type ClusterApplySchemaErrors = {
-  /**
-   * Bad request
-   */
-  400: ErrorOutput;
-  /**
-   * Unauthorized
-   */
-  401: ErrorOutput;
-  /**
-   * Forbidden
-   */
-  403: ErrorOutput;
-  /**
-   * Schema apply is disabled for cluster-backed serving; use `omnigraph cluster apply` and restart
-   */
-  409: ErrorOutput;
-  /**
-   * Per-actor admission cap exceeded; honor `Retry-After` header
-   */
-  429: ErrorOutput;
-};
-
-export type ClusterApplySchemaError =
-  ClusterApplySchemaErrors[keyof ClusterApplySchemaErrors];
-
-export type ClusterApplySchemaResponses = {
-  /**
-   * Schema apply results
-   */
-  200: SchemaApplyOutput;
-};
-
-export type ClusterApplySchemaResponse =
-  ClusterApplySchemaResponses[keyof ClusterApplySchemaResponses];
-
 export type ClusterGetSnapshotData = {
   body?: never;
+  headers: {
+    /**
+     * exactly one omnigraph-http-api header with value 0.13 is required
+     */
+    "omnigraph-http-api": "0.13";
+  };
   path: {
     /**
      * Graph id to route the request to.
@@ -2586,6 +3066,10 @@ export type ClusterGetSnapshotData = {
 
 export type ClusterGetSnapshotErrors = {
   /**
+   * Invalid request; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
    * Unauthorized
    */
   401: ErrorOutput;
@@ -2593,6 +3077,14 @@ export type ClusterGetSnapshotErrors = {
    * Forbidden
    */
   403: ErrorOutput;
+  /**
+   * Server observer, ingress or operation admission capacity exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Known graph unavailable (graph_unavailable) or server operation admission closed; reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
 };
 
 export type ClusterGetSnapshotError =
@@ -2624,6 +3116,20 @@ export type HealthResponses = {
 
 export type HealthResponse = HealthResponses[keyof HealthResponses];
 
+export type HealthHeadData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/healthz";
+};
+
+export type HealthHeadResponses = {
+  /**
+   * Server is healthy
+   */
+  200: unknown;
+};
+
 export type ReadinessData = {
   body?: never;
   path?: never;
@@ -2633,7 +3139,7 @@ export type ReadinessData = {
 
 export type ReadinessErrors = {
   /**
-   * Draining
+   * Graphs loading, no graph available or stopping
    */
   503: ReadinessOutput;
 };

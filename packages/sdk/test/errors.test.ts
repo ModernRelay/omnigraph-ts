@@ -128,3 +128,9 @@ describe('error dispatcher', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+it('distinguishes known unavailable graphs from unknown graph 404s', async () => {
+  const { fetch } = stubFetch({ status: 503, body: { error: 'graph is loading', code: 'graph_unavailable' } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  await expect(og.query({ query: 'query q() {}' })).rejects.toMatchObject({ name: 'GraphUnavailableError', status: 503, code: 'graph_unavailable', outcomeUnknown: false });
+});

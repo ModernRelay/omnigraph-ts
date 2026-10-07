@@ -40,8 +40,6 @@ import type {
   QueryRequest,
   ReadOutput,
   ReadTargetOutput,
-  SchemaApplyOutput,
-  SchemaApplyRequest,
   SchemaOutput,
   SnapshotOutput,
   SnapshotDatasetOutput,
@@ -69,13 +67,11 @@ export type CommitList = Camelize<CommitListOutput>;
 export type GraphInfo = Camelize<GraphInfoOutput>;
 export type GraphList = Camelize<GraphListResponse>;
 export type Health = Camelize<HealthOutput>;
-// Readiness (GET /readyz, server v0.11+): `ready` and `status` ("serving" | "draining"), plus
-// served/quarantined graph counts. Returned for both 200 and 503.
+// Readiness with graph availability counts, returned for both 200 and 503.
 export type Readiness = Camelize<ReadinessOutput>;
-// What a branch statement run through POST /mutate did (server v0.11+): `Change.outcome`.
+// The outcome of a branch statement run through POST /mutate.
 export type BranchOutcome = Camelize<BranchOutcomeOutput>;
-// The graph's identity column spellings (`__id`/`__src`/`__dst` on format-9 graphs), from
-// `Schema.systemColumns` (server v0.11+).
+// The graph's identity column spellings from Schema.systemColumns.
 export type SystemColumns = Camelize<SystemColumnsOutput>;
 export type Ingest = Camelize<IngestOutput>;
 // Strict graph-level NDJSON batch load (POST /load/ndjson).
@@ -91,7 +87,6 @@ export type ParamDescriptor = Camelize<ParamDescriptorOutput>;
 // (ReadOutput | ChangeOutput), so this camelizes to `Read | Change`.
 export type InvokeQuery = Camelize<InvokeStoredQueryResponse>;
 export type Schema = Camelize<SchemaOutput>;
-export type SchemaApply = Camelize<SchemaApplyOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
 export type SnapshotDataset = Camelize<SnapshotDatasetOutput>;
 export type MergeConflict = Camelize<MergeConflictOutput>;
@@ -124,12 +119,17 @@ export type ChangeBaselineInput = Camelize<
 >;
 /**
  * Entity NDJSON envelopes; user property names inside data are never converted.
- * `id` is the entity's identity (server >= 0.11), separate from `data` — where an `id` key is an
- * ordinary user property.
+ * `id` is the entity identity, separate from an ordinary user property in data.
  */
 export type ExportRecord =
   | { type: string; id: string; data: Record<string, unknown> }
-  | { edge: string; id: string; from: string; to: string; data: Record<string, unknown> };
+  | {
+      edge: string;
+      id: string;
+      from: string;
+      to: string;
+      data: Record<string, unknown>;
+    };
 /** The OpenAPI record describes the terminal envelope only; entities precede it. */
 export type ChangeBaselineRecord =
   | ExportRecord
@@ -162,7 +162,6 @@ export interface LoadNdjsonInput {
 }
 export type QueryInput = Camelize<QueryRequest>;
 export type InvokeQueryInput = Camelize<InvokeStoredQueryRequest>;
-export type SchemaApplyInput = Camelize<SchemaApplyRequest>;
 
 // Enums and discriminators are unchanged (no snake-case keys to convert).
 // Re-export both the runtime values (constant objects) and the types so
@@ -171,6 +170,8 @@ export {
   ErrorCode,
   BranchMergeOutcome,
   LoadMode,
+  LoadEmbeddingGeneration,
+  GraphAvailabilityAction,
   MergeConflictKindOutput,
   ParamKind,
   BlobEntityKind,
@@ -181,3 +182,32 @@ export {
 
 // CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.
 export type ErrorOutput = Camelize<import('./generated/types.gen').ErrorOutput>;
+
+export type Settings = Camelize<
+  import('./generated/types.gen').SettingsRequest
+>;
+export type GraphDiscovery = Camelize<
+  import('./generated/types.gen').GraphDiscoveryEntry
+>;
+export type GraphAvailability =
+  import('./generated/types.gen').GraphAvailability;
+export type GraphStartupFailure = Camelize<
+  import('./generated/types.gen').GraphStartupFailure
+>;
+/** Bundled configuration, using exact server keys and caller-owned graph/provider names. */
+export interface DeploymentPlanInput {
+  deployment: Record<string, unknown>;
+}
+export interface DeploymentInput extends DeploymentPlanInput {
+  deploymentId: string;
+}
+export interface Deployment {
+  deployment: Record<string, unknown>;
+  active: boolean;
+  inProgress: boolean;
+}
+export interface DeploymentStatus {
+  status: Record<string, unknown>;
+  active: boolean;
+  inProgress: boolean;
+}

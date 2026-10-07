@@ -50,7 +50,7 @@ function fakeFetch(): typeof globalThis.fetch {
       });
 
     if (method === 'GET' && path === '/healthz') {
-      return respond(200, { status: 'ok', version: '0.10.0' });
+      return respond(200, { status: 'ok', version: '0.13.0' });
     }
     if (method === 'GET' && path === '/snapshot') {
       return respond(200, {
@@ -102,8 +102,24 @@ function fakeFetch(): typeof globalThis.fetch {
   }) as unknown as typeof globalThis.fetch;
 }
 
-async function setup(opts: Partial<CreateServerOptions> = {}) {
-  const server = createOmnigraphMcpServer({ baseUrl: 'http://x', graphId: 'g', fetch: fakeFetch(), ...opts });
+function contractFetch(fetch: typeof globalThis.fetch): typeof globalThis.fetch {
+  return async (input, init) => {
+    if (flatPath(String(input)) === '/healthz') {
+      return new Response(JSON.stringify({ status: 'ok', version: '0.13.0' }), {
+        headers: { 'Omnigraph-Http-Api': '0.13', 'content-type': 'application/json' },
+      });
+    }
+    expect(new Headers(init?.headers).get('Omnigraph-Http-Api')).toBe('0.13');
+    const response = await fetch(input, init);
+    response.headers.set('Omnigraph-Http-Api', '0.13');
+    return response;
+  };
+}
+
+async function setup(opts: Partial<CreateServerOptions> = {}, raw = false) {
+  const fetch = opts.fetch ?? fakeFetch();
+  const server = createOmnigraphMcpServer({ baseUrl: 'http://x', graphId: 'g', ...opts,
+    fetch: raw ? fetch : contractFetch(fetch) });
   const client = new Client({ name: 'test-client', version: '0.0.0' });
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverT), client.connect(clientT)]);
@@ -162,7 +178,7 @@ describe('omnigraph-mcp server', () => {
     const block = (r.content as Array<{ type: string; text: string }>)[0]!;
     const parsed = JSON.parse(block.text);
     expect(parsed.status).toBe('ok');
-    expect(parsed.version).toBe('0.10.0');
+    expect(parsed.version).toBe('0.13.0');
     expect(parsed.sdkServerVersion).toBe(SERVER_VERSION);
   });
 
@@ -185,7 +201,7 @@ describe('omnigraph-mcp server', () => {
     expect(parsed.graphCommitId).toBe('01KP');
   });
 
-  it('returns v0.10 snapshot vocabulary and exact load/commit receipts', async () => {
+  it('returns current snapshot fields and exact load/commit receipts', async () => {
     const { client } = await setup();
     const snapshot = toolJson(await client.callTool({ name: 'snapshot', arguments: {} }));
     expect(snapshot).toEqual({
@@ -322,7 +338,7 @@ describe('omnigraph-mcp server', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
     }) as unknown as typeof globalThis.fetch;
 
-    const server = createOmnigraphMcpServer({ baseUrl: 'http://x', graphId: 'g', fetch: recordingFetch });
+    const server = createOmnigraphMcpServer({ baseUrl: 'http://x', graphId: 'g', fetch: contractFetch(recordingFetch) });
     const client = new Client({ name: 'test', version: '0.0.0' });
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
     await Promise.all([server.connect(serverT), client.connect(clientT)]);
@@ -403,7 +419,9 @@ describe('omnigraph-mcp server', () => {
     expect(instructions).toContain('Do not retry every 409');
     expect(instructions).toContain('fullTextIndexRebuildRequired');
     expect(instructions).not.toContain('Retry once');
-    expect(instructions).not.toContain('best-practices/remote-ops');
+    expect(instructions).toContain('exact `commit` receipt');
+    expect(instructions).not.toContain('target head after');
+    expect(instructions).not.toContain('schema apply (409)');
     expect(instructions).toContain('it is not request deduplication');
     expect(instructions).not.toContain('idempotent — use this');
   });
@@ -428,7 +446,7 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     const server = createOmnigraphMcpServer({
       baseUrl: 'http://x', graphId: 'g',
       defaultBranch: 'review-2026',
-      fetch: recordingFetch,
+      fetch: contractFetch(recordingFetch),
     });
     const client = new Client({ name: 'test', version: '0.0.0' });
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
@@ -463,7 +481,7 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     const server = createOmnigraphMcpServer({
       baseUrl: 'http://x', graphId: 'g',
       defaultBranch: 'main',
-      fetch: recordingFetch,
+      fetch: contractFetch(recordingFetch),
     });
     const client = new Client({ name: 'test', version: '0.0.0' });
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
@@ -477,10 +495,25 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
     expect(observedBody?.branch).toBeUndefined();
   });
 
-  it('does not expose a schema_apply tool (cluster graphs reject HTTP schema apply)', async () => {
+  it('does not expose a schema_apply tool (deployment writes are operator-owned)', async () => {
     const { client } = await setup();
     const names = (await client.listTools()).tools.map((t) => t.name);
     expect(names).not.toContain('schema_apply');
+  });
+
+  it.each([false, true])('preserves contract failure dispatch certainty (sent=%s)', async (sent) => {
+    const requests: string[] = [];
+    const { client } = await setup({ fetch: async (input) => {
+      const path = flatPath(String(input));
+      requests.push(path);
+      return new Response('{}', { headers: {
+        'Omnigraph-Http-Api': sent && path === '/healthz' ? '0.13' : '0.12',
+      } });
+    } }, true);
+    const result = await client.callTool({ name: 'mutate', arguments: { query: 'query q() { insert Person { name: "A" } }' } });
+    expect(result.isError).toBe(true);
+    expect(toolJson(result)).toMatchObject({ code: 'api_contract_mismatch', requestDispatched: sent, outcomeUnknown: sent });
+    expect(requests).toEqual(sent ? ['/healthz', '/mutate'] : ['/healthz']);
   });
 
   it('rejects calls with missing required input', async () => {
@@ -491,7 +524,7 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
   });
 });
 
-describe('branch statements (server 0.11)', () => {
+describe('branch statements (current grammar)', () => {
   it.each([
     ['branch create "x" from "main"', true],
     ['  // note\nbranch merge "x" into "main"', true],

@@ -4,4 +4,4 @@
 /**
  * The MCP server package version reported in the MCP initialize response.
  */
-export const MCP_PACKAGE_VERSION = "0.11.0";
+export const MCP_PACKAGE_VERSION = "0.13.0";

@@ -2,11 +2,11 @@
   "exposed": {
     "queries": {
       "title": "GQ query best practices",
-      "description": "Read before authoring queries (via `query` or `mutate`). Covers .gq grammar, query name dispatch, parameter declaration, the PascalCase→lowerCamelCase edge casing trap, search functions requiring trailing `limit`, and the T12 non-nullable lint rule."
+      "description": "Read before authoring queries (via `query` or `mutate`). Covers .gq grammar, query name dispatch, parameter declaration, the PascalCase\u2192lowerCamelCase edge casing trap, search functions requiring trailing `limit`, and the T12 non-nullable lint rule."
     },
     "data": {
       "title": "Data load patterns",
-      "description": "Read before calling `load`. Covers mode selection (merge/append/overwrite), the branch→load→verify→merge loop for large/risky writes, embedding-staleness gotcha (mode:merge does not recompute embeddings), and mutate-vs-load decision matrix."
+      "description": "Read before calling `load`. Covers mode selection (merge/append/overwrite), the branch\u2192load\u2192verify\u2192merge loop for large/risky writes, embedding-staleness gotcha (mode:merge does not recompute embeddings), and mutate-vs-load decision matrix."
     },
     "schema": {
       "title": "Schema authoring and evolution",
@@ -18,16 +18,16 @@
     },
     "changes": {
       "title": "Commits, change feeds and branch statements",
-      "description": "Read before `commits_changes`, `changes_poll`, or a conditional `mutate`. Covers exact read/write positions (`graphCommitId` → `ifGraphCommit`, 412 means no effects), durable feed consumption, 410 baseline resets, and the v0.11 branch statements accepted by `mutate` (their `outcome` receipts, and why a merge's `commit` is not an exact-attempt receipt)."
+      "description": "Read before commits_changes, changes_poll, or conditional mutate. Covers exact read/write receipts, 412 refusals, paginated feeds, baseline resets, and branch statement outcomes."
     }
   },
   "skipped": {
-    "remote-ops": "Awaiting upstream v0.10 refresh: its blanket 409 retry and branch-head verification advice conflicts with exact commit receipts and typed refusals. Current MCP instructions and README define write/error handling instead.",
-    "aliases": "CLI-only — operator aliases + --alias mechanics, not actionable through the HTTP API the MCP wraps.",
-    "commands": "CLI-only — the omnigraph binary's command surface, not the HTTP API.",
+    "remote-ops": "CLI connection and operator workflow guidance; the MCP instructions define its transport and retry contract.",
+    "aliases": "CLI-only \u2014 operator aliases + --alias mechanics, not actionable through the HTTP API the MCP wraps.",
+    "commands": "CLI-only \u2014 the omnigraph binary's command surface, not the HTTP API.",
     "server-policy": "Server-deployment concerns (Cedar policy, auth tokens), out of scope for an MCP client.",
-    "cluster": "Operator/CLI concern — declaring and converging a deployment via cluster.yaml + `omnigraph cluster apply`. The MCP wraps the data-plane HTTP API, which cannot apply cluster config.",
-    "migrations": "Pre-0.7.0 → 0.7.0 migration reference for config files, CLI flags, and command spellings — a CLI/operator guide, not actionable through the HTTP API the MCP wraps.",
+    "cluster": "Operator configuration workflow. This MCP does not expose deployment write tools.",
+    "migrations": "Operator upgrade procedure for stored graphs, credentials, and deployment configuration.",
     "stored-queries": "Stored-query declaration is a cluster/operator concern (cluster.yaml); the MCP wraps the data-plane HTTP API and does not currently expose a stored-query invoke tool.",
     "blobs": "Blob cells are read through the dedicated `GET`/`HEAD /blob` endpoints, which this MCP does not wrap; writing a Blob (`base64:` or URI) uses the ordinary `mutate`/`load` paths the other references cover."
   }

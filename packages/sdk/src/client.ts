@@ -1,6 +1,8 @@
+import { validMutationReceipt } from './receipts';
 import { ndjsonIterator } from './stream';
 import { Transport } from './transport';
 import type { FetchLike } from './transport';
+import { ClusterResource } from './resources/cluster';
 import { BranchesResource } from './resources/branches';
 import type { CallOptions, ConditionalCallOptions } from './internals';
 import { BlobsResource } from './resources/blobs';
@@ -42,20 +44,7 @@ export interface OmnigraphOptions {
   token?: string;
   /** Inject a custom fetch (testing, tracing, polyfills). */
   fetch?: FetchLike;
-  /**
-   * Target a specific graph in the cluster. Every graph-scoped call is sent
-   * under `/graphs/${graphId}/...`. Flat paths (`/healthz`, `/graphs`) are
-   * never prefixed.
-   *
-   * **Required** against omnigraph-server 0.7.0+ (cluster-only): a graph-scoped
-   * call without a `graphId` throws {@link ConfigurationError}. Only
-   * `og.health()` and `og.graphs.list()` work without one — use the latter to
-   * discover graph ids, then `og.graph(id)`.
-   *
-   * Don't fold the id into `baseUrl` (e.g. `http://host/graphs/alpha`):
-   * that breaks `og.health()` and `og.graphs.list()`. Use this option,
-   * or `og.graph(id)` for a scoped clone.
-   */
+  /** Target a cluster graph. Keep baseUrl at the server root (including any proxy prefix). */
   graphId?: string;
 }
 
@@ -64,6 +53,7 @@ export interface SnapshotInput {
 }
 
 export default class Omnigraph {
+  readonly cluster: ClusterResource;
   readonly blobs: BlobsResource;
   readonly changes: ChangesResource;
   readonly branches: BranchesResource;
@@ -78,6 +68,7 @@ export default class Omnigraph {
   constructor(opts: OmnigraphOptions) {
     this.opts = opts;
     this.t = new Transport(opts);
+    this.cluster = new ClusterResource(this.t);
     this.blobs = new BlobsResource(this.t);
     this.changes = new ChangesResource(this.t);
     this.branches = new BranchesResource(this.t);
@@ -106,10 +97,17 @@ export default class Omnigraph {
     return this.t.request<Health>('GET', '/healthz', { signal: opts.signal });
   }
 
+  /** Public OAuth resource metadata; 404 means it is not configured. */
+  oauthMetadata(opts: CallOptions = {}): Promise<Record<string, unknown>> {
+    return this.t.request('GET', '/.well-known/oauth-protected-resource', {
+      signal: opts.signal,
+      opaqueResponse: true,
+    });
+  }
+
   /**
-   * Readiness probe (`GET /readyz`, server v0.11+). Unauthenticated. A draining
-   * server answers 503 with the same body, so both are returned rather than
-   * thrown: check `ready` / `status`.
+   * Readiness probe. Both 200 and 503 return graph availability counts;
+   * check ready/status. Loading, blocked and draining states are not ready.
    */
   readiness(opts: CallOptions = {}): Promise<Readiness> {
     return this.t.request<Readiness>('GET', '/readyz', {
@@ -142,14 +140,17 @@ export default class Omnigraph {
    * For a data mutation, `commit` identifies this publication; `null` means a
    * successful no-op.
    *
-   * A branch statement (`branch create|delete|merge …`, server >= 0.11) names
+   * A branch statement (`branch create|delete|merge …`) names
    * its branches itself: send it without `branch`, `name`, `params` or
    * `ifGraphCommit` (the server refuses them with HTTP 400). Its effect is in
    * `outcome`; create and delete return `commit: null` although they changed
-   * state, and a merge's `commit` is the target's head read after the merge —
-   * a concurrent writer may already have moved it.
+   * state. A merge returns its own exact publication receipt; an already
+   * up-to-date merge returns `commit: null`.
    */
-  mutate(input: MutationInput, opts: ConditionalCallOptions = {}): Promise<Change> {
+  async mutate(
+    input: MutationInput,
+    opts: ConditionalCallOptions = {},
+  ): Promise<Change> {
     if (opts.ifGraphCommit !== undefined) {
       return this.t.request<Change>('POST', '/mutate/if-graph-commit', {
         body: input,
@@ -158,11 +159,18 @@ export default class Omnigraph {
         opaqueBodyKeys: OPAQUE_PARAMS,
       });
     }
-    return this.t.request<Change>('POST', '/mutate', {
+    const result = await this.t.request<Change>('POST', '/mutate', {
       body: input,
       signal: opts.signal,
       opaqueBodyKeys: OPAQUE_PARAMS,
     });
+    if (!validMutationReceipt(result))
+      throw this.t.invalidResponse(
+        'POST',
+        '/mutate',
+        'Invalid branch merge receipt',
+      );
+    return result;
   }
 
   /**
@@ -175,7 +183,10 @@ export default class Omnigraph {
    * implicit fork. Pass `from` to fork-if-missing.
    */
   load(input: IngestInput, opts: CallOptions = {}): Promise<Ingest> {
-    return this.t.request<Ingest>('POST', '/load', { body: input, signal: opts.signal });
+    return this.t.request<Ingest>('POST', '/load', {
+      body: input,
+      signal: opts.signal,
+    });
   }
 
   /**
@@ -193,7 +204,10 @@ export default class Omnigraph {
    * Reconcile an ambiguous response before retrying. **Branch creation is
    * opt-in**: without `from`, the target `branch` must already exist.
    */
-  loadNdjson(input: LoadNdjsonInput, opts: CallOptions = {}): Promise<GraphBatchLoad> {
+  loadNdjson(
+    input: LoadNdjsonInput,
+    opts: CallOptions = {},
+  ): Promise<GraphBatchLoad> {
     return this.t.request<GraphBatchLoad>('POST', '/load/ndjson', {
       query: { branch: input.branch, from: input.from, mode: input.mode },
       rawBody: { content: input.ndjson, contentType: 'application/x-ndjson' },
@@ -204,7 +218,10 @@ export default class Omnigraph {
   /**
    * Get a snapshot of the latest commit on a branch. Read-only.
    */
-  snapshot(input: SnapshotInput = {}, opts: CallOptions = {}): Promise<Snapshot> {
+  snapshot(
+    input: SnapshotInput = {},
+    opts: CallOptions = {},
+  ): Promise<Snapshot> {
     return this.t.request<Snapshot>('GET', '/snapshot', {
       query: { branch: input.branch },
       signal: opts.signal,

@@ -4,14 +4,21 @@ export default Omnigraph;
 export { Omnigraph };
 
 export type { OmnigraphOptions, SnapshotInput } from './client';
-export type { CallOptions, ConditionalCallOptions, ListCommitsInput, FetchLike } from './internals';
+export type {
+  CallOptions,
+  ConditionalCallOptions,
+  ListCommitsInput,
+  FetchLike,
+} from './internals';
 export type { BlobInput } from './resources/blobs';
 export type { PollChangesInput, ChangePageInput } from './resources/changes';
 
-// Build-time pin: which omnigraph-server release this SDK was generated
-// against. Compare against `og.health()` at startup if you want to detect
-// a server / SDK version skew.
-export { SERVER_VERSION } from './version.gen';
+// The generated server pin and exact HTTP contract enforced by every client.
+export {
+  SERVER_VERSION,
+  HTTP_API_CONTRACT,
+  HTTP_API_CONTRACT_HEADER,
+} from './version.gen';
 
 // Errors — typed hierarchy. Catch the specific class you care about.
 export {
@@ -32,6 +39,8 @@ export {
   InternalServerError,
   NetworkError,
   ConfigurationError,
+  ApiContractError,
+  GraphUnavailableError,
 } from './errors';
 
 // Public DTO types (camelCase). Inputs end in `Input`; outputs are bare nouns.
@@ -48,11 +57,17 @@ export type {
   CommitList,
   // Graphs
   GraphInfo,
+  GraphDiscovery,
+  GraphAvailability,
+  GraphStartupFailure,
+  Deployment,
+  DeploymentInput,
+  DeploymentPlanInput,
+  DeploymentStatus,
+  Settings,
   GraphList,
   // Schema
   Schema,
-  SchemaApply,
-  SchemaApplyInput,
   // Operations
   Change,
   MutationInput,
@@ -102,6 +117,8 @@ export {
   BranchMergeOutcome,
   ErrorCode,
   LoadMode,
+  LoadEmbeddingGeneration,
+  GraphAvailabilityAction,
   MergeConflictKindOutput,
   ParamKind,
   BlobEntityKind,
