@@ -5,7 +5,12 @@
 // stdin/stdout.
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { DEPRECATION_NOTICE } from './deprecation';
 import { createOmnigraphMcpServer } from './server';
+
+// stdout carries the MCP protocol; the notice goes to stderr, which MCP hosts
+// show in their server logs.
+console.error(DEPRECATION_NOTICE);
 
 const baseUrl = process.env.OMNIGRAPH_BASE_URL;
 if (!baseUrl) {

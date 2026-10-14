@@ -1,5 +1,33 @@
 # @modernrelay/omnigraph-mcp
 
+> **Deprecated.** `omnigraph-server` serves MCP itself at `<server URL>/mcp`
+> (Streamable HTTP). It covers this package's tools and resources under the
+> same bearer token and the same server policy, and it also works with remote
+> clients such as Claude on the web. Point your MCP client at the server
+> instead; see the
+> [MCP guide](https://github.com/ModernRelay/omnigraph/blob/main/docs/user/operations/mcp.md).
+> This package receives no new features, and its binary prints this notice
+> at startup.
+
+### Moving to the server's `/mcp`
+
+Claude Code:
+
+```bash
+claude mcp add --transport http omnigraph https://graphs.example.com/mcp \
+  --header "Authorization: Bearer your-bearer-token"
+```
+
+Other clients take the same URL and header in their HTTP MCP configuration.
+On the server, `--mcp-allow-adhoc` enables ad-hoc GQ reads (this package's
+`query`, named `read` there) and `--mcp-allow-writes` enables the write tools;
+both are off by default. Tool names that changed: `schema_get` is `schema`,
+`query` is `read`, `graphs_list` is `graphs`; graph-scoped tools and resources
+take the graph id as an argument (`omnigraph://graphs/{graph}/schema`) instead
+of `OMNIGRAPH_GRAPH_ID`.
+
+---
+
 MCP server for **OmniGraph 0.13**, using the TypeScript SDK over HTTP and stdio
 with MCP hosts. Requires Node.js 22 or newer.
 
