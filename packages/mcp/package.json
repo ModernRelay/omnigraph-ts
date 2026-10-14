@@ -1,7 +1,7 @@
 {
   "name": "@modernrelay/omnigraph-mcp",
   "version": "0.13.0",
-  "description": "MCP server exposing an Omnigraph database to LLM clients (Tools + Resources, stdio transport).",
+  "description": "Deprecated: omnigraph-server serves MCP itself at <server URL>/mcp. Stdio MCP server for Omnigraph.",
   "license": "MIT",
   "repository": {
     "type": "git",
