@@ -21,7 +21,7 @@ import type {
   GraphBatchDeclarationOutput,
   GraphBatchLoadOutput,
   GraphInfo as GraphInfoOutput,
-  GraphListResponse,
+  GraphListOutput,
   HealthOutput,
   ReadinessOutput,
   BranchOutcomeOutput,
@@ -29,10 +29,10 @@ import type {
   IngestOutput,
   IngestRequest,
   InvokeStoredQueryRequest,
-  InvokeStoredQueryResponse,
+  InvokeStoredQueryOutput,
   LoadMode,
   PublishedDatasetVersionConflictOutput,
-  MergeConflictKindOutput,
+  MergeConflictKind,
   MergeConflictOutput,
   ParamDescriptor as ParamDescriptorOutput,
   QueriesCatalogOutput,
@@ -57,6 +57,14 @@ export type Camelize<T> =
       : T;
 
 // Outputs (responses): camelCase facing the caller.
+export type Access = Camelize<import('./generated/types.gen').AccessOutput>;
+export type Diff = Camelize<import('./generated/types.gen').DiffOutput>;
+export type MergeBase = Camelize<
+  import('./generated/types.gen').MergeBaseOutput
+>;
+export type BlobWrite = Camelize<
+  import('./generated/types.gen').BlobWriteOutput
+>;
 export type BranchCreate = Camelize<BranchCreateOutput>;
 export type BranchDelete = Camelize<BranchDeleteOutput>;
 export type BranchList = Camelize<BranchListOutput>;
@@ -65,7 +73,7 @@ export type Change = Camelize<ChangeOutput>;
 export type Commit = Camelize<CommitOutput>;
 export type CommitList = Camelize<CommitListOutput>;
 export type GraphInfo = Camelize<GraphInfoOutput>;
-export type GraphList = Camelize<GraphListResponse>;
+export type GraphList = Camelize<GraphListOutput>;
 export type Health = Camelize<HealthOutput>;
 // Readiness with graph availability counts, returned for both 200 and 503.
 export type Readiness = Camelize<ReadinessOutput>;
@@ -85,7 +93,7 @@ export type QueryCatalogEntry = Camelize<QueryCatalogEntryOutput>;
 export type ParamDescriptor = Camelize<ParamDescriptorOutput>;
 // A stored query is read or mutation; the wire response is untagged
 // (ReadOutput | ChangeOutput), so this camelizes to `Read | Change`.
-export type InvokeQuery = Camelize<InvokeStoredQueryResponse>;
+export type InvokeQuery = Camelize<InvokeStoredQueryOutput>;
 export type Schema = Camelize<SchemaOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
 export type SnapshotDataset = Camelize<SnapshotDatasetOutput>;
@@ -168,15 +176,19 @@ export type InvokeQueryInput = Camelize<InvokeStoredQueryRequest>;
 // callers can write `LoadMode.MERGE` and `mode: LoadMode` interchangeably.
 export {
   ErrorCode,
+  AccessAction,
+  CommitKind,
+  CommitListing,
+  DispositionAction,
+  DispositionEffects,
   BranchMergeOutcome,
   LoadMode,
   LoadEmbeddingGeneration,
   GraphAvailabilityAction,
-  MergeConflictKindOutput,
+  MergeConflictKind,
   ParamKind,
-  BlobEntityKind,
-  EntityKindOutput,
-  ChangeOpOutput,
+  EntityKind,
+  ChangeOp,
   ChangeDiffRefusalReason,
 } from './generated/types.gen';
 
@@ -201,13 +213,9 @@ export interface DeploymentPlanInput {
 export interface DeploymentInput extends DeploymentPlanInput {
   deploymentId: string;
 }
-export interface Deployment {
-  deployment: Record<string, unknown>;
-  active: boolean;
-  inProgress: boolean;
-}
-export interface DeploymentStatus {
-  status: Record<string, unknown>;
-  active: boolean;
-  inProgress: boolean;
-}
+export type Deployment = Camelize<
+  import('./generated/types.gen').DeploymentOutput
+>;
+export type DeploymentStatus = Camelize<
+  import('./generated/types.gen').DeploymentStatusOutput
+>;

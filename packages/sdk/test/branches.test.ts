@@ -51,6 +51,7 @@ describe('branches resource', () => {
         outcome: 'fast_forward',
         commit: {
           graph_commit_id: 'merge-own',
+          kind: 'published',
           graph_manifest_version: 7,
           graph_branch: 'main',
           parent_commit_id: 'target-old',
@@ -107,6 +108,7 @@ describe('branches resource', () => {
 describe('exact merge receipts', () => {
   const commit = {
     graph_commit_id: 'own-merge',
+    kind: 'published',
     graph_manifest_version: 5,
     graph_branch: null,
     parent_commit_id: 'target-before',
@@ -121,16 +123,16 @@ describe('exact merge receipts', () => {
     actor_id: 'alice',
   };
 
-  it('normalizes branch names before sending and validating', async () => {
-    const { fetch, calls } = stubFetch({ body: receipt });
+  it('preserves branch names exactly before sending and validating', async () => {
+    const { fetch, calls } = stubFetch({ body: { ...receipt, source: ' feature ', target: ' main ', commit: { ...commit, graph_branch: ' main ' } } });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     const result = await og.branches.merge({
       source: ' feature ',
       target: ' main ',
     });
     expect(JSON.parse(calls[0]!.body!)).toEqual({
-      source: 'feature',
-      target: 'main',
+      source: ' feature ',
+      target: ' main ',
     });
     expect(result.commit?.graphCommitId).toBe('own-merge');
     expect(calls).toHaveLength(1);
@@ -144,6 +146,8 @@ describe('exact merge receipts', () => {
     { ...receipt, commit: { ...commit, merged_parent_commit_id: null } },
     { ...receipt, commit: { ...commit, graph_branch: 'other' } },
     { ...receipt, commit: { ...commit, actor_id: 'someone-else' } },
+    { ...receipt, commit: { ...commit, kind: 'unpublished', published: false } },
+    { ...receipt, commit: { ...commit, kind: 'published', published: false } },
     { ...receipt, branch_deleted: true },
   ])(
     'rejects an incomplete or inconsistent receipt without replaying it',
@@ -188,4 +192,33 @@ describe('exact merge receipts', () => {
       og.branches.merge({ source: 'feature', deleteBranch: true }),
     ).rejects.toBeInstanceOf(ApiContractError);
   });
+});
+
+it('branch review uses the scoped diff and merge-base routes', async () => {
+  const { fetch, calls } = stubFetch([
+    { body: { from_commit_id: 'a', to_commit_id: 'b', base_commit_id: 'a', changes: [{ after: { properties: { snake_case: 1 } } }] } },
+    { body: { source: 'topic', target: 'main', source_commit_id: 'b', target_commit_id: 'a', merge_base: { graph_commit_id: 'a' } } },
+  ]);
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect((await og.branches.diff({ source: 'topic', target: 'main', limit: 1 })).changes[0]!.after!.properties).toEqual({ snake_case: 1 });
+  expect((await og.branches.mergeBase({ source: 'topic', target: 'main' })).mergeBase.graphCommitId).toBe('a');
+  expect(calls.map(c => c.url)).toEqual(['http://x/graphs/g/branches/diff?source=topic&target=main&limit=1', 'http://x/graphs/g/branches/merge-base?source=topic&target=main']);
+});
+
+it('accepts a dry-run receipt without requiring a publication and forwards fromCommit', async () => {
+  const { fetch, calls } = stubFetch([{ body: { source: 'topic', target: 'main', outcome: 'fast_forward', dry_run: true, commit: null } }, { body: { name: 'copy', from: 'main', from_commit_id: 'c' } }]);
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect((await og.branches.merge({ source: 'topic', dryRun: true })).commit).toBeNull();
+  await og.branches.create({ name: 'copy', fromCommit: 'c' });
+  expect(JSON.parse(calls[1]!.body!)).toEqual({ name: 'copy', from_commit: 'c' });
+});
+
+
+it('accepts the detached u64 version in a complete asCommit receipt without treating it as publication', async () => {
+  const { fetch } = stubFetch({ body: { source: 'topic', target: 'main', outcome: 'merged', actor_id: 'alice', commit: {
+    graph_commit_id: 'proposal', graph_manifest_version: 9223372036854776000, graph_branch: 'main',
+    kind: 'unpublished', published: false, parent_commit_id: 'target', merged_parent_commit_id: 'source', actor_id: 'alice',
+  } } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect((await og.branches.merge({ source: 'topic', asCommit: true })).commit!.graphCommitId).toBe('proposal');
 });

@@ -6,6 +6,6 @@
  * Requests require the corresponding major.minor HTTP contract; mismatched
  * discovery or response headers fail closed.
  */
-export const SERVER_VERSION = "0.13.0";
-export const HTTP_API_CONTRACT = "0.13";
+export const SERVER_VERSION = "0.14.0";
+export const HTTP_API_CONTRACT = "0.14";
 export const HTTP_API_CONTRACT_HEADER = 'Omnigraph-Http-Api';

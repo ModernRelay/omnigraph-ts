@@ -25,7 +25,7 @@ TypeScript packages for the [Omnigraph](https://github.com/ModernRelay/omnigraph
 
 The SDK targets the `omnigraph-server` version in **`package.json#omnigraph.serverVersion`**. By default, the source is the matching `vX.Y.Z` tag. Before a server release exists, **`omnigraph.serverRef`** may temporarily pin a full immutable commit SHA. The OpenAPI spec and live CI server use that source. MCP reference documents use the same pin unless an immutable `omnigraph.skillsRef` selects corrected documentation. Branch names and abbreviated SHAs are rejected.
 
-The **v0.13** line targets `omnigraph-server` **v0.13.0** and enforces the exact HTTP contract. Upgrade the CLI, server, and client integrations together; see [the SDK guide](packages/sdk/README.md). Development source pins remain supported, but block publishing through both the release workflow and each package's `prepublishOnly` hook.
+The **v0.14** line targets `omnigraph-server` **v0.14.0** and enforces the exact HTTP contract. Upgrade the CLI, server, and client integrations together; see [the SDK guide](packages/sdk/README.md). Development source pins remain supported, but block publishing through both the release workflow and each package's `prepublishOnly` hook.
 
 `scripts/gen-version.ts` stamps the target version as `SERVER_VERSION`. CI checks that the bundled spec matches the pinned source byte for byte and runs live e2e tests against it: a checksum-verified release binary for tags, or a source build for commit pins.
 

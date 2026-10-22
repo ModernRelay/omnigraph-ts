@@ -17,12 +17,13 @@ export class QueriesResource {
   constructor(private readonly t: Transport) {}
 
   /**
-   * List the graph's exposed stored queries as a typed tool catalog — the
-   * `mcp.expose == true` subset of the registry, each with its typed
-   * parameters. Read-only; the catalog is graph-wide (branch independent).
+   * List every stored query with its typed parameters. Read-only; the catalog is graph-wide (branch independent).
    */
   list(opts: CallOptions = {}): Promise<Queries> {
-    return this.t.request<Queries>('GET', '/queries', { signal: opts.signal });
+    return this.t.request<Queries>('GET', '/queries', {
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
   }
 
   /**
@@ -53,6 +54,7 @@ export class QueriesResource {
           body: input,
           headers: { 'Omnigraph-If-Graph-Commit': opts.ifGraphCommit },
           signal: opts.signal,
+          ifActor: opts.ifActor,
           opaqueBodyKeys: OPAQUE_PARAMS,
         },
       );
@@ -63,6 +65,7 @@ export class QueriesResource {
       {
         body: input,
         signal: opts.signal,
+        ifActor: opts.ifActor,
         opaqueBodyKeys: OPAQUE_PARAMS,
         opaqueResponseKeys: OPAQUE_READ_RESPONSE,
       },

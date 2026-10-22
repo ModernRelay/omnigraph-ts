@@ -5,7 +5,7 @@ import { createOmnigraphMcpServer } from '../src/server';
 
 const enabled = process.env.OMNIGRAPH_E2E === '1';
 
-describe.skipIf(!enabled)('MCP: live 0.13 server', () => {
+describe.skipIf(!enabled)('MCP: live 0.14 server', () => {
   const client = new Client({ name: 'live-qualification', version: '1' });
   const server = createOmnigraphMcpServer({
     baseUrl: process.env.OMNIGRAPH_BASE_URL ?? 'http://127.0.0.1:18080',

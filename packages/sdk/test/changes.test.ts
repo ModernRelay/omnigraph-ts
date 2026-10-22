@@ -39,6 +39,7 @@ describe('changes resource', () => {
       kind: ['node', 'edge'],
       type: ['Person', 'Knows'],
       op: ['insert', 'delete'],
+      set: ['query_memory_bytes=67108864', 'history_release_bytes=65536'],
     });
     expect(calls[0]?.method).toBe('GET');
     const url = new URL(calls[0]!.url);
@@ -49,6 +50,7 @@ describe('changes resource', () => {
     expect(url.searchParams.getAll('kind')).toEqual(['node', 'edge']);
     expect(url.searchParams.getAll('type')).toEqual(['Person', 'Knows']);
     expect(url.searchParams.getAll('op')).toEqual(['insert', 'delete']);
+    expect(url.searchParams.getAll('set')).toEqual(['query_memory_bytes=67108864', 'history_release_bytes=65536']);
     expect(result.blocks[0]?.cause.graphCommitId).toBe('c');
     expect(result.blocks[0]?.changes[0]?.after?.properties).toEqual(properties);
     expect(result.nextPageToken).toBe('continuation');

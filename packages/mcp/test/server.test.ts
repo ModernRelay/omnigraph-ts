@@ -50,7 +50,7 @@ function fakeFetch(): typeof globalThis.fetch {
       });
 
     if (method === 'GET' && path === '/healthz') {
-      return respond(200, { status: 'ok', version: '0.13.0' });
+      return respond(200, { status: 'ok', version: '0.14.0' });
     }
     if (method === 'GET' && path === '/snapshot') {
       return respond(200, {
@@ -105,13 +105,13 @@ function fakeFetch(): typeof globalThis.fetch {
 function contractFetch(fetch: typeof globalThis.fetch): typeof globalThis.fetch {
   return async (input, init) => {
     if (flatPath(String(input)) === '/healthz') {
-      return new Response(JSON.stringify({ status: 'ok', version: '0.13.0' }), {
-        headers: { 'Omnigraph-Http-Api': '0.13', 'content-type': 'application/json' },
+      return new Response(JSON.stringify({ status: 'ok', version: '0.14.0' }), {
+        headers: { 'Omnigraph-Http-Api': '0.14', 'content-type': 'application/json' },
       });
     }
-    expect(new Headers(init?.headers).get('Omnigraph-Http-Api')).toBe('0.13');
+    expect(new Headers(init?.headers).get('Omnigraph-Http-Api')).toBe('0.14');
     const response = await fetch(input, init);
-    response.headers.set('Omnigraph-Http-Api', '0.13');
+    response.headers.set('Omnigraph-Http-Api', '0.14');
     return response;
   };
 }
@@ -178,7 +178,7 @@ describe('omnigraph-mcp server', () => {
     const block = (r.content as Array<{ type: string; text: string }>)[0]!;
     const parsed = JSON.parse(block.text);
     expect(parsed.status).toBe('ok');
-    expect(parsed.version).toBe('0.13.0');
+    expect(parsed.version).toBe('0.14.0');
     expect(parsed.sdkServerVersion).toBe(SERVER_VERSION);
   });
 
@@ -507,7 +507,7 @@ it('branches_create honours configured defaultBranch when `from` is omitted', as
       const path = flatPath(String(input));
       requests.push(path);
       return new Response('{}', { headers: {
-        'Omnigraph-Http-Api': sent && path === '/healthz' ? '0.13' : '0.12',
+        'Omnigraph-Http-Api': sent && path === '/healthz' ? '0.14' : '0.12',
       } });
     } }, true);
     const result = await client.callTool({ name: 'mutate', arguments: { query: 'query q() { insert Person { name: "A" } }' } });

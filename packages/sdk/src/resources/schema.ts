@@ -12,7 +12,9 @@ export class SchemaResource {
    * default branch; per-branch schema retrieval is a follow-up.
    */
   get(opts: CallOptions = {}): Promise<Schema> {
-    return this.t.request<Schema>('GET', '/schema', { signal: opts.signal });
+    return this.t.request<Schema>('GET', '/schema', {
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
   }
-
 }

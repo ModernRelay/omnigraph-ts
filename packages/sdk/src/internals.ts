@@ -4,6 +4,8 @@
 
 export interface CallOptions {
   signal?: AbortSignal;
+  /** Require the credential to resolve to this actor before operation admission. */
+  ifActor?: string;
 }
 
 /** Mutation-only options. The conditional route is never downgraded on failure. */

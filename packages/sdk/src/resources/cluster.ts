@@ -21,6 +21,7 @@ export class ClusterResource {
     return this.t.request('POST', '/cluster/plan', {
       body: input,
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueBodyKeys: OPAQUE,
       opaqueResponse: true,
     });
@@ -31,6 +32,7 @@ export class ClusterResource {
     return this.t.request('POST', '/cluster/deployments', {
       body: input,
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueBodyKeys: OPAQUE,
       opaqueResponseKeys: OPAQUE,
     });
@@ -39,6 +41,7 @@ export class ClusterResource {
   status(opts: CallOptions = {}): Promise<DeploymentStatus> {
     return this.t.request('GET', '/cluster/deployments', {
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueResponseKeys: OPAQUE,
     });
   }
@@ -50,6 +53,7 @@ export class ClusterResource {
       `/cluster/deployments/${encodeURIComponent(id)}`,
       {
         signal: opts.signal,
+        ifActor: opts.ifActor,
         opaqueResponseKeys: OPAQUE,
       },
     );

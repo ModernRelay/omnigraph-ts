@@ -5,6 +5,7 @@ import { copyFileSync, mkdtempSync, mkdirSync, openSync, readFileSync, rmSync, w
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { readServerPin } from './server-pin.js';
 
@@ -13,11 +14,14 @@ const dir = mkdtempSync(join(tmpdir(), 'omnigraph-sdk-e2e-'));
 const cli = process.env.OMNIGRAPH_BIN ?? 'omnigraph';
 const serverBin = process.env.OMNIGRAPH_SERVER_BIN ?? 'omnigraph-server';
 const cliHome = join(dir, 'home');
+const dataRoot = join(dir, 'data');
+mkdirSync(dataRoot);
+const target = pathToFileURL(dataRoot).href;
 const env: NodeJS.ProcessEnv = { ...process.env, OMNIGRAPH_HOME: cliHome };
 delete env.OMNIGRAPH_PROFILE;
 mkdirSync(cliHome);
 const run = (...args: string[]) => execFileSync(cli, args, { env, encoding: 'utf8' });
-const version = run('--version').split('\n')[0]?.trim().split(/\s+/)[1];
+const version = JSON.parse(run('version', '--json')).version;
 if (version !== readServerPin().version) throw new Error(`CLI ${version} does not match pinned ${readServerPin().version}`);
 for (const file of ['schema.pg', 'queries.gq']) copyFileSync(join(root, 'packages/sdk/test/fixtures', file), join(dir, file));
 writeFileSync(join(dir, 'server.policy.yaml'), `version: 1
@@ -41,7 +45,7 @@ rules:
   - id: admins
     allow:
       actors: { group: admins }
-      actions: [read, export, change, schema_apply, branch_create, branch_delete, branch_merge, invoke_query]
+      actions: [read, export, change, schema_apply, branch_create, branch_delete, branch_merge, commit_publish, commit_drop, invoke_query]
   - id: readers
     allow:
       actors: { group: readers }
@@ -64,18 +68,18 @@ policies:
     applies_to: [alpha, beta]
 `);
 run('lint', '--schema', join(dir, 'schema.pg'), '--query', join(dir, 'queries.gq'));
-run('cluster', 'plan', '--config', dir, '--as', 'default', '--json');
-run('cluster', 'apply', '--config', dir, '--as', 'default', '--json');
+run('cluster', 'plan', '--target', target, '--config', dir, '--as', 'default', '--json');
+run('cluster', 'apply', '--target', target, '--config', dir, '--as', 'default', '--json');
 // No server or concurrent writer exists yet. Each direct CLI process has exited;
 // release its exact persisted lock before the next owner starts.
 function unlock() {
-  const status = JSON.parse(run('cluster', 'status', '--config', dir, '--json'));
-  const lock = status.state_observations.lock_id;
-  if (lock) run('cluster', 'force-unlock', '--config', dir, lock, '--json');
+  const status = JSON.parse(run('cluster', 'status', '--target', target, '--json'));
+  const lock = status.lock_id;
+  if (lock) run('cluster', 'force-unlock', '--target', target, lock, '--json');
 }
 unlock();
 for (const graph of ['alpha', 'beta']) {
-  run('--as', 'default', 'load', '--data', join(root, 'packages/sdk/test/fixtures/data.jsonl'), '--mode', 'overwrite', join(dir, 'graphs', `${graph}.omni`));
+  run('--as', 'default', 'load', '--data', join(root, 'packages/sdk/test/fixtures/data.jsonl'), '--mode', 'overwrite', '--target', target, '--graph', graph);
   unlock();
 }
 const socket = createServer();
@@ -86,7 +90,7 @@ if (!address || typeof address === 'string') throw new Error('no local test port
 const baseUrl = `http://127.0.0.1:${address.port}`;
 await new Promise<void>((resolve, reject) => socket.close((error) => error ? reject(error) : resolve()));
 const log = openSync(join(dir, 'server.log'), 'a');
-const server = spawn(serverBin, ['--cluster', dir, '--bind', `127.0.0.1:${address.port}`], {
+const server = spawn(serverBin, ['--cluster', target, '--bind', `127.0.0.1:${address.port}`], {
   env: { ...env, OMNIGRAPH_SERVER_BEARER_TOKENS_JSON: JSON.stringify({ default: 'ci-token', reader: 'reader-token' }) },
   stdio: ['ignore', log, log],
 });
@@ -100,7 +104,7 @@ try {
     await delay(100);
   }
   const testEnv = { ...env, OMNIGRAPH_E2E: '1', OMNIGRAPH_BASE_URL: baseUrl,
-    OMNIGRAPH_TOKEN: 'ci-token', OMNIGRAPH_GRAPH_ID: 'alpha', OMNIGRAPH_E2E_CLUSTER_DIR: dir,
+    OMNIGRAPH_TOKEN: 'ci-token', OMNIGRAPH_E2E_DATA_ROOT: dataRoot, OMNIGRAPH_GRAPH_ID: 'alpha', OMNIGRAPH_E2E_CLUSTER_DIR: dir,
     OMNIGRAPH_BIN: cli, OMNIGRAPH_E2E_SERVER_PID: String(server.pid) };
   for (const pkg of ['sdk', 'mcp']) {
     const child = spawn(process.execPath, [join(root, `packages/${pkg}/node_modules/vitest/vitest.mjs`), 'run', 'test/e2e.test.ts'], {

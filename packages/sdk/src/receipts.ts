@@ -1,6 +1,6 @@
 import type { BranchMerge, BranchMergeInput, Change, Commit } from './types';
 
-function publishedMerge(
+function mergeReceipt(
   outcome: string,
   commit: Commit | null | undefined,
   target: string,
@@ -12,7 +12,9 @@ function publishedMerge(
     !!commit &&
     typeof commit.graphCommitId === 'string' &&
     commit.graphCommitId.length > 0 &&
-    Number.isSafeInteger(commit.graphManifestVersion) &&
+    // Detached manifest versions exceed JS's safe-integer range; commit ids,
+    // not rounded physical versions, identify proposals and their publication.
+    Number.isInteger(commit.graphManifestVersion) &&
     commit.graphManifestVersion > 0 &&
     (commit.graphBranch ?? 'main') === target &&
     typeof commit.parentCommitId === 'string' &&
@@ -31,12 +33,25 @@ export function validMerge(
     !output ||
     output.source !== input.source ||
     output.target !== (input.target ?? 'main') ||
-    !publishedMerge(
-      output.outcome,
-      output.commit,
-      output.target,
-      output.actorId,
-    )
+    !(input.dryRun
+      ? output.dryRun === true &&
+        output.commit === null &&
+        ['already_up_to_date', 'fast_forward', 'merged'].includes(
+          output.outcome,
+        )
+      : output.dryRun !== true &&
+        mergeReceipt(
+          output.outcome,
+          output.commit,
+          output.target,
+          output.actorId,
+        ) &&
+        (output.commit == null ||
+          (input.asCommit
+            ? output.commit.kind === 'unpublished' &&
+              output.commit.published === false
+            : output.commit.kind === 'published' &&
+              output.commit.published !== false)))
   )
     return false;
   if (!input.deleteBranch)
@@ -55,7 +70,7 @@ export function validMerge(
 export function validMutationReceipt(output: Change): boolean {
   return (
     output?.outcome?.kind !== 'merged' ||
-    publishedMerge(
+    mergeReceipt(
       output.outcome.merge,
       output.commit,
       output.outcome.target,

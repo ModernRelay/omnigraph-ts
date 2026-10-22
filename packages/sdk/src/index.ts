@@ -3,15 +3,30 @@ import Omnigraph from './client';
 export default Omnigraph;
 export { Omnigraph };
 
-export type { OmnigraphOptions, SnapshotInput } from './client';
+export type {
+  OmnigraphOptions,
+  SnapshotInput,
+  AccessInput,
+  DiffInput,
+} from './client';
 export type {
   CallOptions,
   ConditionalCallOptions,
   ListCommitsInput,
   FetchLike,
 } from './internals';
-export type { BlobInput } from './resources/blobs';
-export type { PollChangesInput, ChangePageInput } from './resources/changes';
+export type {
+  BlobInput,
+  BlobWriteInput,
+  BlobPutInput,
+} from './resources/blobs';
+export type {
+  PollChangesInput,
+  ChangePageInput,
+  ChangeFilterInput,
+} from './resources/changes';
+
+export type { BranchDiffInput, MergeBaseInput } from './resources/branches';
 
 // The generated server pin and exact HTTP contract enforced by every client.
 export {
@@ -28,6 +43,8 @@ export {
   ForbiddenError,
   NotFoundError,
   MethodNotAllowedError,
+  RequestTimeoutError,
+  UnsupportedMediaTypeError,
   ConflictError,
   GoneError,
   PreconditionFailedError,
@@ -45,6 +62,10 @@ export {
 
 // Public DTO types (camelCase). Inputs end in `Input`; outputs are bare nouns.
 export type {
+  Access,
+  Diff,
+  MergeBase,
+  BlobWrite,
   // Branches
   BranchCreate,
   BranchCreateInput,
@@ -116,13 +137,17 @@ export type {
 export {
   BranchMergeOutcome,
   ErrorCode,
+  AccessAction,
+  CommitKind,
+  CommitListing,
+  DispositionAction,
+  DispositionEffects,
   LoadMode,
   LoadEmbeddingGeneration,
   GraphAvailabilityAction,
-  MergeConflictKindOutput,
+  MergeConflictKind,
   ParamKind,
-  BlobEntityKind,
-  EntityKindOutput,
-  ChangeOpOutput,
+  EntityKind,
+  ChangeOp,
   ChangeDiffRefusalReason,
 } from './types';

@@ -3,7 +3,7 @@ import Omnigraph, { NotFoundError } from '../src';
 import { stubFetch } from './helpers';
 
 describe('commits resource', () => {
-  it('list returns Commit[] with camelCased fields, sends GET /commits', async () => {
+  it('list returns a page with camelCased fields, sends GET /commits', async () => {
     const { fetch, calls } = stubFetch({
       body: {
         commits: [
@@ -23,11 +23,11 @@ describe('commits resource', () => {
     const result = await og.commits.list({ branch: 'main' });
     expect(calls[0]?.method).toBe('GET');
     expect(calls[0]?.url).toBe('http://x/graphs/g/commits?branch=main');
-    expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(1);
-    expect(result[0]?.graphCommitId).toBe('01KQ');
-    expect(result[0]?.graphManifestVersion).toBe(2);
-    expect(result[0]?.createdAt).toBe(1777483011551924);
+    expect(Array.isArray(result.commits)).toBe(true);
+    expect(result.commits).toHaveLength(1);
+    expect(result.commits[0]?.graphCommitId).toBe('01KQ');
+    expect(result.commits[0]?.graphManifestVersion).toBe(2);
+    expect(result.commits[0]?.createdAt).toBe(1777483011551924);
   });
 
   it('list omits branch query param when not given', async () => {
@@ -107,6 +107,7 @@ describe('commits resource', () => {
         kind: ['node', 'edge'],
         type: ['Person', 'Knows'],
         op: ['insert', 'update'],
+        set: ['query_memory_bytes=67108864', 'history_release_bytes=65536'],
       },
       { signal },
     );
@@ -118,6 +119,7 @@ describe('commits resource', () => {
     expect(url.searchParams.getAll('kind')).toEqual(['node', 'edge']);
     expect(url.searchParams.getAll('type')).toEqual(['Person', 'Knows']);
     expect(url.searchParams.getAll('op')).toEqual(['insert', 'update']);
+    expect(url.searchParams.getAll('set')).toEqual(['query_memory_bytes=67108864', 'history_release_bytes=65536']);
     expect(result.cause.graphCommitId).toBe('01KQ/X');
     expect(result.nextPageToken).toBe('opaque-page');
     expect(result.changes[0]?.before?.properties).toEqual(properties);
@@ -145,4 +147,37 @@ describe('commits resource', () => {
     });
     expect(calls[0]?.url).toBe('http://x/graphs/g/commits/c/changes');
   });
+});
+
+it('preserves paged history metadata and sends only canonical listing selectors', async () => {
+  const { fetch, calls } = stubFetch({ body: { commits: [], head_commit_id: 'head', next_page_token: 'next+/=' } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect(await og.commits.list({ branch: 'main', listing: 'history', limit: 2, pageToken: 'old+/=' }))
+    .toEqual({ commits: [], headCommitId: 'head', nextPageToken: 'next+/=' });
+  expect(new URL(calls[0]!.url).searchParams.toString()).toBe('branch=main&listing=history&limit=2&page_token=old%2B%2F%3D');
+});
+
+it.each(['unpublished', 'unattached'] as const)('lists %s snapshots without legacy booleans', async (listing) => {
+  const { fetch, calls } = stubFetch({ body: { commits: [] } });
+  await new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch }).commits.list({ listing });
+  expect(calls[0]!.url).toBe(`http://x/graphs/g/commits?listing=${listing}`);
+});
+
+it('publishes a proposal and accepts an empty 204 for drop without JSON parsing', async () => {
+  const { fetch, calls } = stubFetch([{ body: { graph_commit_id: 'id/x', kind: 'published', published: true } }, { status: 204 }]);
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect((await og.commits.publish('id/x', { ifActor: 'alice' })).kind).toBe('published');
+  await expect(og.commits.drop('id/x')).resolves.toBeUndefined();
+  expect(calls.map(c => [c.method, c.url, c.body])).toEqual([
+    ['POST', 'http://x/graphs/g/commits/id%2Fx/publish', undefined],
+    ['DELETE', 'http://x/graphs/g/commits/id%2Fx', undefined],
+  ]);
+  expect(calls[0]!.headers['omnigraph-if-actor']).toBe('alice');
+});
+
+it('refuses a non-204 commit-drop response without retrying an uncertain write', async () => {
+  const { fetch, calls } = stubFetch({ status: 202, body: {} });
+  await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch }).commits.drop('c'))
+    .rejects.toMatchObject({ status: 202, requestDispatched: true, outcomeUnknown: true });
+  expect(calls).toHaveLength(1);
 });

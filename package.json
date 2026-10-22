@@ -11,8 +11,8 @@
   },
   "packageManager": "pnpm@9.15.0",
   "omnigraph": {
-    "serverVersion": "0.13.0",
-    "skillsRef": "2990fa3ae358b819ef680043b2284d5494b10c68"
+    "serverVersion": "0.14.0",
+    "serverRef": "9d92f3970311d5229f55b1a1fc06b2d3fba30a55"
   },
   "scripts": {
     "sync-spec": "tsx scripts/sync-spec.ts",

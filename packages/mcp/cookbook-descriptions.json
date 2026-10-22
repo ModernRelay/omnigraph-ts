@@ -29,6 +29,7 @@
     "cluster": "Operator configuration workflow. This MCP does not expose deployment write tools.",
     "migrations": "Operator upgrade procedure for stored graphs, credentials, and deployment configuration.",
     "stored-queries": "Stored-query declaration is a cluster/operator concern (cluster.yaml); the MCP wraps the data-plane HTTP API and does not currently expose a stored-query invoke tool.",
-    "blobs": "Blob cells are read through the dedicated `GET`/`HEAD /blob` endpoints, which this MCP does not wrap; writing a Blob (`base64:` or URI) uses the ordinary `mutate`/`load` paths the other references cover."
+    "blobs": "Blob cells are read through the dedicated `GET`/`HEAD /blob` endpoints, which this MCP does not wrap; writing a Blob (`base64:` or URI) uses the ordinary `mutate`/`load` paths the other references cover.",
+    "schema-design": "Schema modeling guidance for operators; this MCP reads accepted schemas and does not expose schema management."
   }
 }

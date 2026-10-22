@@ -7,11 +7,47 @@ import type {
   BranchList,
   BranchMerge,
   BranchMergeInput,
+  Diff,
+  MergeBase,
 } from '../types';
 import type { CallOptions } from '../internals';
+import type { ChangeFilterInput } from './changes';
+
+export interface MergeBaseInput {
+  source: string;
+  target?: string;
+}
+
+export interface BranchDiffInput extends MergeBaseInput, ChangeFilterInput {}
 
 export class BranchesResource {
   constructor(private readonly t: Transport) {}
+
+  /** Review the net changes source made since its merge base with target. */
+  diff(input: BranchDiffInput, opts: CallOptions = {}): Promise<Diff> {
+    return this.t.request('GET', '/branches/diff', {
+      query: {
+        source: input.source,
+        target: input.target,
+        page_token: input.pageToken,
+        limit: input.limit?.toString(),
+        kind: input.kind,
+        type: input.type,
+        op: input.op,
+      },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+      opaqueResponseKeys: new Set(['properties']),
+    });
+  }
+
+  mergeBase(input: MergeBaseInput, opts: CallOptions = {}): Promise<MergeBase> {
+    return this.t.request('GET', '/branches/merge-base', {
+      query: { source: input.source, target: input.target },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
+  }
 
   /**
    * List all branches. Read-only.
@@ -19,6 +55,7 @@ export class BranchesResource {
   async list(opts: CallOptions = {}): Promise<string[]> {
     const r = await this.t.request<BranchList>('GET', '/branches', {
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
     return r.branches;
   }
@@ -36,6 +73,7 @@ export class BranchesResource {
     return this.t.request<BranchCreate>('POST', '/branches', {
       body: input,
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
   }
 
@@ -52,8 +90,7 @@ export class BranchesResource {
   ): Promise<BranchMerge> {
     const normalized = {
       ...input,
-      source: input.source.trim(),
-      target: (input.target ?? 'main').trim(),
+      target: input.target ?? 'main',
     };
     const result = await this.t.request<BranchMerge>(
       'POST',
@@ -61,6 +98,7 @@ export class BranchesResource {
       {
         body: normalized,
         signal: opts.signal,
+        ifActor: opts.ifActor,
       },
     );
     if (!validMerge(result, normalized))
@@ -79,7 +117,7 @@ export class BranchesResource {
     return this.t.request<BranchDelete>(
       'DELETE',
       `/branches/${encodeURIComponent(name)}`,
-      { signal: opts.signal },
+      { signal: opts.signal, ifActor: opts.ifActor },
     );
   }
 }

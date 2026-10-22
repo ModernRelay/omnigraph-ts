@@ -15,7 +15,7 @@ const body = (ready: boolean, status: 'serving' | 'loading' | 'draining') => ({
   shutdown_grace_seconds: 30,
 });
 
-describe('readiness (GET /readyz, 0.13)', () => {
+describe('readiness (GET /readyz, 0.14)', () => {
   it('returns a serving server camelized', async () => {
     const { fetch, calls } = stubFetch({ status: 200, body: body(true, 'serving') });
     const r = await new Omnigraph({ baseUrl: 'http://x', fetch }).readiness();

@@ -20,6 +20,7 @@ export class GraphsResource {
   async list(opts: CallOptions = {}): Promise<GraphInfo[]> {
     const r = await this.t.request<GraphList>('GET', '/graphs', {
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
     return r.graphs;
   }
@@ -28,7 +29,7 @@ export class GraphsResource {
     const r = await this.t.request<{ graphs: GraphDiscovery[] }>(
       'GET',
       '/graphs/discovery',
-      { signal: opts.signal },
+      { signal: opts.signal, ifActor: opts.ifActor },
     );
     return r.graphs;
   }

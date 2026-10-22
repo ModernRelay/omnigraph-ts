@@ -7,6 +7,7 @@ import {
   OmnigraphError,
 } from './errors';
 import { HTTP_API_CONTRACT, HTTP_API_CONTRACT_HEADER } from './version.gen';
+import { DispositionAction, DispositionEffects, ErrorCode } from './types';
 
 export type FetchLike = (
   input: string | URL | Request,
@@ -32,9 +33,15 @@ const PUBLIC_PATHS = new Set([
   '/readyz',
   '/.well-known/oauth-protected-resource',
 ]);
-function isRootPath(path: string): boolean {
+function isPublicPath(path: string): boolean {
   return (
     PUBLIC_PATHS.has(path) ||
+    path.startsWith('/.well-known/oauth-protected-resource/')
+  );
+}
+function isRootPath(path: string): boolean {
+  return (
+    isPublicPath(path) ||
     path === '/graphs' ||
     path === '/graphs/discovery' ||
     path.startsWith('/cluster/')
@@ -47,8 +54,30 @@ function canWrite(method: string, path: string): boolean {
   );
 }
 
+function errorEffects(body: unknown): DispositionEffects | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const { error, code, disposition } = body as Record<string, unknown>;
+  if (
+    typeof error !== 'string' ||
+    !Object.values(ErrorCode).includes(code as ErrorCode) ||
+    !disposition ||
+    typeof disposition !== 'object'
+  )
+    return undefined;
+  const { effects, action } = disposition as Record<string, unknown>;
+  if (
+    !Object.values(DispositionEffects).includes(
+      effects as DispositionEffects,
+    ) ||
+    !Object.values(DispositionAction).includes(action as DispositionAction)
+  )
+    return undefined;
+  return effects as DispositionEffects;
+}
+
 export interface RequestOptions {
   headers?: Record<string, string>;
+  ifActor?: string;
   /** Explicit non-2xx successes (Blob 302 descriptors and 304 cache hits). */
   acceptedStatuses?: readonly number[];
   body?: unknown;
@@ -57,7 +86,7 @@ export interface RequestOptions {
    * the JSON + camelCase-to-snake_case pipeline. For non-JSON payloads such
    * as NDJSON (`POST /load/ndjson`). Mutually exclusive with `body`.
    */
-  rawBody?: { content: string; contentType: string };
+  rawBody?: { content: BodyInit; contentType: string };
   query?: Record<string, string | string[] | undefined | null>;
   signal?: AbortSignal;
   /**
@@ -171,11 +200,13 @@ export class Transport {
         message: 'body and rawBody are mutually exclusive',
         request: { method, url },
       });
-    if (!PUBLIC_PATHS.has(path)) await this.discover(opts.signal);
+    if (!isPublicPath(path)) await this.discover(opts.signal);
     opts.signal?.throwIfAborted();
     const headers = new Headers(opts.headers);
     headers.set(HTTP_API_CONTRACT_HEADER, HTTP_API_CONTRACT);
-    if (this.token && !PUBLIC_PATHS.has(path))
+    if (opts.ifActor !== undefined && !isPublicPath(path))
+      headers.set('Omnigraph-If-Actor', opts.ifActor);
+    if (this.token && !isPublicPath(path))
       headers.set('Authorization', `Bearer ${this.token}`);
     if (!headers.has('Accept'))
       headers.set('Accept', 'application/json, application/x-ndjson');
@@ -220,7 +251,7 @@ export class Transport {
       });
     }
     if (
-      path !== '/.well-known/oauth-protected-resource' &&
+      !path.startsWith('/.well-known/oauth-protected-resource') &&
       response.headers.get(HTTP_API_CONTRACT_HEADER) !== HTTP_API_CONTRACT
     ) {
       await response.body?.cancel().catch(() => {});
@@ -236,14 +267,9 @@ export class Transport {
     if (!response.ok && !opts.acceptedStatuses?.includes(response.status)) {
       const requestId = response.headers.get('X-Request-Id') ?? undefined;
       let body: unknown;
-      let validErrorBody = false;
       try {
         const text = await response.text();
         body = snakeToCamel(JSON.parse(text));
-        validErrorBody =
-          body !== null &&
-          typeof body === 'object' &&
-          typeof (body as { error?: unknown }).error === 'string';
       } catch {
         // A status alone does not prove a write failed when its response is
         // truncated or malformed. Preserve that uncertainty below.
@@ -254,8 +280,7 @@ export class Transport {
         requestId,
         request: requestMeta,
         response,
-        outcomeUnknown:
-          canWrite(method, path) && (!validErrorBody || response.status >= 500),
+        outcomeUnknown: canWrite(method, path) && errorEffects(body) !== 'none',
       });
     }
     return response;
@@ -265,9 +290,10 @@ export class Transport {
     method: string,
     path: string,
     message: string,
+    status = 200,
   ): ApiContractError {
     return new ApiContractError({
-      status: 200,
+      status,
       message: `${message}; effects are unknown; reconcile before retrying`,
       request: { method, url: this.buildUrl(path) },
       requestDispatched: true,

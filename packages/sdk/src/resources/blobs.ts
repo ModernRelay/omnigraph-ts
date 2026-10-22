@@ -1,10 +1,10 @@
 import type { CallOptions } from '../internals';
 import type { Transport } from '../transport';
-import type { BlobEntityKind } from '../types';
+import type { EntityKind, BlobWrite } from '../types';
 
 /** Select one Blob cell through logical graph identity, never a storage path. */
 export interface BlobInput {
-  entity: BlobEntityKind;
+  entity: EntityKind;
   type: string;
   id: string;
   property: string;
@@ -22,6 +22,15 @@ export interface BlobInput {
   ifRange?: string;
 }
 
+export type BlobWriteInput = Pick<
+  BlobInput,
+  'entity' | 'type' | 'id' | 'property' | 'branch' | 'ifMatch'
+>;
+export interface BlobPutInput extends BlobWriteInput {
+  /** Raw bytes, at most the server's 32 MiB limit. Never JSON/base64 encoded. */
+  data: Blob | ArrayBuffer | Uint8Array<ArrayBuffer>;
+}
+
 function blobHeaders(input: BlobInput): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/octet-stream',
@@ -35,12 +44,44 @@ function blobHeaders(input: BlobInput): Record<string, string> {
 }
 
 /**
- * Read-only Blob delivery. Write Blob values using normal mutate/load calls.
- * Responses retain status, headers, and the byte stream without JSON parsing.
+ * Blob cell reads and atomic writes.
+ * Read responses retain status, headers, and the byte stream without JSON parsing.
  * ETags are opaque validators, not content hashes.
  */
 export class BlobsResource {
   constructor(private readonly t: Transport) {}
+
+  put(input: BlobPutInput, opts: CallOptions = {}): Promise<BlobWrite> {
+    return this.t.request('PUT', '/blob', {
+      query: {
+        entity: input.entity,
+        type: input.type,
+        id: input.id,
+        property: input.property,
+        branch: input.branch,
+      },
+      headers: input.ifMatch === undefined ? {} : { 'If-Match': input.ifMatch },
+      rawBody: { content: input.data, contentType: 'application/octet-stream' },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
+  }
+
+  /** Clear a nullable Blob cell. The JSON receipt reports a null commit for an existing null. */
+  clear(input: BlobWriteInput, opts: CallOptions = {}): Promise<BlobWrite> {
+    return this.t.request('DELETE', '/blob', {
+      query: {
+        entity: input.entity,
+        type: input.type,
+        id: input.id,
+        property: input.property,
+        branch: input.branch,
+      },
+      headers: input.ifMatch === undefined ? {} : { 'If-Match': input.ifMatch },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
+  }
 
   /**
    * GET managed bytes (200/206), an external Location (302), or not-modified
@@ -61,6 +102,7 @@ export class BlobsResource {
       headers: blobHeaders(input),
       acceptedStatuses: [302, 304],
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
   }
 
@@ -82,6 +124,7 @@ export class BlobsResource {
       headers: blobHeaders(input),
       acceptedStatuses: [302, 304],
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
   }
 }
