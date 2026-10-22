@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph
 
-TypeScript client for **OmniGraph 0.13**, with typed errors, exact write receipts,
+TypeScript client for **OmniGraph 0.14**, with typed errors, exact write receipts,
 streaming exports, and cluster deployment APIs. Requires Node.js 22 or newer.
 
 ```sh
@@ -33,8 +33,8 @@ requests. Server methods such as health, readiness, graph listing, and cluster
 management do not require a graph ID.
 
 The SDK checks discovery before authenticated data requests, sends
-`Omnigraph-Http-Api: 0.13`, and checks the response contract before exposing data.
-It supports only 0.13; upgrade the server and clients together. Proxies and
+`Omnigraph-Http-Api: 0.14`, and checks the response contract before exposing data.
+It supports only 0.14; upgrade the server and clients together. Proxies and
 custom fetch implementations must preserve this response header. No redirects
 or automatic request retries are performed.
 
@@ -93,7 +93,7 @@ envelopes; explicit entity identity is top-level `id`.
 ```ts
 await og.schema.get();
 await og.snapshot({ branch: 'main' });
-await og.commits.list({ branch: 'main' });
+const { commits, headCommitId, nextPageToken } = await og.commits.list({ branch: 'main', limit: 100 });
 await og.commits.retrieve(commitId);
 await og.queries.list();
 await og.queries.invoke('find_person', { params: { name: 'Alice' }, branch: 'main' });
@@ -128,18 +128,21 @@ const metadata = await og.blobs.stat(selector);
 const bytes = await og.blobs.get({ ...selector, range: 'bytes=0-1023' });
 ```
 
-Blob methods return raw `Response` objects, preserving headers and streams.
+Blob read methods return raw `Response` objects, preserving headers and streams.
 GET may return 200, 206, 302 (external reference; never followed), or 304.
 Both accept `branch` or commit-ID `snapshot`, `ifMatch`, and `ifNoneMatch`;
 GET also accepts `range` and `ifRange`. HEAD failures have no JSON body.
 The `Omnigraph-Snapshot-Id` response header is diagnostic identity, not a
-snapshot request value. Write Blob values through ordinary mutate/load.
+snapshot request value. `blobs.put({ ...selector, data: new Uint8Array(...) })`
+sends raw bytes, optionally guarded by `ifMatch`. `blobs.clear(selector)` sets a
+nullable cell to null. Both return a JSON `BlobWrite` receipt; an already-null
+clear returns `commit: null`. Neither operation is retried automatically.
 
 ## Live deployments
 
 Schema, query, policy, provider, Blob-binding, and graph lifecycle changes use
 cluster deployments. For normal operator workflows, use
-`omnigraph cluster plan/apply --server …` with a local configuration bundle.
+`omnigraph cluster plan/apply --target NAME --config DIR` with a local configuration bundle.
 Removing a graph declaration deletes its managed storage and history.
 
 Integrations that already produce the server's captured deployment bundle can
@@ -176,7 +179,7 @@ try {
 }
 ```
 
-All methods accept an `AbortSignal`. Typed errors retain `status`, `code`,
+Methods accept an `AbortSignal`; authenticated operations also accept `ifActor` to require a particular credential identity before execution. Typed errors retain `status`, `code`,
 `requestId`, and structured `body`. Discovery refusal sets
 `requestDispatched: false`; a failure after a write was sent may set
 `outcomeUnknown: true`. An HTTP status alone does not establish retry safety.
@@ -193,14 +196,43 @@ Credentials resolve actors at the server. Permissions come from the cluster's
 Cedar policy. Graph listing requires `graph_list`; cluster deployment operations
 require `config_manage`. A token does not imply write permission.
 
-This release removes `schema.apply()` and old HTTP compatibility routes.
+Schema changes use cluster deployments; `schema.apply()` and the old HTTP
+compatibility routes are unavailable.
 Existing data migration depends on its storage format; follow the authoritative
-[upgrade guide](https://github.com/ModernRelay/omnigraph/blob/v0.13.0/docs/user/operations/upgrade.md).
+[upgrade guide](https://github.com/ModernRelay/omnigraph/blob/9d92f3970311d5229f55b1a1fc06b2d3fba30a55/docs/user/operations/upgrade.md).
 The SDK does not convert stored graphs or legacy credentials.
 
 `SERVER_VERSION` identifies the pinned server release. Package major/minor
 tracks the server contract; patch releases are independent. Each client has
 isolated configuration and supports a custom `fetch` for testing or tracing.
+
+## Upgrading from 0.13
+
+Upgrade server and client together. This candidate is pinned to the final 0.14
+HTTP contract at `9d92f397`; npm publication remains blocked until the server's
+stable tag exists and the temporary `serverRef` is removed.
+
+- `commits.list()` now returns `{ commits, headCommitId?, nextPageToken? }`,
+  preserving the server's page metadata. Use `listing: 'history'` (default),
+  `'unpublished'`, or `'unattached'`; only history accepts `limit`/`pageToken`.
+  Continue with the same branch and `pageToken`, retaining the returned head.
+- `commits.publish(id)` returns the publication receipt. `commits.drop(id)`
+  resolves to `undefined` on HTTP 204. Branch deletion and Blob clearing still
+  return their JSON receipts; do not treat every DELETE as empty.
+- `access({ branch, targetBranch })` returns `actorId`, `graphWide`, and scoped
+  `actions`. `diff({ from, to })`, `branches.diff({ source, target })` and
+  `branches.mergeBase({ source, target })` expose bounded review operations.
+- `branches.create` accepts `fromCommit`; `branches.merge` accepts `dryRun`
+  or `asCommit`. Branch names pass through exactly as written.
+- Public enums now follow the specification: `EntityKind` replaces
+  `BlobEntityKind`/`EntityKindOutput`, `ChangeOp` replaces `ChangeOpOutput`, and
+  `MergeConflictKind` replaces `MergeConflictKindOutput`.
+- Errors expose the server's `disposition` (effect knowledge and next action)
+  alongside their precise `code`. Transport loss still reports uncertainty;
+  neither that report nor a retry hint causes an automatic replay.
+
+Use `oauthMetadataAtResourcePath('mcp')` for path-specific OAuth metadata;
+these public requests never include credentials or actor preconditions.
 
 ## License
 

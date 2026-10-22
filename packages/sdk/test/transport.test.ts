@@ -77,7 +77,7 @@ describe('transport error handling', () => {
       received = init?.signal ?? null;
       return new Response('{}', {
         status: 200,
-        headers: { 'Omnigraph-Http-Api': '0.13' },
+        headers: { 'Omnigraph-Http-Api': '0.14' },
       });
     }) as unknown as typeof globalThis.fetch;
     const og = new Omnigraph({ baseUrl: 'http://x', fetch: captured });
@@ -270,7 +270,7 @@ describe('transport bearer auth', () => {
   });
 });
 
-describe('0.13 contract admission', () => {
+describe('0.14 contract admission', () => {
   it('refuses a mismatched discovery before sending data or credentials', async () => {
     const calls: RequestInit[] = [];
     const fetch = vi.fn(async (_url, init) => {
@@ -298,7 +298,7 @@ describe('0.13 contract admission', () => {
       async (_url, init) =>
         new Response(init?.method === 'HEAD' ? null : '{"commit":null}', {
           headers: {
-            'Omnigraph-Http-Api': init?.method === 'HEAD' ? '0.13' : '0.12',
+            'Omnigraph-Http-Api': init?.method === 'HEAD' ? '0.14' : '0.12',
           },
         }),
     ) as typeof globalThis.fetch;
@@ -312,8 +312,8 @@ describe('0.13 contract admission', () => {
   });
 });
 
-describe('0.13 transport boundaries', () => {
-  const header = { 'Omnigraph-Http-Api': '0.13' };
+describe('0.14 transport boundaries', () => {
+  const header = { 'Omnigraph-Http-Api': '0.14' };
   const root = 'https://host.example/proxy/graphs/prefix';
 
   it('probes the configured proxy root before every protected call without credentials', async () => {
@@ -344,11 +344,11 @@ describe('0.13 transport boundaries', () => {
       expect(headers.get('authorization')).toBe(
         index % 2 ? 'Bearer secret' : null,
       );
-      expect(headers.get('Omnigraph-Http-Api')).toBe('0.13');
+      expect(headers.get('Omnigraph-Http-Api')).toBe('0.14');
     }
   });
 
-  it.each(['', '0.12', '0.13, 0.13', '0.13, 0.12'])(
+  it.each(['', '0.12', '0.14, 0.14', '0.14, 0.12'])(
     'rejects discovery contract %j before a data request',
     async (value) => {
       const fetch = vi.fn(
@@ -540,7 +540,7 @@ describe('write error certainty', () => {
   it('exposes a complete admission refusal and Retry-After without retrying', async () => {
     const { fetch, calls } = stubFetch({
       status: 429,
-      body: { error: 'capacity full', code: 'too_many_requests' },
+      body: { error: 'capacity full', code: 'too_many_requests', disposition: { effects: 'none', action: 'retry' } },
       headers: { 'Retry-After': '2' },
     });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
@@ -550,4 +550,31 @@ describe('write error certainty', () => {
     });
     expect(calls).toHaveLength(1);
   });
+});
+
+it.each([
+  [503, 'recovery_required', 'none', 'recover', false],
+  [500, 'outcome_unknown', 'unknown', 'reconcile', true],
+  [412, 'actor_mismatch', 'none', 'fix', false],
+] as const)('preserves error disposition for %s %s without inventing retries', async (status, code, effects, action, unknown) => {
+  const { fetch, calls } = stubFetch({ status, body: { error: 'refused', code, disposition: { effects, action } } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  await expect(og.mutate({ query: 'query q() {}' }, { ifActor: 'alice' })).rejects.toMatchObject({
+    status, code, outcomeUnknown: unknown, disposition: { effects, action },
+  });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.headers['omnigraph-if-actor']).toBe('alice');
+});
+
+
+it.each([
+  { error: 'conflict', code: 'conflict' },
+  { error: 'conflict', code: 'conflict', disposition: { effects: 'none', action: 'unexpected' } },
+  { error: 'conflict', code: 'conflict', disposition: { effects: 'unexpected', action: 'fix' } },
+  { error: 'conflict', code: 'new_code', disposition: { effects: 'none', action: 'fix' } },
+])('refuses to infer write certainty from an incomplete or unknown 0.14 error body', async (body) => {
+  const { fetch, calls } = stubFetch({ status: 409, body });
+  await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch }).commits.drop('c'))
+    .rejects.toMatchObject({ requestDispatched: true, outcomeUnknown: true });
+  expect(calls).toHaveLength(1);
 });

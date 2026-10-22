@@ -23,7 +23,7 @@ import { z } from 'zod';
 import { COOKBOOK, COOKBOOK_SOURCE } from './best-practices.gen';
 import { MCP_PACKAGE_VERSION } from './version.gen';
 
-const INSTRUCTIONS = `Omnigraph is a versioned property graph. This MCP requires the exact 0.13 HTTP contract and never retries requests automatically.
+const INSTRUCTIONS = `Omnigraph is a versioned property graph. This MCP requires the exact 0.14 HTTP contract and never retries requests automatically.
 
 ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before queries, mutations, or loads. It defines the available types, properties, keys, directions, and vector dimensions.
 Consult the matching \`omnigraph://best-practices/\` resource: queries, data, schema, search, or changes. Operator/CLI examples in these resources are not MCP tools.
@@ -33,7 +33,7 @@ Consult the matching \`omnigraph://best-practices/\` resource: queries, data, sc
 3. For read-modify-write, pass \`query.graphCommitId\` as \`mutate.ifGraphCommit\`. A 412 preconditionFailure means no effects: re-read and reconsider. Never fall back to an unconditional mutation.
 4. \`load mode: "merge"\` upserts keys; it is not request deduplication. \`"overwrite"\` replaces supplied types; \`"append"\` rejects key collisions. Large loads can use a branch → load → verify → merge workflow. Split oversized batches into separate commits.
 5. A timeout or lost response leaves the outcome unknown. Reconcile intended content and relevant history before deciding to replay. A separately read branch head cannot identify which writer committed. requestDispatched=false means the SDK did not send the data request; outcomeUnknown=true requires reconciliation.
-6. Schema and deployment management are operator-owned. This MCP exposes \`schema_get\`, not schema or deployment writes. Operators use \`omnigraph cluster plan/apply --server …\` for live configuration changes without a restart.
+6. Schema and deployment management are operator-owned. This MCP exposes \`schema_get\`, not schema or deployment writes. Operators use \`omnigraph cluster plan/apply --target NAME --config DIR\` for live configuration changes without a restart.
 
 Errors retain status, code, and structured body details. Do not retry every 409: merge/key conflicts require a decision; fullTextIndexRebuildRequired needs branch-scoped operator maintenance; recoveryRequired needs operator recovery. No request object or authorization header is included in tool errors.
 
@@ -253,7 +253,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
       inputSchema: { branch: z.string().optional() },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ branch }) => toolResult(async () => ({ commits: await og.commits.list({ branch: branch ?? defaultBranch }) })),
+    async ({ branch }) => toolResult(async () => og.commits.list({ branch: branch ?? defaultBranch })),
   );
 
   server.registerTool(

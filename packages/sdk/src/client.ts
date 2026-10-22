@@ -11,7 +11,10 @@ import { CommitsResource } from './resources/commits';
 import { GraphsResource } from './resources/graphs';
 import { QueriesResource } from './resources/queries';
 import { SchemaResource } from './resources/schema';
+import type { ChangeFilterInput } from './resources/changes';
 import type {
+  Access,
+  Diff,
   Change,
   ExportInput,
   GraphBatchLoad,
@@ -52,6 +55,16 @@ export interface SnapshotInput {
   branch?: string;
 }
 
+export interface AccessInput {
+  branch?: string;
+  targetBranch?: string;
+}
+
+export interface DiffInput extends ChangeFilterInput {
+  from: string;
+  to: string;
+}
+
 export default class Omnigraph {
   readonly cluster: ClusterResource;
   readonly blobs: BlobsResource;
@@ -90,6 +103,33 @@ export default class Omnigraph {
     return new Omnigraph({ ...this.opts, graphId });
   }
 
+  /** Inspect this credential's allowed actions, without exposing policy rules. */
+  access(input: AccessInput = {}, opts: CallOptions = {}): Promise<Access> {
+    return this.t.request('GET', '/access', {
+      query: { branch: input.branch, target_branch: input.targetBranch },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
+  }
+
+  /** Read one bounded page of changes between two resolved commits. */
+  diff(input: DiffInput, opts: CallOptions = {}): Promise<Diff> {
+    return this.t.request('GET', '/diff', {
+      query: {
+        from: input.from,
+        to: input.to,
+        page_token: input.pageToken,
+        limit: input.limit?.toString(),
+        kind: input.kind,
+        type: input.type,
+        op: input.op,
+      },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+      opaqueResponseKeys: new Set(['properties']),
+    });
+  }
+
   /**
    * Liveness probe. Unauthenticated; safe to call from any caller.
    */
@@ -101,8 +141,25 @@ export default class Omnigraph {
   oauthMetadata(opts: CallOptions = {}): Promise<Record<string, unknown>> {
     return this.t.request('GET', '/.well-known/oauth-protected-resource', {
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueResponse: true,
     });
+  }
+
+  /** Public OAuth metadata for a path such as mcp; credentials are never sent. */
+  oauthMetadataAtResourcePath(
+    resourcePath: string,
+    opts: CallOptions = {},
+  ): Promise<Record<string, unknown>> {
+    const path = resourcePath.split('/').map(encodeURIComponent).join('/');
+    return this.t.request(
+      'GET',
+      `/.well-known/oauth-protected-resource/${path}`,
+      {
+        signal: opts.signal,
+        opaqueResponse: true,
+      },
+    );
   }
 
   /**
@@ -112,6 +169,7 @@ export default class Omnigraph {
   readiness(opts: CallOptions = {}): Promise<Readiness> {
     return this.t.request<Readiness>('GET', '/readyz', {
       signal: opts.signal,
+      ifActor: opts.ifActor,
       acceptedStatuses: [503],
     });
   }
@@ -125,6 +183,7 @@ export default class Omnigraph {
     return this.t.request<Read>('POST', '/query', {
       body: input,
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueBodyKeys: OPAQUE_PARAMS,
       opaqueResponseKeys: OPAQUE_READ_RESPONSE,
     });
@@ -156,12 +215,14 @@ export default class Omnigraph {
         body: input,
         headers: { 'Omnigraph-If-Graph-Commit': opts.ifGraphCommit },
         signal: opts.signal,
+        ifActor: opts.ifActor,
         opaqueBodyKeys: OPAQUE_PARAMS,
       });
     }
     const result = await this.t.request<Change>('POST', '/mutate', {
       body: input,
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueBodyKeys: OPAQUE_PARAMS,
     });
     if (!validMutationReceipt(result))
@@ -186,6 +247,7 @@ export default class Omnigraph {
     return this.t.request<Ingest>('POST', '/load', {
       body: input,
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
   }
 
@@ -212,6 +274,7 @@ export default class Omnigraph {
       query: { branch: input.branch, from: input.from, mode: input.mode },
       rawBody: { content: input.ndjson, contentType: 'application/x-ndjson' },
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
   }
 
@@ -225,6 +288,7 @@ export default class Omnigraph {
     return this.t.request<Snapshot>('GET', '/snapshot', {
       query: { branch: input.branch },
       signal: opts.signal,
+      ifActor: opts.ifActor,
     });
   }
 
@@ -254,6 +318,7 @@ export default class Omnigraph {
         const response = await t.stream('POST', '/export', {
           body: input,
           signal: opts.signal,
+          ifActor: opts.ifActor,
         });
         yield* ndjsonIterator<T>(response, { opaqueKeys: OPAQUE_EXPORT_ROW });
       },

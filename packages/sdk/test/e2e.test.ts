@@ -17,6 +17,7 @@ import Omnigraph, {
   PreconditionFailedError,
   RangeNotSatisfiableError,
   SERVER_VERSION,
+  HTTP_API_CONTRACT,
   UnauthorizedError,
   type ChangeBaselineRecord,
   type EntityChange,
@@ -49,7 +50,7 @@ async function captureDeployment(dir: string): Promise<Record<string, unknown>> 
       if (req.url === '/cluster/plan') captured = JSON.parse(body.toString()).deployment;
       const upstream = await fetch(`${BASE_URL}${req.url}`, {
         method: req.method,
-        headers: { 'Omnigraph-Http-Api': '0.13', authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        headers: { 'Omnigraph-Http-Api': HTTP_API_CONTRACT, authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
         body: body.length ? body : undefined,
       });
       res.writeHead(upstream.status, { 'Omnigraph-Http-Api': upstream.headers.get('Omnigraph-Http-Api') ?? '', 'content-type': 'application/json' });
@@ -59,10 +60,14 @@ async function captureDeployment(dir: string): Promise<Record<string, unknown>> 
   await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
   const address = proxy.address();
   if (!address || typeof address === 'string') throw new Error('no proxy port');
+  // The fixture proxy owns the test token; the CLI's loopback target is anonymous.
+  writeFileSync(join(dir, 'capture.json'), JSON.stringify({ version: 1, targets: { capture: { kind: 'server', endpoint: `http://127.0.0.1:${address.port}`, auth: { provider: 'anonymous' } } } }));
   try {
     await promisify(execFile)(process.env.OMNIGRAPH_BIN ?? 'omnigraph', [
-      'cluster', 'plan', '--config', dir, '--server', `http://127.0.0.1:${address.port}`, '--json',
-    ], { env: process.env, timeout: 20_000 });
+      'cluster', 'plan', '--config', dir, '--target', 'capture', '--operator-config', join(dir, 'capture.json'), '--json',
+    ], { env: process.env, timeout: 20_000 }).catch((error: { stdout?: string; stderr?: string }) => {
+      throw new Error(`CLI capture failed: ${error.stdout ?? ''}${error.stderr ?? ''}`, { cause: error });
+    });
     if (!captured) throw new Error('CLI did not submit its captured deployment');
     return captured;
   } finally { await new Promise<void>((resolve) => proxy.close(() => resolve())); }
@@ -365,7 +370,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
 
   describe('commits', () => {
     it('list returns the commit graph for main', async () => {
-      const commits = await og.commits.list({ branch: 'main' });
+      const { commits } = await og.commits.list({ branch: 'main' });
       expect(Array.isArray(commits)).toBe(true);
       expect(commits.length).toBeGreaterThanOrEqual(1);
       const first = commits[0];
@@ -373,7 +378,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
     });
 
     it('retrieve round-trips a commit id', async () => {
-      const commits = await og.commits.list({ branch: 'main' });
+      const { commits } = await og.commits.list({ branch: 'main' });
       const id = commits[0]!.graphCommitId;
       const got = await og.commits.retrieve(id);
       expect(got.graphCommitId).toBe(id);
@@ -520,6 +525,85 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       ).rejects.toBeInstanceOf(BadRequestError);
     });
   });
+  describe('0.14 contract workflows', () => {
+    it('reports actor identity and refuses a mismatched expectation before effects', async () => {
+      const access = await og.access({ branch: 'main' });
+      expect(access.actorId).toBe('default');
+      expect(access.actions).toContain('change');
+      const before = await og.snapshot();
+      await expect(og.mutate({ query: FIXTURE_QUERIES, name: 'add_person', params: { name: 'wrong-actor', age: 3 } }, { ifActor: 'someone-else' }))
+        .rejects.toMatchObject({ status: 412, code: 'actor_mismatch', outcomeUnknown: false, disposition: { effects: 'none' } });
+      expect(await og.snapshot()).toEqual(before);
+    });
+
+    it('keeps proposals and unattached snapshots out of branch history, then publishes or drops by id', async () => {
+      const branch = `e2e-proposals-${Date.now()}`;
+      branchesToCleanup.push(branch);
+      await og.branches.create({ name: branch });
+      const before = await og.query({ query: FIXTURE_QUERIES, name: 'find_person', params: { name: 'reviewed' }, branch });
+      const proposal = await og.mutate({ branch, query: 'query propose() as commit { insert Person { name: "reviewed", age: 21 } }' });
+      expect(proposal.commit).toMatchObject({ kind: 'unpublished', published: false });
+      const id = proposal.commit!.graphCommitId;
+      expect((await og.commits.list({ branch, listing: 'unpublished' })).commits.map(c => c.graphCommitId)).toContain(id);
+      expect((await findPerson(branch, 'reviewed')).rows).toEqual([]);
+      expect((await og.commits.publish(id)).kind).toBe('published');
+      expect((await findPerson(branch, 'reviewed')).rows).toEqual([{ name: 'reviewed', age: 21 }]);
+      const page = await og.commits.list({ branch, limit: 1 });
+      expect(page.commits).toHaveLength(1);
+      expect(page.headCommitId).toBe(id);
+      expect(page.nextPageToken).toEqual(expect.any(String));
+      const next = await og.commits.list({ branch, limit: 1, pageToken: page.nextPageToken! });
+      expect(next.headCommitId).toBe(id);
+      expect(next.commits[0]!.graphCommitId).toBe(before.graphCommitId);
+      const diff = await og.diff({ from: before.graphCommitId!, to: id });
+      expect(diff.changes).toHaveLength(1);
+      expect(diff.changes[0]!.after!.properties).toMatchObject({ name: 'reviewed' });
+      const detached = await og.mutate({ branch, query: 'query isolated() as unattached branch { insert Person { name: "isolated", age: 8 } }' });
+      const detachedId = detached.commit!.graphCommitId;
+      expect((await og.commits.list({ branch, listing: 'unattached' })).commits.map(c => c.graphCommitId)).toContain(detachedId);
+      await expect(og.commits.publish(detachedId)).rejects.toMatchObject({ status: 409, code: 'unattached_cannot_publish' });
+      await expect(og.commits.drop(detachedId)).resolves.toBeUndefined();
+      await expect(og.commits.retrieve(detachedId)).rejects.toBeInstanceOf(NotFoundError);
+      expect((await findPerson(branch, 'isolated')).rows).toEqual([]);
+    });
+
+    it('reviews a merge without publishing and accepts its unpublished merge receipt', async () => {
+      const source = `e2e-review-source-${Date.now()}`;
+      const target = `e2e-review-target-${Date.now()}`;
+      branchesToCleanup.push(source, target);
+      const head = (await og.commits.list({ branch: 'main', limit: 1 })).commits[0]!.graphCommitId;
+      await og.branches.create({ name: source, fromCommit: head });
+      await og.branches.create({ name: target, fromCommit: head });
+      await og.mutate({ branch: source, query: FIXTURE_QUERIES, name: 'add_person', params: { name: 'merge-review', age: 4 } });
+      expect((await og.branches.mergeBase({ source, target })).mergeBase.graphCommitId).toBe(head);
+      expect((await og.branches.diff({ source, target, limit: 1 })).changes).toHaveLength(1);
+      const dry = await og.branches.merge({ source, target, dryRun: true });
+      expect(dry).toMatchObject({ dryRun: true, commit: null, outcome: 'fast_forward' });
+      expect((await findPerson(target, 'merge-review')).rows).toEqual([]);
+      const proposal = await og.branches.merge({ source, target, asCommit: true });
+      expect(proposal.commit).toMatchObject({ kind: 'unpublished', published: false });
+      await og.commits.drop(proposal.commit!.graphCommitId);
+      expect((await findPerson(target, 'merge-review')).rows).toEqual([]);
+    });
+
+    it('writes and clears binary Blob cells with exact preconditions and JSON receipts', async () => {
+      const branch = `e2e-blob-write-${Date.now()}`;
+      branchesToCleanup.push(branch);
+      await og.branches.create({ name: branch });
+      const selector = { entity: 'node' as const, type: 'Person', id: 'Alice', property: 'avatar', branch };
+      const original = await og.blobs.stat(selector);
+      const bytes = new Uint8Array([0, 1, 255, 10]);
+      const put = await og.blobs.put({ ...selector, data: bytes, ifMatch: original.headers.get('etag')! });
+      expect(put).toMatchObject({ kind: 'managed', size: 4, actorId: 'default' });
+      expect(new Uint8Array(await (await og.blobs.get(selector)).arrayBuffer())).toEqual(bytes);
+      await expect(og.blobs.clear({ ...selector, ifMatch: '"old"' })).rejects.toMatchObject({ status: 412, code: 'precondition_failed' });
+      const cleared = await og.blobs.clear({ ...selector, ifMatch: put.etag! });
+      expect(cleared.kind).toBe('null');
+      expect(cleared.commit).not.toBeNull();
+      expect((await og.blobs.clear(selector)).commit).toBeNull();
+    });
+  });
+
   describe('live deployment lifecycle', () => {
     it('plans, activates schema and policy, creates/deletes a graph, and observes a lost acceptance without replay', async () => {
       const dir = process.env.OMNIGRAPH_E2E_CLUSTER_DIR;
@@ -574,7 +658,7 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       await waitForDeployment(deleteId);
       await expect(reader.mutate(mutation)).rejects.toBeInstanceOf(ForbiddenError);
       await expect(og.graph('gamma').snapshot()).rejects.toBeInstanceOf(NotFoundError);
-      expect(existsSync(join(dir, 'graphs/gamma.omni'))).toBe(false);
+      expect(existsSync(join(process.env.OMNIGRAPH_E2E_DATA_ROOT!, 'graphs/gamma.omni'))).toBe(false);
       expect(await og.graph('beta').query({ query: FIXTURE_QUERIES, name: 'find_person', params: { name: 'Alice' } })).toEqual(peerBefore);
       expect((await og.readiness()).ready).toBe(true);
       process.kill(Number(process.env.OMNIGRAPH_E2E_SERVER_PID), 0);

@@ -22,6 +22,11 @@ export abstract class OmnigraphError extends Error {
   readonly requestDispatched: boolean;
   readonly outcomeUnknown: boolean;
 
+  /** The server's effect knowledge and next action; absent after transport loss. */
+  get disposition() {
+    return (this.body as ErrorOutput | undefined)?.disposition;
+  }
+
   /** Server guidance for caller-bounded retries of refused requests. */
   get retryAfter(): string | undefined {
     return this.response?.headers.get('Retry-After') ?? undefined;
@@ -46,6 +51,8 @@ export class UnauthorizedError extends OmnigraphError {}
 export class ForbiddenError extends OmnigraphError {}
 export class NotFoundError extends OmnigraphError {}
 export class MethodNotAllowedError extends OmnigraphError {}
+export class RequestTimeoutError extends OmnigraphError {}
+export class UnsupportedMediaTypeError extends OmnigraphError {}
 
 export class ConflictError extends OmnigraphError {
   get mergeConflicts() {
@@ -141,6 +148,21 @@ const codeToClass: Record<
   conflict: ConflictError,
   too_many_requests: TooManyRequestsError,
   internal: InternalServerError,
+  actor_mismatch: PreconditionFailedError,
+  outcome_unknown: InternalServerError,
+  precondition_failed: PreconditionFailedError,
+  recovery_required: ServiceUnavailableError,
+  external_blob_source: FailedDependencyError,
+  change_feed_gap: GoneError,
+  request_timeout: RequestTimeoutError,
+  branch_start_refusal: ConflictError,
+  unattached_cannot_publish: ConflictError,
+  payload_too_large: PayloadTooLargeError,
+  unsupported_media_type: UnsupportedMediaTypeError,
+  range_not_satisfiable: RangeNotSatisfiableError,
+  cancelled: BadRequestError,
+  deadline_exceeded: BadRequestError,
+  result_too_large: PayloadTooLargeError,
 };
 
 const statusToClass: Record<
@@ -152,10 +174,12 @@ const statusToClass: Record<
   403: ForbiddenError,
   404: NotFoundError,
   405: MethodNotAllowedError,
+  408: RequestTimeoutError,
   409: ConflictError,
   410: GoneError,
   412: PreconditionFailedError,
   413: PayloadTooLargeError,
+  415: UnsupportedMediaTypeError,
   416: RangeNotSatisfiableError,
   424: FailedDependencyError,
   429: TooManyRequestsError,

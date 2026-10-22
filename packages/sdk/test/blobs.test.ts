@@ -166,3 +166,21 @@ describe('blobs resource', () => {
     });
   });
 });
+
+it('puts raw binary bytes and returns the JSON receipt for clear, including a null no-op commit', async () => {
+  const calls: RequestInit[] = [];
+  const data = new Uint8Array([0, 255, 10]);
+  const selector = { entity: 'node' as const, type: 'Person', id: 'p', property: 'avatar' };
+  const fetch = withContract(async (_input, init) => {
+    calls.push(init!);
+    return Response.json({ selector, branch: 'main', kind: init?.method === 'PUT' ? 'managed' : 'null', commit: init?.method === 'PUT' ? { graph_commit_id: 'c' } : null });
+  });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect((await og.blobs.put({ ...selector, data, ifMatch: '"old"' })).commit?.graphCommitId).toBe('c');
+  expect(calls[0]!.body).toBe(data);
+  expect(new Headers(calls[0]!.headers).get('content-type')).toBe('application/octet-stream');
+  expect(new Headers(calls[0]!.headers).get('if-match')).toBe('"old"');
+  expect((await og.blobs.clear(selector)).commit).toBeNull();
+  expect(calls[1]!.method).toBe('DELETE');
+  expect(calls[1]!.body).toBeUndefined();
+});

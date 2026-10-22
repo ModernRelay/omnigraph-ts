@@ -5,20 +5,25 @@ import type {
   ChangeBaselineInput,
   ChangeBaselineRecord,
   ChangeFeed,
-  ChangeOpOutput,
-  EntityKindOutput,
+  ChangeOp,
+  EntityKind,
 } from '../types';
 
 /** Filters and continuation for one bounded page of logical entity changes. */
-export interface ChangePageInput {
+export interface ChangeFilterInput {
   /** Opaque continuation for this result, not a durable feed cursor. */
   pageToken?: string;
   /** Maximum changes in this page. Server default and ceiling apply. */
   limit?: number;
-  kind?: EntityKindOutput[];
+  kind?: EntityKind[];
   /** Accepted-schema type names. */
   type?: string[];
-  op?: ChangeOpOutput[];
+  op?: ChangeOp[];
+}
+
+export interface ChangePageInput extends ChangeFilterInput {
+  /** Request-scope session settings in GQ spelling (name=value), repeated as set. */
+  set?: string[];
 }
 
 export interface PollChangesInput extends ChangePageInput {
@@ -55,8 +60,10 @@ export class ChangesResource {
         kind: input.kind,
         type: input.type,
         op: input.op,
+        set: input.set,
       },
       signal: opts.signal,
+      ifActor: opts.ifActor,
       opaqueResponseKeys: OPAQUE_PROPERTIES,
     });
   }
@@ -80,6 +87,7 @@ export class ChangesResource {
         const response = await t.stream('POST', '/changes/baseline', {
           body: input,
           signal: opts.signal,
+          ifActor: opts.ifActor,
         });
         let terminal: ChangeBaselineRecord | undefined;
         for await (const record of ndjsonIterator<ChangeBaselineRecord>(

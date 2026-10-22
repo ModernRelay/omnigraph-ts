@@ -3,7 +3,7 @@ import Omnigraph, {
   BranchMergeOutcome,
   ErrorCode,
   LoadMode,
-  MergeConflictKindOutput,
+  MergeConflictKind,
   type LoadMode as LoadModeType,
 } from '../src';
 import { stubFetch } from './helpers';
@@ -32,10 +32,10 @@ describe('runtime enum constants', () => {
     expect(BranchMergeOutcome.MERGED).toBe('merged');
   });
 
-  it('MergeConflictKindOutput exposes all kinds', () => {
-    expect(MergeConflictKindOutput.DIVERGENT_INSERT).toBe('divergent_insert');
-    expect(MergeConflictKindOutput.UNIQUE_VIOLATION).toBe('unique_violation');
-    expect(MergeConflictKindOutput.VALUE_CONSTRAINT_VIOLATION).toBe('value_constraint_violation');
+  it('MergeConflictKind exposes all kinds', () => {
+    expect(MergeConflictKind.DIVERGENT_INSERT).toBe('divergent_insert');
+    expect(MergeConflictKind.UNIQUE_VIOLATION).toBe('unique_violation');
+    expect(MergeConflictKind.VALUE_CONSTRAINT_VIOLATION).toBe('value_constraint_violation');
   });
 
   it('enum constants pass typecheck when used as call-site values', async () => {

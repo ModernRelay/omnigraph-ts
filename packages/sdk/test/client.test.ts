@@ -326,3 +326,36 @@ it('exposes unsupported server-side embedding generation instead of implying it 
   const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
   expect((await og.load({ data: '{}\n' })).embeddingGeneration).toBe('unsupported');
 });
+
+it('access returns actorId and scoped actions with an actor precondition', async () => {
+  const { fetch, calls } = stubFetch({ body: { actor_id: 'alice', graph_id: 'g', graph_wide: ['read'], branch: 'source', target_branch: 'dest', actions: ['branch_merge'] } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect(await og.access({ branch: 'source', targetBranch: 'dest' }, { ifActor: 'alice' }))
+    .toEqual({ actorId: 'alice', graphId: 'g', graphWide: ['read'], branch: 'source', targetBranch: 'dest', actions: ['branch_merge'] });
+  expect(calls[0]!.url).toBe('http://x/graphs/g/access?branch=source&target_branch=dest');
+  expect(calls[0]!.headers['omnigraph-if-actor']).toBe('alice');
+});
+
+it('diff encodes selectors and pages while preserving caller property names', async () => {
+  const properties = { first_name: 'A', nested_value: { userKey: 2 } };
+  const { fetch, calls } = stubFetch({ body: { from_commit_id: 'a', to_commit_id: 'b', next_page_token: 'next', changes: [{ after: { properties } }] } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  const result = await og.diff({ from: 'commit a', to: 'branch main', limit: 1, kind: ['node'], type: ['Person'], op: ['insert'], pageToken: 'page+/=' });
+  expect(result.changes[0]!.after!.properties).toEqual(properties);
+  expect(result.nextPageToken).toBe('next');
+  const params = new URL(calls[0]!.url).searchParams;
+  expect(Object.fromEntries(params)).toEqual({ from: 'commit a', to: 'branch main', limit: '1', kind: 'node', type: 'Person', op: 'insert', page_token: 'page+/=' });
+});
+
+it('resource-specific OAuth metadata is public, unprefixed and preserves its wire keys', async () => {
+  const calls: Array<{ url: string; headers: Headers }> = [];
+  const og = new Omnigraph({ baseUrl: 'http://x/proxy', graphId: 'g', token: 'secret', fetch: async (input, init) => {
+    calls.push({ url: String(input), headers: new Headers(init?.headers) });
+    return Response.json({ resource: 'http://x/proxy/mcp', authorization_servers: ['http://auth'] });
+  } });
+  expect(await og.oauthMetadataAtResourcePath('mcp', { ifActor: 'alice' })).toHaveProperty('authorization_servers');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.url).toBe('http://x/proxy/.well-known/oauth-protected-resource/mcp');
+  expect(calls[0]!.headers.has('authorization')).toBe(false);
+  expect(calls[0]!.headers.has('omnigraph-if-actor')).toBe(false);
+});
