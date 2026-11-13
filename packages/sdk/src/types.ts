@@ -4,6 +4,7 @@
 // applies snake_case ↔ camelCase at the boundary so callers write idiomatic
 // TypeScript (`graphCommitId`, `querySource`).
 
+import { ErrorCode as GeneratedErrorCode } from './generated/types.gen';
 import type {
   BranchCreateOutput,
   BranchCreateRequest,
@@ -16,7 +17,6 @@ import type {
   ChangeRequest,
   CommitListOutput,
   CommitOutput,
-  ErrorCode,
   ExportRequest,
   GraphBatchDeclarationOutput,
   GraphBatchLoadOutput,
@@ -175,7 +175,6 @@ export type InvokeQueryInput = Camelize<InvokeStoredQueryRequest>;
 // Re-export both the runtime values (constant objects) and the types so
 // callers can write `LoadMode.MERGE` and `mode: LoadMode` interchangeably.
 export {
-  ErrorCode,
   AccessAction,
   CommitKind,
   CommitListing,
@@ -192,8 +191,18 @@ export {
   ChangeDiffRefusalReason,
 } from './generated/types.gen';
 
-// CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.
-export type ErrorOutput = Camelize<import('./generated/types.gen').ErrorOutput>;
+// Newer servers on the same HTTP contract can return these refusal codes.
+export const ErrorCode = {
+  ...GeneratedErrorCode,
+  NOT_ADMITTED: 'not_admitted',
+  WRITER_FENCED: 'writer_fenced',
+} as const;
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+export type ErrorOutput = Omit<
+  Camelize<import('./generated/types.gen').ErrorOutput>,
+  'code'
+> & { code: ErrorCode };
 
 export type Settings = Camelize<
   import('./generated/types.gen').SettingsRequest

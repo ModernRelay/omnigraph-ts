@@ -556,6 +556,9 @@ it.each([
   [503, 'recovery_required', 'none', 'recover', false],
   [500, 'outcome_unknown', 'unknown', 'reconcile', true],
   [412, 'actor_mismatch', 'none', 'fix', false],
+  [403, 'not_admitted', 'none', 'fix', false],
+  [409, 'writer_fenced', 'none', 'refresh', false],
+  [409, 'writer_fenced', 'partial', 'refresh', true],
 ] as const)('preserves error disposition for %s %s without inventing retries', async (status, code, effects, action, unknown) => {
   const { fetch, calls } = stubFetch({ status, body: { error: 'refused', code, disposition: { effects, action } } });
   const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
