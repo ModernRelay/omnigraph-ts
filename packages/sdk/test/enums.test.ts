@@ -18,6 +18,8 @@ describe('runtime enum constants', () => {
   it('ErrorCode values match the server enum', () => {
     expect(ErrorCode.UNAUTHORIZED).toBe('unauthorized');
     expect(ErrorCode.FORBIDDEN).toBe('forbidden');
+    expect(ErrorCode.NOT_ADMITTED).toBe('not_admitted');
+    expect(ErrorCode.WRITER_FENCED).toBe('writer_fenced');
     expect(ErrorCode.BAD_REQUEST).toBe('bad_request');
     expect(ErrorCode.NOT_FOUND).toBe('not_found');
     expect(ErrorCode.METHOD_NOT_ALLOWED).toBe('method_not_allowed');
