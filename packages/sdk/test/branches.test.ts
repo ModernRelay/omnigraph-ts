@@ -304,3 +304,17 @@ describe('dry-run merge classification', () => {
     });
   });
 });
+
+it('classifies a merge by the body it sends, not by inherited input properties', async () => {
+  // A prototype getter is not copied into the request, so the server runs a
+  // real merge; losing its answer must stay outcome unknown.
+  class Options { source = 'topic'; get dryRun() { return true; } }
+  const bodies: string[] = [];
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: async (_input, init) => {
+    if (init?.method === 'HEAD') return new Response(null, { headers: { 'Omnigraph-Http-Api': '0.14' } });
+    bodies.push(String(init?.body));
+    throw new TypeError('socket hang up');
+  } });
+  await expect(og.branches.merge(new Options())).rejects.toMatchObject({ outcomeUnknown: true });
+  expect(JSON.parse(bodies[0]!)).toEqual({ source: 'topic', target: 'main' });
+});

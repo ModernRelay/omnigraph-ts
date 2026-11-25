@@ -127,8 +127,9 @@ export class BranchesResource {
         signal: opts.signal,
         ifActor: opts.ifActor,
         // A dry run writes nothing; a reply that is not a dry-run receipt
-        // still fails validMerge below with effects unknown.
-        readOnly: input.dryRun === true,
+        // still fails validMerge below with effects unknown. Judge the body
+        // that is sent: a spread copy drops inherited properties.
+        readOnly: normalized.dryRun === true,
       },
     );
     if (!validMerge(result, normalized))
