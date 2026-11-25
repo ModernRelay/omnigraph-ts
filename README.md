@@ -33,6 +33,8 @@ The **v0.14** line targets `omnigraph-server` **v0.14.0** and enforces the exact
 
 `@modernrelay/omnigraph` matches `omnigraph-server` on **major.minor**; the **patch** is independent. A published `@modernrelay/omnigraph@X.Y.*` is built against `omnigraph-server@X.Y.*` and is expected to work against any `>=X.Y.0, <X.(Y+1).0`. The exact server version the SDK was generated from is always available at runtime as `import { SERVER_VERSION } from '@modernrelay/omnigraph'`.
 
+The server release and the HTTP contract are separate numbers. Every request sends, and every response must carry, the `Omnigraph-Http-Api` value that the pinned `spec/openapi.json` requires; `scripts/gen-version.ts` reads it from the spec as `HTTP_API_CONTRACT`. A server release may keep an earlier contract (0.15 and 0.16 both speak `0.14`), so an SDK and a server on the same contract interoperate on the routes both know; a route or field added in a later release needs that release.
+
 ## Workflow when omnigraph cuts a new release
 
 1. Bump `package.json#omnigraph.serverVersion` and both package versions. Remove a temporary `omnigraph.serverRef` once the release tag exists.

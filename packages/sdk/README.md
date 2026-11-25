@@ -32,9 +32,10 @@ Use the server root as `baseUrl`; select a graph with `graphId` or
 requests. Server methods such as health, readiness, graph listing, and cluster
 management do not require a graph ID.
 
-The SDK checks discovery before authenticated data requests, sends
-`Omnigraph-Http-Api: 0.14`, and checks the response contract before exposing data.
-It supports only 0.14; upgrade the server and clients together. Proxies and
+The SDK checks discovery before authenticated data requests, sends the
+`Omnigraph-Http-Api` contract its pinned spec requires (`HTTP_API_CONTRACT`), and
+checks the response contract before exposing data. A server on another contract
+is refused; upgrade the server and clients together. Proxies and
 custom fetch implementations must preserve this response header. No redirects
 or automatic request retries are performed.
 
@@ -202,8 +203,9 @@ Existing data migration depends on its storage format; follow the authoritative
 [upgrade guide](https://github.com/ModernRelay/omnigraph/blob/9d92f3970311d5229f55b1a1fc06b2d3fba30a55/docs/user/operations/upgrade.md).
 The SDK does not convert stored graphs or legacy credentials.
 
-`SERVER_VERSION` identifies the pinned server release. Package major/minor
-tracks the server contract; patch releases are independent. Each client has
+`SERVER_VERSION` identifies the pinned server release and `HTTP_API_CONTRACT`
+the header contract its spec requires; the two are separate numbers. Package
+major/minor tracks the server release; patch releases are independent. Each client has
 isolated configuration and supports a custom `fetch` for testing or tracing.
 
 ## Upgrading from 0.13
