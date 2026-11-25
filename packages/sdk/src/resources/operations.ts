@@ -22,6 +22,32 @@ export function isTerminal(state: OperationState): boolean {
   return TERMINAL.has(state);
 }
 
+/**
+ * Whether a reply is a receipt for `operationId`: a lookup envelope whose
+ * `found` record names that id, or an `unknown` lookup where the route can
+ * answer one (lookup and cancel; a submission always identifies its record).
+ * One check serves every operation route.
+ */
+export function validOperationReceipt(
+  reply: unknown,
+  operationId: string,
+  unknownAllowed: boolean,
+): reply is OperationResult {
+  if (!reply || typeof reply !== 'object') return false;
+  const { lookup, inProgress, operation } = reply as Record<string, unknown>;
+  if (typeof inProgress !== 'boolean') return false;
+  if (lookup === 'unknown') return unknownAllowed && operation == null;
+  if (lookup !== 'found' || !operation || typeof operation !== 'object')
+    return false;
+  const record = operation as Record<string, unknown>;
+  return (
+    record.operationId === operationId &&
+    typeof record.state === 'string' &&
+    !!record.outcome &&
+    typeof record.outcome === 'object'
+  );
+}
+
 export interface StartOptimizeInput {
   /**
    * The canonical ULID that names this run; mint it with `newOperationId()`
@@ -59,25 +85,38 @@ export class OperationsResource {
    * different request is a `ConflictError`, and another active operation a
    * `TooManyRequestsError` with `retryAfter`.
    */
-  optimize(
+  async optimize(
     input: StartOptimizeInput,
     opts: CallOptions = {},
   ): Promise<OperationResult> {
-    return this.t.request('POST', '/operations/optimize', {
+    const reply = await this.t.request<unknown>('POST', '/operations/optimize', {
       body: input,
       signal: opts.signal,
       ifActor: opts.ifActor,
       opaqueResponseKeys: OPAQUE_RESPONSE,
     });
+    return this.receipt(
+      reply,
+      'POST',
+      '/operations/optimize',
+      input.operationId,
+      false,
+    );
   }
 
   /**
    * Look an operation up by its id, whatever its kind. `lookup: 'unknown'`
    * means the record does not hold the id; it does not prove the operation
-   * never ran, and it is never a reason to resubmit under the same id.
+   * never ran, and it is never a reason to resubmit under the same id. A
+   * lookup may settle a publication in doubt, so it can answer 500
+   * `outcome_unknown`; retrying the lookup is safe.
    */
-  get(operationId: string, opts: CallOptions = {}): Promise<OperationResult> {
-    return this.t.request(
+  async get(
+    operationId: string,
+    opts: CallOptions = {},
+  ): Promise<OperationResult> {
+    const path = `/operations/${encodeURIComponent(operationId)}`;
+    const reply = await this.t.request<unknown>(
       'GET',
       `/operations/${encodeURIComponent(operationId)}`,
       {
@@ -86,6 +125,7 @@ export class OperationsResource {
         opaqueResponseKeys: OPAQUE_RESPONSE,
       },
     );
+    return this.receipt(reply, 'GET', path, operationId, true);
   }
 
   /**
@@ -93,11 +133,12 @@ export class OperationsResource {
    * operation is returned unchanged; a `publishing` one finishes its
    * publication and its record says the cancellation arrived late.
    */
-  cancel(
+  async cancel(
     operationId: string,
     opts: CallOptions = {},
   ): Promise<OperationResult> {
-    return this.t.request(
+    const path = `/operations/${encodeURIComponent(operationId)}/cancel`;
+    const reply = await this.t.request<unknown>(
       'POST',
       `/operations/${encodeURIComponent(operationId)}/cancel`,
       {
@@ -106,6 +147,28 @@ export class OperationsResource {
         opaqueResponseKeys: OPAQUE_RESPONSE,
       },
     );
+    return this.receipt(reply, 'POST', path, operationId, true);
+  }
+
+  /**
+   * The one receipt check every operation route applies. An invalid reply is
+   * an ApiContractError: outcome unknown after a submission or cancellation,
+   * which may have written, and certain after a lookup.
+   */
+  private receipt(
+    reply: unknown,
+    method: 'GET' | 'POST',
+    path: string,
+    operationId: string,
+    unknownAllowed: boolean,
+  ): OperationResult {
+    if (!validOperationReceipt(reply, operationId, unknownAllowed))
+      throw this.t.invalidResponse(
+        method,
+        path,
+        `Invalid receipt for operation ${operationId}`,
+      );
+    return reply;
   }
 
   /**

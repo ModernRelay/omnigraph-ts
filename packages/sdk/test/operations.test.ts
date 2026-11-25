@@ -153,3 +153,50 @@ describe('operations resource', () => {
     expect(Object.values(OperationState).filter(isTerminal)).toEqual(['succeeded', 'failed', 'cancelled', 'interrupted', 'unsettled']);
   });
 });
+
+describe('operation receipts', () => {
+  const found = (id: string) => ({ lookup: 'found', in_progress: false, operation: { ...record('succeeded'), operation_id: id } });
+  type Call = (og: Omnigraph) => Promise<unknown>;
+  const routes: Array<[string, Call, boolean, boolean]> = [
+    // name, call, may write (an invalid reply is outcome unknown), unknown allowed
+    ['optimize', (og) => og.operations.optimize({ operationId: ID }), true, false],
+    ['get', (og) => og.operations.get(ID), false, true],
+    ['cancel', (og) => og.operations.cancel(ID), true, true],
+  ];
+
+  it.each(routes.flatMap(([name, call, writes]) => [
+    [name, 'an empty object', {}, call, writes],
+    [name, 'another operation\'s record', found('01JC9999999999999999999999'), call, writes],
+    [name, 'found without a record', { lookup: 'found', in_progress: false }, call, writes],
+    [name, 'a record without a state', { lookup: 'found', in_progress: false, operation: { operation_id: ID, outcome: {} } }, call, writes],
+    [name, 'no in_progress', { lookup: 'found', operation: record('succeeded') }, call, writes],
+  ] as const))('%s refuses %s as its receipt', async (_name, _what, body, call, writes) => {
+    const { fetch, calls } = stubFetch({ status: 200, body });
+    const error = await call(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch })).catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'ApiContractError', requestDispatched: true, outcomeUnknown: writes });
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each(routes)('%s accepts unknown only where the route can answer it', async (_name, call, _writes, unknownAllowed) => {
+    const { fetch } = stubFetch({ body: { lookup: 'unknown', in_progress: false } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    if (unknownAllowed) await expect(call(og)).resolves.toMatchObject({ lookup: 'unknown' });
+    else await expect(call(og)).rejects.toMatchObject({ name: 'ApiContractError', outcomeUnknown: true });
+  });
+
+  it('wait stops at an invalid receipt instead of reading a missing record', async () => {
+    const { fetch } = stubFetch([{ body: { lookup: 'found', in_progress: true } }]);
+    await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch }).operations.wait(ID, { intervalMs: 1 }))
+      .rejects.toMatchObject({ name: 'ApiContractError', outcomeUnknown: false });
+  });
+
+  it('a lookup that leaves its settlement write in doubt is outcome unknown', async () => {
+    // 0.16 answers a lookup whose resolution write has no definite answer with
+    // 500 outcome_unknown; retrying the lookup is how to settle it.
+    const doubt = { status: 500, body: { error: 'resolution write in doubt; retry the lookup', code: 'outcome_unknown', disposition: { effects: 'none', action: 'reconcile' } } };
+    const { fetch } = stubFetch([doubt, doubt]);
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.operations.get(ID)).rejects.toMatchObject({ status: 500, code: 'outcome_unknown', outcomeUnknown: true });
+    await expect(og.operations.wait(ID)).rejects.toMatchObject({ outcomeUnknown: true });
+  });
+});
