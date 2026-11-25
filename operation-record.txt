@@ -1,0 +1,67 @@
+# og.operations.wait(id) result from a live omnigraph-server v0.16.0 (e2e fixture graph "alpha")
+{
+  "lookup": "found",
+  "operation": {
+    "operationId": "01M89V4NYQ1CQRHGJZZE7FPBEG",
+    "requestDigest": "sha256:152083368157513b38e16079551bd1060ae295252c32355e2df3a2fced028e19",
+    "graph": "alpha",
+    "schemaIdentityDomain": "01M89V4JDXRBN3857NAXZD2V1V",
+    "settlementBranch": "main",
+    "request": {
+      "kind": "optimize",
+      "maxGateHoldMs": 30000
+    },
+    "principal": "default",
+    "acceptedAt": "2026-11-25T17:13:04.732540673Z",
+    "state": "succeeded",
+    "nonce": "01M89V4P04D9B8H06V7QD61FAG",
+    "inputCommit": "hb1.01M89V4JME4VP59AR1GPQRG32J.1.01M89V4JME4VP59AR1GPQRG32J",
+    "inputManifestVersion": 2,
+    "publishedCommit": "hb1.01M89V4JME4VP59AR1GPQRG32J.2.01M89V4P04D9B8H06V7QD61FAG",
+    "outcome": {
+      "kind": "optimize",
+      "datasets": [
+        {
+          "typeKey": "edge:Knows",
+          "outcome": "optimized",
+          "fragmentsRemoved": 0,
+          "fragmentsAdded": 0,
+          "durationMs": 9
+        },
+        {
+          "typeKey": "edge:WorksAt",
+          "outcome": "optimized",
+          "fragmentsRemoved": 0,
+          "fragmentsAdded": 0,
+          "durationMs": 17
+        },
+        {
+          "typeKey": "node:Company",
+          "outcome": "optimized",
+          "fragmentsRemoved": 0,
+          "fragmentsAdded": 0,
+          "durationMs": 26
+        },
+        {
+          "typeKey": "node:Person",
+          "outcome": "optimized",
+          "fragmentsRemoved": 0,
+          "fragmentsAdded": 0,
+          "durationMs": 35
+        }
+      ],
+      "configurationClear": {
+        "outcome": "nothing_to_clear"
+      },
+      "artifact": {
+        "outcome": "refreshed"
+      }
+    },
+    "timings": {
+      "queuedMs": 0,
+      "gateHoldMs": 44,
+      "computeMs": 54
+    }
+  },
+  "inProgress": false
+}

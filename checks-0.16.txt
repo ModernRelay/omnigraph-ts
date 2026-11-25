@@ -1,0 +1,11 @@
+$ pnpm run check-drift && check-coverage && build && typecheck && test && check-release   # at the 0.16.0 head
+spec/openapi.json matches upstream at v0.16.0 (server 0.16.0)
+Coverage check passed: 45 call sites bound to all 44 spec operations; query params validated.
+# pass 6
+# fail 0
+packages/sdk test:  Test Files  17 passed | 1 skipped (18)
+packages/sdk test:       Tests  229 passed | 38 skipped (267)
+packages/mcp test:  Test Files  1 passed | 1 skipped (2)
+packages/mcp test:       Tests  36 passed | 2 skipped (38)
+Version check passed: all packages target omnigraph-server v0.16.0 (v0.16.0)
+spec/openapi.json matches upstream at v0.16.0 (server 0.16.0)
