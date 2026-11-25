@@ -68,6 +68,19 @@ export type BlobWrite = Camelize<
 export type BranchCreate = Camelize<BranchCreateOutput>;
 export type BranchDelete = Camelize<BranchDeleteOutput>;
 export type BranchList = Camelize<BranchListOutput>;
+/** One live branch with its head, where it started, and when it was created and last moved. */
+export type BranchDetail = Camelize<
+  import('./generated/types.gen').BranchDetailOutput
+>;
+/**
+ * `GET /branches?detailed=true`: every live branch name, and details for each
+ * branch the caller may read, in the order of `branches`. A branch the caller
+ * may not read is listed in `branches` alone.
+ */
+export interface BranchListDetailed {
+  branches: string[];
+  details: BranchDetail[];
+}
 export type BranchMerge = Camelize<BranchMergeOutput>;
 export type Change = Camelize<ChangeOutput>;
 export type Commit = Camelize<CommitOutput>;

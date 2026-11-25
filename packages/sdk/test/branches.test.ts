@@ -18,6 +18,43 @@ describe('branches resource', () => {
     expect(calls[0]?.url).toBe('http://x/graphs/g/branches');
   });
 
+  it('listDetailed sends detailed=true and camelCases each branch detail', async () => {
+    const head = {
+      graph_commit_id: 'c2', graph_manifest_version: 4, graph_branch: 'feature',
+      parent_commit_id: 'c1', merged_parent_commit_id: null, actor_id: 'act-a',
+      created_at: 1714000000000000, kind: 'published', published: true,
+    };
+    const { fetch, calls } = stubFetch({
+      body: {
+        branches: ['feature', 'main', 'secret'],
+        details: [
+          { name: 'feature', head, from: 'main', from_commit_id: 'c1', created_at: 1713000000000000, updated_at: 1714000000000000 },
+          { name: 'main', head: { ...head, graph_branch: null }, updated_at: 1714000000000000 },
+        ],
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const result = await og.branches.listDetailed();
+    expect(calls[0]?.method).toBe('GET');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/branches?detailed=true');
+    // A branch the caller may not read is listed without details.
+    expect(result.branches).toEqual(['feature', 'main', 'secret']);
+    expect(result.details.map((d) => d.name)).toEqual(['feature', 'main']);
+    expect(result.details[0]).toMatchObject({
+      from: 'main', fromCommitId: 'c1', createdAt: 1713000000000000, updatedAt: 1714000000000000,
+      head: { graphCommitId: 'c2', graphBranch: 'feature' },
+    });
+    expect(result.details[1]?.from).toBeUndefined();
+  });
+
+  it('listDetailed refuses a listing without details as a contract failure', async () => {
+    const { fetch } = stubFetch({ body: { branches: ['main'] } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.branches.listDetailed()).rejects.toMatchObject({
+      name: 'ApiContractError', outcomeUnknown: false,
+    });
+  });
+
   it('create sends POST with snake_case body', async () => {
     const { fetch, calls } = stubFetch({
       body: {

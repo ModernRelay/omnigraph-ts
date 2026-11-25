@@ -72,6 +72,8 @@ export type {
   BranchCreateInput,
   BranchDelete,
   BranchList,
+  BranchListDetailed,
+  BranchDetail,
   BranchMerge,
   BranchMergeInput,
   // Commits

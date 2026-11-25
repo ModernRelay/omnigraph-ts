@@ -5,6 +5,7 @@ import type {
   BranchCreateInput,
   BranchDelete,
   BranchList,
+  BranchListDetailed,
   BranchMerge,
   BranchMergeInput,
   Diff,
@@ -58,6 +59,28 @@ export class BranchesResource {
       ifActor: opts.ifActor,
     });
     return r.branches;
+  }
+
+  /**
+   * List all branches with each readable branch's head commit, the branch and
+   * commit it started from, and when it was created and last moved
+   * (`GET /branches?detailed=true`, omnigraph-server 0.15+). Read-only. Each
+   * listed branch costs the server a read of its latest version; no commit
+   * history is read. Times are Unix epoch microseconds.
+   */
+  async listDetailed(opts: CallOptions = {}): Promise<BranchListDetailed> {
+    const r = await this.t.request<BranchList>('GET', '/branches', {
+      query: { detailed: 'true' },
+      signal: opts.signal,
+      ifActor: opts.ifActor,
+    });
+    if (!Array.isArray(r?.details))
+      throw this.t.invalidResponse(
+        'GET',
+        '/branches',
+        'Branch listing omitted details; the server must be omnigraph-server 0.15 or newer',
+      );
+    return { branches: r.branches, details: r.details };
   }
 
   /**
