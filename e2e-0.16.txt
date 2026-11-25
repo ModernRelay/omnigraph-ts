@@ -1,4 +1,4 @@
-$ OMNIGRAPH_BIN=<v0.16.0>/omnigraph OMNIGRAPH_SERVER_BIN=<v0.16.0>/omnigraph-server pnpm run test:e2e   # verbose reporter
+$ OMNIGRAPH_BIN=<built from v0.16.0>/omnigraph OMNIGRAPH_SERVER_BIN=<built from v0.16.0>/omnigraph-server pnpm run test:e2e   # head be85655, verbose
 ✓ test/e2e.test.ts > connectivity > GET /healthz returns ok
 ✓ test/e2e.test.ts > connectivity > refuses a wrong contract before mutation effects and never retries the write
 ✓ test/e2e.test.ts > connectivity > SERVER_VERSION constant matches /healthz major.minor
@@ -33,12 +33,14 @@ $ OMNIGRAPH_BIN=<v0.16.0>/omnigraph OMNIGRAPH_SERVER_BIN=<v0.16.0>/omnigraph-ser
 ✓ test/e2e.test.ts > 0.14 contract workflows > writes and clears binary Blob cells with exact preconditions and JSON receipts
 ✓ test/e2e.test.ts > 0.16 recorded operations and reads > access reports the maintain action
 ✓ test/e2e.test.ts > 0.16 recorded operations and reads > optimize runs to a terminal record that a lookup and a resubmission return
+✓ test/e2e.test.ts > 0.16 recorded operations and reads > a run limited to one dataset reports exactly that dataset
+✓ test/e2e.test.ts > 0.16 recorded operations and reads > cancelling an active run ends it cancelled, or succeeded with a late-cancellation reason
 ✓ test/e2e.test.ts > 0.16 recorded operations and reads > an id the record does not hold answers unknown, and a malformed id is refused
 ✓ test/e2e.test.ts > 0.16 recorded operations and reads > a reader without maintain is refused before any effect
 ✓ test/e2e.test.ts > 0.16 recorded operations and reads > a dry-run merge returns its would-be outcome and writes nothing
 ✓ test/e2e.test.ts > live deployment lifecycle > plans, activates schema and policy, creates/deletes a graph, and observes a lost acceptance without replay
 Test Files  1 passed (1)
-Tests  38 passed (38)
+Tests  40 passed (40)
 ✓ test/e2e.test.ts > MCP: live 0.14 server > reads active schema and parameterized data through MCP and SDK contract admission
 ✓ test/e2e.test.ts > MCP: live 0.14 server > returns exact write receipts, preserves stale-head refusal, and exposes no deployment tools
 Test Files  1 passed (1)

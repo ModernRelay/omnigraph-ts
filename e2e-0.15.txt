@@ -1,11 +1,11 @@
-$ OMNIGRAPH_BIN=<v0.15.0>/omnigraph OMNIGRAPH_SERVER_BIN=<v0.15.0>/omnigraph-server pnpm run test:e2e
-RUN  v2.1.9 /src/omnigraph-ts/packages/sdk
-✓ test/e2e.test.ts (33 tests) 2187ms
-✓ e2e: live omnigraph-server > export > streams the complete snapshot after a paused consumer 370ms
-✓ e2e: live omnigraph-server > live deployment lifecycle > plans, activates schema and policy, creates/deletes a graph, and observes a lost acceptance without replay 653ms
+$ OMNIGRAPH_BIN=<v0.15.0 release>/omnigraph OMNIGRAPH_SERVER_BIN=<v0.15.0 release>/omnigraph-server pnpm run test:e2e   # 0.15.0 tag point 632b28f
+RUN  v2.1.9 /tmp/ts015/packages/sdk
+✓ test/e2e.test.ts (33 tests) 2427ms
+✓ e2e: live omnigraph-server > export > streams the complete snapshot after a paused consumer 367ms
+✓ e2e: live omnigraph-server > live deployment lifecycle > plans, activates schema and policy, creates/deletes a graph, and observes a lost acceptance without replay 768ms
 Test Files  1 passed (1)
 Tests  33 passed (33)
-RUN  v2.1.9 /src/omnigraph-ts/packages/mcp
-✓ test/e2e.test.ts (2 tests) 109ms
+RUN  v2.1.9 /tmp/ts015/packages/mcp
+✓ test/e2e.test.ts (2 tests) 130ms
 Test Files  1 passed (1)
 Tests  2 passed (2)
