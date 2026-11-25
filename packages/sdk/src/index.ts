@@ -41,6 +41,7 @@ export {
   BadRequestError,
   UnauthorizedError,
   ForbiddenError,
+  NotAdmittedError,
   NotFoundError,
   MethodNotAllowedError,
   RequestTimeoutError,

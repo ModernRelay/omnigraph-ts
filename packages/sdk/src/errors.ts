@@ -49,6 +49,12 @@ export abstract class OmnigraphError extends Error {
 export class BadRequestError extends OmnigraphError {}
 export class UnauthorizedError extends OmnigraphError {}
 export class ForbiddenError extends OmnigraphError {}
+/**
+ * A valid OIDC access token whose subject the server admits no principal for
+ * (403 `not_admitted`). Signing in again issues a token for the same subject
+ * and cannot help; the server's operator must admit the identity.
+ */
+export class NotAdmittedError extends ForbiddenError {}
 export class NotFoundError extends OmnigraphError {}
 export class MethodNotAllowedError extends OmnigraphError {}
 export class RequestTimeoutError extends OmnigraphError {}
@@ -143,7 +149,7 @@ const codeToClass: Record<
   graph_unavailable: GraphUnavailableError,
   unauthorized: UnauthorizedError,
   forbidden: ForbiddenError,
-  not_admitted: ForbiddenError,
+  not_admitted: NotAdmittedError,
   not_found: NotFoundError,
   method_not_allowed: MethodNotAllowedError,
   conflict: ConflictError,
@@ -199,18 +205,20 @@ export function fromResponse(args: {
   const body = args.body as ErrorOutput | undefined;
   const code = body?.code ?? null;
   const message = body?.error ?? `HTTP ${args.status}`;
+  const byCode =
+    code && Object.hasOwn(codeToClass, code) ? codeToClass[code] : undefined;
+  const byStatus = statusToClass[args.status];
   // Status distinguishes broad error codes: e.g. 413/416 use bad_request,
-  // while Blob 412 uses conflict. Availability and contract codes add detail.
+  // while Blob 412 uses conflict. A code whose class refines the status's
+  // class (graph_unavailable, not_admitted) adds detail; the contract code
+  // always names a contract failure.
   const Ctor =
-    (code === 'graph_unavailable'
-      ? GraphUnavailableError
-      : code === 'api_contract_mismatch'
-        ? ApiContractError
-        : undefined) ??
-    statusToClass[args.status] ??
-    (code && Object.hasOwn(codeToClass, code)
-      ? codeToClass[code]
+    (code === 'api_contract_mismatch' ? ApiContractError : undefined) ??
+    (byCode && byStatus && byCode.prototype instanceof byStatus
+      ? byCode
       : undefined) ??
+    byStatus ??
+    byCode ??
     InternalServerError;
   return new Ctor({
     status: args.status,
