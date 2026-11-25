@@ -71,7 +71,8 @@ describe('cluster deployment API', () => {
 
 it.each([
   [503, 'service_unavailable', 'retry', 'ServiceUnavailableError'],
-  [500, 'internal', 'fix', 'InternalServerError'],
+  // The engine's actions: service_unavailable retries, internal refreshes.
+  [500, 'internal', 'refresh', 'InternalServerError'],
 ] as const)('a failed cluster control read (%s) is a certain refusal, not a conflict', async (status, code, action, name) => {
   // omnigraph-server 0.16 answers a failed read of cluster state with 503
   // (may pass) or 500 (repeats), effects none, where 0.15 answered 409.

@@ -184,19 +184,32 @@ import { newOperationId, OperationState } from '@modernrelay/omnigraph';
 
 const operationId = newOperationId(); // keep it before you submit
 await og.operations.optimize({ operationId, maxGateHoldMs: 30_000 });
-const { operation } = await og.operations.wait(operationId, { signal: AbortSignal.timeout(600_000) });
-if (operation?.state === OperationState.SUCCEEDED) {
-  for (const d of operation.outcome.datasets ?? []) console.log(d.typeKey, d.outcome, d.reason);
+// Stopping the wait (here after ten minutes) leaves the run going on the server.
+const result = await og.operations.wait(operationId, { signal: AbortSignal.timeout(600_000) });
+if (result.lookup === 'unknown') {
+  // The record no longer holds the id. This does not prove the run never
+  // happened; never resubmit the same work under this id.
+} else if (result.operation?.state === OperationState.SUCCEEDED) {
+  for (const d of result.operation.outcome.datasets ?? []) console.log(d.typeKey, d.outcome, d.reason);
 }
 ```
 
 `optimize` resolves once the run is durably accepted (or already terminal).
-Submitting the same id and request returns the existing record; the same id
-with another request is a `ConflictError`, and another active operation a
-`TooManyRequestsError` with `retryAfter`. After a lost response, look the id
-up with `get` instead of submitting again. `lookup: 'unknown'` does not prove
-the run never happened. `wait` only calls the lookup and rejects on its first
-failure; `cancel` stops a run at its next safe boundary. A `succeeded` run can
+While the server's record still holds the id (it keeps the 32 newest terminal
+operations), the same id and request (same graph, branch, request and
+principal) returns the existing record; an evicted id is refused as expired.
+The same id with another request is a `ConflictError`, and another active
+operation a `TooManyRequestsError` with `retryAfter`. After a lost response,
+look the id up with `get` instead of submitting again. `lookup: 'unknown'`
+does not prove the run never happened. Every reply must be a receipt for the
+id; anything else is an `ApiContractError`. `wait` only calls the lookup and
+rejects on its first failure, and retrying a lookup is always safe, a 500
+`outcome_unknown` included (a lookup can settle a publication in doubt).
+`cancel` is best effort: it stops an `accepted` or `running` run at its next
+safe boundary, the run may still end `succeeded` (with a late-cancellation
+`reason`, or with none when the cancel lands as the run finishes on server
+0.16.0), and a `publishing` run is returned unchanged. Only `cancelled` means
+it stopped. A `succeeded` run can
 still have `deferred` or `failed` datasets, and an `optimized` one can carry
 `reason: 'index_failed'`. The record type follows the 0.16 server; the spec
 leaves it open, so read unknown fields from the object.

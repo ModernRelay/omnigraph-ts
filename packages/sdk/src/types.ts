@@ -268,13 +268,14 @@ export type OperationState =
 
 /** What an optimize run was asked to do; the request digest covers it. */
 export interface OperationRequest {
-  kind: 'optimize' | (string & {});
+  /** 0.16 records one kind. */
+  kind: 'optimize';
   datasets?: string[];
   maxGateHoldMs?: number;
 }
 
 /** One dataset's outcome, as the engine reported it. */
-export interface OperationTableOutcome {
+export interface OperationDatasetOutcome {
   /** The dataset's type key, `node:<Type>` or `edge:<Type>`. */
   typeKey: string;
   /** `optimized`, `unchanged`, `deferred` or `failed`. */
@@ -295,11 +296,11 @@ export interface OperationTailOutcome {
 }
 
 export interface OperationOutcome {
-  kind: 'optimize' | (string & {});
+  kind: 'optimize';
   /** The resume position the server supplied for a full-catalog run. */
   startAt?: string;
   /** At most 1,024 datasets, in the run's visit order. */
-  datasets?: OperationTableOutcome[];
+  datasets?: OperationDatasetOutcome[];
   /** The datasets beyond the listed ones, counted by `outcome` or `outcome:reason` (keys verbatim). */
   moreDatasets?: Record<string, number>;
   resumeAt?: string;

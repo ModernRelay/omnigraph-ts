@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { OperationDatasetOutcome, OperationOutcome, OperationRequest } from '../src';
 import Omnigraph, {
   ConflictError,
   isTerminal,
@@ -198,5 +199,17 @@ describe('operation receipts', () => {
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await expect(og.operations.get(ID)).rejects.toMatchObject({ status: 500, code: 'outcome_unknown', outcomeUnknown: true });
     await expect(og.operations.wait(ID)).rejects.toMatchObject({ outcomeUnknown: true });
+  });
+});
+
+describe('operation record types', () => {
+  it('admit only the kind 0.16 records and name outcomes by dataset', () => {
+    const request: OperationRequest = { kind: 'optimize' };
+    // @ts-expect-error 0.16 records only optimize
+    const other: OperationRequest = { kind: 'compact' };
+    // @ts-expect-error 0.16 records only optimize
+    const outcome: OperationOutcome = { kind: 'compact' };
+    const dataset: OperationDatasetOutcome = { typeKey: 'node:Person', outcome: 'optimized', fragmentsRemoved: 0, fragmentsAdded: 0, durationMs: 1 };
+    expect([request.kind, other.kind, outcome.kind, dataset.typeKey]).toHaveLength(4);
   });
 });

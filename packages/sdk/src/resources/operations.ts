@@ -80,9 +80,12 @@ export class OperationsResource {
   /**
    * Submit a recorded `optimize` run on `main`. Resolves with the record once
    * it is durably accepted (HTTP 202, `inProgress` or a non-terminal state)
-   * or terminal (HTTP 200). Submitting the same id with the same request
-   * returns the existing record without running again; the same id with a
-   * different request is a `ConflictError`, and another active operation a
+   * or terminal (HTTP 200). While the record still holds the id, the same
+   * id with the same request (same graph lifetime, branch, request and
+   * principal: the request digest) returns that record without running
+   * again; once the id is evicted (the record keeps the 32 newest terminal
+   * operations) it is refused as expired. The same id with a different
+   * request is a `ConflictError`, and another active operation a
    * `TooManyRequestsError` with `retryAfter`.
    */
   async optimize(
@@ -129,9 +132,14 @@ export class OperationsResource {
   }
 
   /**
-   * Ask an operation to stop at its next safe boundary. A terminal or unknown
-   * operation is returned unchanged; a `publishing` one finishes its
-   * publication and its record says the cancellation arrived late.
+   * Ask an operation to stop at its next safe boundary. Cancellation is best
+   * effort: a terminal, unknown or `publishing` operation is returned
+   * unchanged and no cancellation is requested for it. An `accepted` or
+   * `running` one is asked to stop; it ends `cancelled`, or `succeeded`,
+   * usually with a `reason` saying the cancellation arrived late.
+   * omnigraph-server 0.16.0 gives no reason when the cancel lands as the run
+   * finishes, so read the terminal record (`wait`) to know whether it was
+   * cancelled.
    */
   async cancel(
     operationId: string,
@@ -174,8 +182,11 @@ export class OperationsResource {
   /**
    * Look the operation up every `intervalMs` until its record is terminal or
    * the lookup answers `unknown`, and return that answer. Only the read route
-   * is called; a failed lookup rejects at once and is never retried. Bound
-   * the wait with `signal` (for example `AbortSignal.timeout(...)`).
+   * is called; a failed lookup rejects at once and is never retried, though
+   * retrying a lookup is always safe, `outcome_unknown` included. Bound the
+   * wait with `signal` (for example `AbortSignal.timeout(...)`); stopping the
+   * wait does not stop the operation, which keeps running on the server (use
+   * `cancel`).
    */
   async wait(
     operationId: string,

@@ -143,7 +143,7 @@ export type {
   Operation,
   OperationRequest,
   OperationOutcome,
-  OperationTableOutcome,
+  OperationDatasetOutcome,
   OperationTailOutcome,
   OperationResult,
   // Utility
