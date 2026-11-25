@@ -45,7 +45,7 @@ rules:
   - id: admins
     allow:
       actors: { group: admins }
-      actions: [read, export, change, schema_apply, branch_create, branch_delete, branch_merge, commit_publish, commit_drop, invoke_query]
+      actions: [read, export, change, schema_apply, branch_create, branch_delete, branch_merge, commit_publish, commit_drop, invoke_query, maintain]
   - id: readers
     allow:
       actors: { group: readers }
@@ -91,7 +91,12 @@ const baseUrl = `http://127.0.0.1:${address.port}`;
 await new Promise<void>((resolve, reject) => socket.close((error) => error ? reject(error) : resolve()));
 const log = openSync(join(dir, 'server.log'), 'a');
 const server = spawn(serverBin, ['--cluster', target, '--bind', `127.0.0.1:${address.port}`], {
-  env: { ...env, OMNIGRAPH_SERVER_BEARER_TOKENS_JSON: JSON.stringify({ default: 'ci-token', reader: 'reader-token' }) },
+  env: {
+    ...env,
+    OMNIGRAPH_SERVER_BEARER_TOKENS_JSON: JSON.stringify({ default: 'ci-token', reader: 'reader-token' }),
+    // Recorded operations (omnigraph-server 0.16) are off by default.
+    OMNIGRAPH_OPERATION_ROUTES: 'true',
+  },
   stdio: ['ignore', log, log],
 });
 let passed = false;

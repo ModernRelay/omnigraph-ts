@@ -21,6 +21,10 @@ import Omnigraph, {
   UnauthorizedError,
   RankOrder,
   SearchFunction,
+  OperationLookup,
+  OperationState,
+  isTerminal,
+  newOperationId,
   type ChangeBaselineRecord,
   type EntityChange,
 } from '../src';
@@ -638,6 +642,64 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(cleared.kind).toBe('null');
       expect(cleared.commit).not.toBeNull();
       expect((await og.blobs.clear(selector)).commit).toBeNull();
+    });
+  });
+
+  describe('0.16 recorded operations and reads', () => {
+    it('access reports the maintain action', async () => {
+      const access = await og.access();
+      expect(access.graphWide).toContain('maintain');
+      expect(access.clientId).toBeUndefined();
+    });
+
+    it('optimize runs to a terminal record that a lookup and a resubmission return', async () => {
+      const operationId = newOperationId();
+      const submitted = await og.operations.optimize({ operationId, maxGateHoldMs: 30_000 });
+      expect(submitted.lookup).toBe(OperationLookup.FOUND);
+      expect(submitted.operation).toMatchObject({ operationId, graph: GRAPH_ID, settlementBranch: 'main', request: { kind: 'optimize', maxGateHoldMs: 30_000 } });
+      const done = await og.operations.wait(operationId, { intervalMs: 100, signal: AbortSignal.timeout(60_000) });
+      expect(done.operation?.state).toBe(OperationState.SUCCEEDED);
+      expect(isTerminal(done.operation!.state)).toBe(true);
+      expect(done.inProgress).toBe(false);
+      for (const dataset of done.operation!.outcome.datasets ?? []) {
+        expect(dataset.typeKey).toMatch(/^(node|edge):/);
+        expect(['optimized', 'unchanged', 'deferred', 'failed']).toContain(dataset.outcome);
+      }
+      // The same id and request answers the existing record; nothing reruns.
+      const again = await og.operations.optimize({ operationId, maxGateHoldMs: 30_000 });
+      expect(again.operation).toEqual(done.operation);
+      // Cancelling a terminal operation returns it unchanged.
+      expect((await og.operations.cancel(operationId)).operation).toEqual(done.operation);
+      // The same id with another request is refused before any effect.
+      await expect(og.operations.optimize({ operationId, maxGateHoldMs: 1_000 })).rejects.toMatchObject({
+        name: 'ConflictError', status: 409, outcomeUnknown: false,
+      });
+    });
+
+    it('an id the record does not hold answers unknown, and a malformed id is refused', async () => {
+      const unknown = await og.operations.get(newOperationId());
+      expect(unknown).toMatchObject({ lookup: OperationLookup.UNKNOWN, inProgress: false });
+      expect(unknown.operation ?? null).toBeNull();
+      expect((await og.operations.wait(newOperationId())).lookup).toBe('unknown');
+      await expect(og.operations.optimize({ operationId: 'not-a-ulid' })).rejects.toBeInstanceOf(BadRequestError);
+    });
+
+    it('a reader without maintain is refused before any effect', async () => {
+      const reader = new Omnigraph({ baseUrl: BASE_URL, token: 'reader-token', graphId: GRAPH_ID });
+      await expect(reader.operations.optimize({ operationId: newOperationId() })).rejects.toMatchObject({
+        name: 'ForbiddenError', outcomeUnknown: false,
+      });
+    });
+
+    it('a dry-run merge returns its would-be outcome and writes nothing', async () => {
+      const source = `e2e-dry-${Date.now()}`;
+      branchesToCleanup.push(source);
+      await og.branches.create({ name: source, from: 'main' });
+      await og.mutate({ query: FIXTURE_QUERIES, name: 'add_person', params: { name: 'dry-run-person', age: 3 }, branch: source });
+      const before = await findPerson('main', 'dry-run-person');
+      const dry = await og.branches.merge({ source, dryRun: true });
+      expect(dry).toMatchObject({ dryRun: true, commit: null, outcome: BranchMergeOutcome.FAST_FORWARD });
+      expect(await findPerson('main', 'dry-run-person')).toEqual(before);
     });
   });
 
