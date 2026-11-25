@@ -661,9 +661,12 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(done.operation?.state).toBe(OperationState.SUCCEEDED);
       expect(isTerminal(done.operation!.state)).toBe(true);
       expect(done.inProgress).toBe(false);
-      for (const dataset of done.operation!.outcome.datasets ?? []) {
-        expect(dataset.typeKey).toMatch(/^(node|edge):/);
+      // A full run reports every dataset of the fixture, under `datasets`.
+      const keys = (done.operation!.outcome.datasets ?? []).map((d) => d.typeKey);
+      expect(keys).toEqual(expect.arrayContaining(['node:Person', 'node:Company', 'edge:Knows', 'edge:WorksAt']));
+      for (const dataset of done.operation!.outcome.datasets!) {
         expect(['optimized', 'unchanged', 'deferred', 'failed']).toContain(dataset.outcome);
+        expect(dataset.durationMs).toBeGreaterThanOrEqual(0);
       }
       // The same id and request answers the existing record; nothing reruns.
       const again = await og.operations.optimize({ operationId, maxGateHoldMs: 30_000 });
@@ -674,6 +677,48 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       await expect(og.operations.optimize({ operationId, maxGateHoldMs: 1_000 })).rejects.toMatchObject({
         name: 'ConflictError', status: 409, outcomeUnknown: false,
       });
+    });
+
+    it('a run limited to one dataset reports exactly that dataset', async () => {
+      const operationId = newOperationId();
+      await og.operations.optimize({ operationId, datasets: ['node:Person'] });
+      const done = await og.operations.wait(operationId, { intervalMs: 50, signal: AbortSignal.timeout(60_000) });
+      expect(done.operation?.request).toEqual({ kind: 'optimize', datasets: ['node:Person'] });
+      expect(done.operation?.outcome.datasets?.map((d) => d.typeKey)).toEqual(['node:Person']);
+    });
+
+    it('cancelling an active run ends it cancelled, or succeeded with a late-cancellation reason', async () => {
+      // A fixture run takes milliseconds, so cancel concurrently with the
+      // submission: the first cancel that finds the record meets it accepted
+      // or running unless the run already ended. Retry until one meets an
+      // active run, then check the terminal record.
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const operationId = newOperationId();
+        const submit = og.operations.optimize({ operationId });
+        let cancel = await og.operations.cancel(operationId);
+        while (cancel.lookup !== 'found') cancel = await og.operations.cancel(operationId);
+        await submit;
+        if (isTerminal(cancel.operation!.state)) continue;
+        const done = await og.operations.wait(operationId, { intervalMs: 20, signal: AbortSignal.timeout(60_000) });
+        const op = done.operation!;
+        if (cancel.operation!.state === 'publishing') {
+          // No cancellation is requested once publishing; it finishes.
+          expect(op.state).toBe(OperationState.SUCCEEDED);
+        } else if (op.state === OperationState.CANCELLED) {
+          expect(op.publishedCommit).toBeUndefined();
+          expect(op.reason).toMatch(/cancelled by/);
+        } else {
+          // omnigraph 0.16.0 settles a run's cancellation when it builds the
+          // run's report, but keeps the record running until it writes the
+          // terminal record; a cancel in that window is answered 202 and the
+          // run ends succeeded with no reason. A reason, when present, says
+          // the cancellation arrived late.
+          expect(op.state).toBe(OperationState.SUCCEEDED);
+          if (op.reason !== undefined) expect(op.reason).toMatch(/a cancellation arrived after/);
+        }
+        return;
+      }
+      throw new Error('no cancel met an active run in 50 attempts');
     });
 
     it('an id the record does not hold answers unknown, and a malformed id is refused', async () => {
