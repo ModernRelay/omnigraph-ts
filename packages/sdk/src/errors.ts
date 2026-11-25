@@ -49,6 +49,12 @@ export abstract class OmnigraphError extends Error {
 export class BadRequestError extends OmnigraphError {}
 export class UnauthorizedError extends OmnigraphError {}
 export class ForbiddenError extends OmnigraphError {}
+/**
+ * A valid OIDC access token whose subject the server admits no principal for
+ * (403 `not_admitted`). Signing in again issues a token for the same subject
+ * and cannot help; the server's operator must admit the identity.
+ */
+export class NotAdmittedError extends ForbiddenError {}
 export class NotFoundError extends OmnigraphError {}
 export class MethodNotAllowedError extends OmnigraphError {}
 export class RequestTimeoutError extends OmnigraphError {}
@@ -81,6 +87,19 @@ export class ConflictError extends OmnigraphError {
       (this.body as ErrorOutput | undefined)?.fullTextIndexRebuildRequired ??
       undefined
     );
+  }
+}
+
+/**
+ * A branch's writer epoch refused a publish or a claim (409 `writer_fenced`):
+ * another process claimed the branch, so this write was fenced. Nothing was
+ * written. `writerFenced` holds the epochs: `current` is the branch's, `held`
+ * the serving process's (absent when it holds none), `read` the epoch a
+ * refused claim read.
+ */
+export class WriterFencedError extends ConflictError {
+  get writerFenced() {
+    return (this.body as ErrorOutput | undefined)?.writerFenced ?? undefined;
   }
 }
 
@@ -143,6 +162,7 @@ const codeToClass: Record<
   graph_unavailable: GraphUnavailableError,
   unauthorized: UnauthorizedError,
   forbidden: ForbiddenError,
+  not_admitted: NotAdmittedError,
   not_found: NotFoundError,
   method_not_allowed: MethodNotAllowedError,
   conflict: ConflictError,
@@ -157,6 +177,7 @@ const codeToClass: Record<
   request_timeout: RequestTimeoutError,
   branch_start_refusal: ConflictError,
   unattached_cannot_publish: ConflictError,
+  writer_fenced: WriterFencedError,
   payload_too_large: PayloadTooLargeError,
   unsupported_media_type: UnsupportedMediaTypeError,
   range_not_satisfiable: RangeNotSatisfiableError,
@@ -198,18 +219,20 @@ export function fromResponse(args: {
   const body = args.body as ErrorOutput | undefined;
   const code = body?.code ?? null;
   const message = body?.error ?? `HTTP ${args.status}`;
+  const byCode =
+    code && Object.hasOwn(codeToClass, code) ? codeToClass[code] : undefined;
+  const byStatus = statusToClass[args.status];
   // Status distinguishes broad error codes: e.g. 413/416 use bad_request,
-  // while Blob 412 uses conflict. Availability and contract codes add detail.
+  // while Blob 412 uses conflict. A code whose class refines the status's
+  // class (graph_unavailable, not_admitted, writer_fenced) adds detail; the contract code
+  // always names a contract failure.
   const Ctor =
-    (code === 'graph_unavailable'
-      ? GraphUnavailableError
-      : code === 'api_contract_mismatch'
-        ? ApiContractError
-        : undefined) ??
-    statusToClass[args.status] ??
-    (code && Object.hasOwn(codeToClass, code)
-      ? codeToClass[code]
+    (code === 'api_contract_mismatch' ? ApiContractError : undefined) ??
+    (byCode && byStatus && byCode.prototype instanceof byStatus
+      ? byCode
       : undefined) ??
+    byStatus ??
+    byCode ??
     InternalServerError;
   return new Ctor({
     status: args.status,

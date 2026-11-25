@@ -18,6 +18,43 @@ describe('branches resource', () => {
     expect(calls[0]?.url).toBe('http://x/graphs/g/branches');
   });
 
+  it('listDetailed sends detailed=true and camelCases each branch detail', async () => {
+    const head = {
+      graph_commit_id: 'c2', graph_manifest_version: 4, graph_branch: 'feature',
+      parent_commit_id: 'c1', merged_parent_commit_id: null, actor_id: 'act-a',
+      created_at: 1714000000000000, kind: 'published', published: true,
+    };
+    const { fetch, calls } = stubFetch({
+      body: {
+        branches: ['feature', 'main', 'secret'],
+        details: [
+          { name: 'feature', head, from: 'main', from_commit_id: 'c1', created_at: 1713000000000000, updated_at: 1714000000000000 },
+          { name: 'main', head: { ...head, graph_branch: null }, updated_at: 1714000000000000 },
+        ],
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const result = await og.branches.listDetailed();
+    expect(calls[0]?.method).toBe('GET');
+    expect(calls[0]?.url).toBe('http://x/graphs/g/branches?detailed=true');
+    // A branch the caller may not read is listed without details.
+    expect(result.branches).toEqual(['feature', 'main', 'secret']);
+    expect(result.details.map((d) => d.name)).toEqual(['feature', 'main']);
+    expect(result.details[0]).toMatchObject({
+      from: 'main', fromCommitId: 'c1', createdAt: 1713000000000000, updatedAt: 1714000000000000,
+      head: { graphCommitId: 'c2', graphBranch: 'feature' },
+    });
+    expect(result.details[1]?.from).toBeUndefined();
+  });
+
+  it('listDetailed refuses a listing without details as a contract failure', async () => {
+    const { fetch } = stubFetch({ body: { branches: ['main'] } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.branches.listDetailed()).rejects.toMatchObject({
+      name: 'ApiContractError', outcomeUnknown: false,
+    });
+  });
+
   it('create sends POST with snake_case body', async () => {
     const { fetch, calls } = stubFetch({
       body: {
@@ -221,4 +258,76 @@ it('accepts the detached u64 version in a complete asCommit receipt without trea
   } } });
   const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
   expect((await og.branches.merge({ source: 'topic', asCommit: true })).commit!.graphCommitId).toBe('proposal');
+});
+
+describe('dry-run merge classification', () => {
+  const contract = { 'Omnigraph-Http-Api': '0.14' };
+  const losing = (body?: string) => {
+    let posts = 0;
+    const fetch = async (_input: unknown, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: contract });
+      posts++;
+      if (body !== undefined) return new Response(body, { headers: { ...contract, 'content-type': 'application/json' } });
+      throw new TypeError('socket hang up');
+    };
+    return { og: new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: fetch as typeof globalThis.fetch }), posts: () => posts };
+  };
+
+  it('a dry run whose answer is lost has no effects; a merge stays uncertain', async () => {
+    const dry = losing();
+    await expect(dry.og.branches.merge({ source: 'topic', dryRun: true })).rejects.toMatchObject({
+      name: 'NetworkError', requestDispatched: true, outcomeUnknown: false,
+    });
+    expect(dry.posts()).toBe(1);
+    const real = losing();
+    await expect(real.og.branches.merge({ source: 'topic' })).rejects.toMatchObject({ outcomeUnknown: true });
+  });
+
+  it('a dry run whose body is interrupted has no effects', async () => {
+    await expect(losing('{"source":"topic",').og.branches.merge({ source: 'topic', dryRun: true }))
+      .rejects.toMatchObject({ name: 'NetworkError', outcomeUnknown: false });
+  });
+
+  it('a dry run with a malformed error body has no effects', async () => {
+    const { fetch } = stubFetch({ status: 500, body: 'not json' });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.branches.merge({ source: 'topic', dryRun: true })).rejects.toMatchObject({ outcomeUnknown: false });
+  });
+
+  it('a reply that contradicts the dry run leaves effects unknown', async () => {
+    const { fetch } = stubFetch({ body: {
+      source: 'topic', target: 'main', outcome: 'fast_forward', dry_run: false, commit: null,
+    } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.branches.merge({ source: 'topic', dryRun: true })).rejects.toMatchObject({
+      name: 'ApiContractError', outcomeUnknown: true,
+    });
+  });
+});
+
+describe('a merge is classified by the body it sends', () => {
+  const lostAnswer = () => {
+    const bodies: unknown[] = [];
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: async (_input, init) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: { 'Omnigraph-Http-Api': '0.14' } });
+      bodies.push(JSON.parse(String(init?.body)));
+      throw new TypeError('socket hang up');
+    } });
+    return { og, bodies };
+  };
+  class Inherited { source = 'topic'; get dryRun() { return true; } }
+
+  it.each([
+    // Codex's repro: case conversion used to send dry_run: false here.
+    ['a stray dry_run beside dryRun', { source: 'topic', dryRun: true, dry_run: false } as never, true],
+    ['an inherited dryRun getter', new Inherited() as never, true],
+    ['a stray dry_run alone', { source: 'topic', dry_run: true } as never, false],
+    ['no dryRun', { source: 'topic' }, false],
+  ])('%s: the lost-answer flag agrees with the wire body', async (_name, input, dryRun) => {
+    const { og, bodies } = lostAnswer();
+    const error = await og.branches.merge(input).catch((e: unknown) => e);
+    const sent = bodies[0] as Record<string, unknown>;
+    expect(sent).toEqual(dryRun ? { source: 'topic', target: 'main', dry_run: true } : { source: 'topic', target: 'main' });
+    expect(error).toMatchObject({ name: 'NetworkError', outcomeUnknown: sent.dry_run !== true });
+  });
 });

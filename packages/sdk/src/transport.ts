@@ -54,6 +54,24 @@ function canWrite(method: string, path: string): boolean {
   );
 }
 
+/**
+ * Whether an error response says a write may have taken effect, on any route:
+ * `outcome_unknown` always does, whatever its disposition reads (a recorded
+ * operation's lookup can leave a settlement write in doubt), and a valid
+ * disposition otherwise decides. `undefined` when the body says neither, so
+ * the route decides.
+ */
+function serverOutcomeUnknown(body: unknown): boolean | undefined {
+  if (
+    body &&
+    typeof body === 'object' &&
+    (body as Record<string, unknown>).code === ErrorCode.OUTCOME_UNKNOWN
+  )
+    return true;
+  const effects = errorEffects(body);
+  return effects === undefined ? undefined : effects !== 'none';
+}
+
 function errorEffects(body: unknown): DispositionEffects | undefined {
   if (!body || typeof body !== 'object') return undefined;
   const { error, code, disposition } = body as Record<string, unknown>;
@@ -73,6 +91,15 @@ function errorEffects(body: unknown): DispositionEffects | undefined {
   )
     return undefined;
   return effects as DispositionEffects;
+}
+
+/**
+ * A `bigint` travels as its decimal text: JSON numbers lose integers beyond
+ * 2^53 in JavaScript, and the server binds a `U64` parameter above
+ * `i64::MAX` from its decimal string.
+ */
+function jsonValue(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value;
 }
 
 export interface RequestOptions {
@@ -105,6 +132,16 @@ export interface RequestOptions {
   opaqueResponseKeys?: ReadonlySet<string>;
   /** The endpoint returns an opaque JSON document, not an SDK DTO. */
   opaqueResponse?: boolean;
+  /**
+   * Whether the request reads although its route can write (a merge with
+   * `dry_run`), judged on the JSON body exactly as it is sent: the parse of
+   * the serialized bytes, never the caller's input, which case conversion and
+   * object copies can change on the way to the wire. A lost or interrupted
+   * answer to such a request has no effects. A reply that breaks the contract
+   * or contradicts the request still leaves effects unknown: only a valid
+   * reply confirms the server treated the request as a read.
+   */
+  readsWhen?: (wireBody: unknown) => boolean;
 }
 
 export class Transport {
@@ -150,7 +187,7 @@ export class Transport {
     path: string,
     opts: RequestOptions = {},
   ): Promise<T> {
-    const response = await this.send(method, path, opts);
+    const { response, writes } = await this.send(method, path, opts);
     try {
       const text = await response.text();
       if (!text) throw new Error('Missing JSON response body');
@@ -165,7 +202,7 @@ export class Transport {
           'Response body was interrupted or invalid; do not automatically repeat writes',
         request: { method, url: this.buildUrl(path, opts.query) },
         requestDispatched: true,
-        outcomeUnknown: canWrite(method, path),
+        outcomeUnknown: writes,
       });
     }
   }
@@ -175,14 +212,19 @@ export class Transport {
     path: string,
     opts: RequestOptions = {},
   ): Promise<Response> {
-    return this.send(method, path, opts);
+    return (await this.send(method, path, opts)).response;
   }
 
+  /**
+   * Send one request. `writes` says whether it may have written, from its
+   * route and the body it actually sent; every uncertainty it reports
+   * derives from that.
+   */
   private async send(
     method: string,
     path: string,
     opts: RequestOptions,
-  ): Promise<Response> {
+  ): Promise<{ response: Response; writes: boolean }> {
     if (!this.graphId && !isRootPath(path)) {
       throw new ConfigurationError({
         status: 0,
@@ -211,16 +253,23 @@ export class Transport {
     if (!headers.has('Accept'))
       headers.set('Accept', 'application/json, application/x-ndjson');
     let bodyInit: BodyInit | undefined;
+    let wireBody: unknown;
     if (opts.rawBody !== undefined) {
       bodyInit = opts.rawBody.content;
       headers.set('Content-Type', opts.rawBody.contentType);
     } else if (opts.body !== undefined) {
-      bodyInit = JSON.stringify(
+      const text = JSON.stringify(
         camelToSnake(opts.body, { opaqueKeys: opts.opaqueBodyKeys }),
+        jsonValue,
       );
+      bodyInit = text;
+      wireBody = JSON.parse(text);
       if (!headers.has('Content-Type'))
         headers.set('Content-Type', 'application/json');
     }
+    const writes =
+      canWrite(method, path) &&
+      !(wireBody !== undefined && opts.readsWhen?.(wireBody) === true);
     const init: RequestInit = {
       method,
       headers,
@@ -234,7 +283,7 @@ export class Transport {
       response = await this.fetchImpl(url, init);
     } catch (e) {
       if (
-        !canWrite(method, path) &&
+        !writes &&
         e instanceof Error &&
         e.name === 'AbortError'
       )
@@ -247,7 +296,7 @@ export class Transport {
             : 'HTTP transport failed after dispatch; reconcile writes before retrying',
         request: requestMeta,
         requestDispatched: true,
-        outcomeUnknown: canWrite(method, path),
+        outcomeUnknown: writes,
       });
     }
     if (
@@ -280,10 +329,12 @@ export class Transport {
         requestId,
         request: requestMeta,
         response,
-        outcomeUnknown: canWrite(method, path) && errorEffects(body) !== 'none',
+        outcomeUnknown:
+          serverOutcomeUnknown(body) ??
+          writes,
       });
     }
-    return response;
+    return { response, writes };
   }
 
   invalidResponse(

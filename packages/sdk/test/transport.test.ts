@@ -26,6 +26,20 @@ describe('transport URL handling', () => {
     );
   });
 
+  it('sends a bigint body value as its exact decimal string', async () => {
+    const { fetch, calls } = stubFetch({ body: { rows: [], columns: [] } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await og.query({
+      query: 'query q($n: U64) { match { $p: P { n: $n } } return { $p.n } }',
+      params: { n: 18446744073709551615n, small: 7, list: [9007199254740993n] },
+    });
+    // The raw body text keeps every digit; a JSON number would round.
+    expect(calls[0]?.body).toContain('"n":"18446744073709551615"');
+    expect(JSON.parse(calls[0]?.body ?? '{}').params).toEqual({
+      n: '18446744073709551615', small: 7, list: ['9007199254740993'],
+    });
+  });
+
   it('omits null/undefined query params', async () => {
     const { fetch, calls } = stubFetch({ body: { commits: [] } });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
@@ -556,6 +570,9 @@ it.each([
   [503, 'recovery_required', 'none', 'recover', false],
   [500, 'outcome_unknown', 'unknown', 'reconcile', true],
   [412, 'actor_mismatch', 'none', 'fix', false],
+  [403, 'not_admitted', 'none', 'fix', false],
+  [409, 'writer_fenced', 'none', 'refresh', false],
+  [409, 'writer_fenced', 'partial', 'refresh', true],
 ] as const)('preserves error disposition for %s %s without inventing retries', async (status, code, effects, action, unknown) => {
   const { fetch, calls } = stubFetch({ status, body: { error: 'refused', code, disposition: { effects, action } } });
   const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
@@ -577,4 +594,45 @@ it.each([
   await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch }).commits.drop('c'))
     .rejects.toMatchObject({ requestDispatched: true, outcomeUnknown: true });
   expect(calls).toHaveLength(1);
+});
+
+describe('server-sent uncertainty on every route', () => {
+  it.each([
+    ['outcome_unknown with effects none', { error: 'resolution write in doubt', code: 'outcome_unknown', disposition: { effects: 'none', action: 'reconcile' } }, 500, true],
+    ['outcome_unknown without a disposition', { error: 'in doubt', code: 'outcome_unknown' }, 500, true],
+    ['effects unknown', { error: 'in doubt', code: 'internal', disposition: { effects: 'unknown', action: 'reconcile' } }, 500, true],
+    ['effects partial', { error: 'half', code: 'conflict', disposition: { effects: 'partial', action: 'refresh' } }, 409, true],
+    ['a certain refusal', { error: 'retry', code: 'service_unavailable', disposition: { effects: 'none', action: 'retry' } }, 503, false],
+    ['no valid body', 'gateway timeout', 500, false],
+  ] as const)('a read keeps the server\'s word: %s', async (_name, body, status, unknown) => {
+    const { fetch, calls } = stubFetch({ status, body });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.snapshot()).rejects.toMatchObject({ status, outcomeUnknown: unknown });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a write without a valid body stays uncertain; one the server calls certain does not', async () => {
+    const lost = stubFetch({ status: 502, body: 'bad gateway' });
+    await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: lost.fetch }).mutate({ query: 'q' }))
+      .rejects.toMatchObject({ outcomeUnknown: true });
+    const refused = stubFetch({ status: 409, body: { error: 'x', code: 'conflict', disposition: { effects: 'none', action: 'refresh' } } });
+    await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: refused.fetch }).mutate({ query: 'q' }))
+      .rejects.toMatchObject({ outcomeUnknown: false });
+  });
+});
+
+it('judges readsWhen on the serialized body, not the caller\'s object', async () => {
+  // dryRun and dry_run both convert to dry_run; the later key wins on the
+  // wire, so the request below is a real merge whatever dryRun says.
+  const seen: unknown[] = [];
+  const t = new Transport({ baseUrl: 'http://x', graphId: 'g', fetch: async (_input, init) => {
+    if (init?.method === 'HEAD') return new Response(null, { headers: { 'Omnigraph-Http-Api': '0.14' } });
+    throw new TypeError('socket hang up');
+  } });
+  const readsWhen = (wire: unknown) => { seen.push(wire); return (wire as { dry_run?: unknown }).dry_run === true; };
+  await expect(t.request('POST', '/branches/merge', { body: { source: 's', dryRun: true, dry_run: false }, readsWhen }))
+    .rejects.toMatchObject({ outcomeUnknown: true });
+  expect(seen).toEqual([{ source: 's', dry_run: false }]);
+  await expect(t.request('POST', '/branches/merge', { body: { source: 's', dryRun: true }, readsWhen }))
+    .rejects.toMatchObject({ outcomeUnknown: false });
 });

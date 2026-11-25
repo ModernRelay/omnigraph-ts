@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph-mcp
 
-MCP server for **OmniGraph 0.14**, using the TypeScript SDK over HTTP and stdio
+MCP server for **Omnigraph 0.16** (HTTP contract 0.14), using the TypeScript SDK over HTTP and stdio
 with MCP hosts. Requires Node.js 22 or newer.
 
 ## Configure
@@ -10,7 +10,7 @@ with MCP hosts. Requires Node.js 22 or newer.
   "mcpServers": {
     "omnigraph": {
       "command": "npx",
-      "args": ["-y", "@modernrelay/omnigraph-mcp@0.14"],
+      "args": ["-y", "@modernrelay/omnigraph-mcp@0.16"],
       "env": {
         "OMNIGRAPH_BASE_URL": "http://127.0.0.1:8080",
         "OMNIGRAPH_GRAPH_ID": "alpha",
@@ -24,7 +24,7 @@ with MCP hosts. Requires Node.js 22 or newer.
 The URL must be the server root. `OMNIGRAPH_GRAPH_ID` is required;
 `OMNIGRAPH_DEFAULT_BRANCH` defaults to `main`. A token is required when the
 server enables authentication. Upgrade clients and server together: discovery
-and every data response must advertise the exact 0.14 HTTP contract.
+and every data response must advertise the exact HTTP contract (0.14).
 
 For programmatic use, pass `{ baseUrl, graphId, token?, defaultBranch?, fetch? }`
 to `createOmnigraphMcpServer`, then connect an MCP transport.

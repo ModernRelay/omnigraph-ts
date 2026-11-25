@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "0.14.0"
+    "version": "0.16.0"
   },
   "paths": {
     "/.well-known/oauth-protected-resource": {
@@ -232,6 +232,27 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict (code `conflict`), for example a cluster control object whose stored text is corrupt: an applied policy payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "412": {
             "description": "actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to",
             "headers": {
@@ -281,7 +302,7 @@
             }
           },
           "500": {
-            "description": "Internal failure (code `internal`) while evaluating deployment access",
+            "description": "Internal failure (code `internal`) while evaluating deployment access, or a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -302,7 +323,7 @@
             }
           },
           "503": {
-            "description": "Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "description": "Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline. Also a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -555,7 +576,7 @@
             }
           },
           "409": {
-            "description": "",
+            "description": "Conflict (code `conflict`), including a cluster control object whose stored text is corrupt: a catalog payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -666,7 +687,7 @@
             }
           },
           "500": {
-            "description": "Internal failure (code `internal`), or unsettled deployment completion (code `outcome_unknown`); reconcile the original deployment identity before submitting another deployment",
+            "description": "Internal failure (code `internal`), or unsettled deployment completion (code `outcome_unknown`); reconcile the original deployment identity before submitting another deployment. Also, before any effect, a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -687,7 +708,7 @@
             }
           },
           "503": {
-            "description": "; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "description": "Nothing changed: before any effect, a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -898,6 +919,27 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict (code `conflict`), for example a cluster control object whose stored text is corrupt: an applied policy payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "412": {
             "description": "actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to",
             "headers": {
@@ -946,8 +988,29 @@
               }
             }
           },
+          "500": {
+            "description": "Internal failure (code `internal`), or a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "description": "Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline. Also a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -1181,7 +1244,7 @@
             }
           },
           "409": {
-            "description": "",
+            "description": "Conflict (code `conflict`), including a cluster control object whose stored text is corrupt: a catalog payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -1292,7 +1355,7 @@
             }
           },
           "500": {
-            "description": "Internal failure (code `internal`) while evaluating deployment access or planning",
+            "description": "Internal failure (code `internal`) while evaluating deployment access or planning, or a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -1313,7 +1376,7 @@
             }
           },
           "503": {
-            "description": "graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "description": "Nothing was planned: a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -3937,7 +4000,7 @@
           "branches"
         ],
         "summary": "List all branches.",
-        "description": "Returns branch names sorted by name in byte order. Read-only. The GQ statement\n`branch list` on `POST /query` runs the same body.",
+        "description": "Returns branch names sorted by name in byte order. Read-only. The GQ statement\n`branch list` on `POST /query` runs the same body.\n\n`detailed=true` adds `details`: for each branch the caller may `read`, its\nhead commit, the branch and commit it started from, when it was created,\nand when it last moved. Each listed branch costs a read of its latest\nversion, and of the version it was created from once it has written a\ncommit; no commit history is read.",
         "operationId": "branchList",
         "parameters": [
           {
@@ -3947,6 +4010,15 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "detailed",
+            "in": "query",
+            "description": "`true` adds `details`: each branch's head, the branch and commit it\nstarted from, when it was created, and when it last moved. Defaults\nto `false`. Reads each listed branch's latest version, and the version\nit was created from once it has written a commit, never its commit\nhistory; the names alone read neither.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -3994,7 +4066,7 @@
             }
           },
           "400": {
-            "description": "api_contract_mismatch when the required API contract header is missing, duplicated or unsupported",
+            "description": "Invalid `detailed`; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported",
             "headers": {
               "Omnigraph-Http-Api": {
                 "schema": {
@@ -10713,6 +10785,1027 @@
         ]
       }
     },
+    "/graphs/{graph_id}/operations/optimize": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Submit a recorded optimize run on the graph's main branch.",
+        "operationId": "startOptimize",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to. The `og_` prefix is reserved for system graphs. `og_catalog` is the built-in, storage-free catalogue: it serves only POST /query and GET /schema with their ordinary response bodies. Its query refuses `branch` and `snapshot`; every other route under /graphs/og_catalog returns 405 `method_not_allowed` before effects.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Omnigraph-Http-Api",
+            "in": "header",
+            "description": "exactly one Omnigraph-Http-Api header with value 0.14 is required",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0.14"
+              ]
+            }
+          },
+          {
+            "name": "Omnigraph-If-Actor",
+            "in": "header",
+            "description": "The actor the caller expects its credential to resolve to. A mismatch is refused with 412 actor_mismatch before graph lookup or effects; a match changes nothing.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartOptimizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The operation is terminal",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOutput"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Durably accepted, or still running; look it up by its id until it is terminal",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A non-canonical operation_id, or a max_gate_hold_ms above this server's ceiling; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized when no bearer credential is presented or the server refuses it",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge (RFC 6750 §3). It carries error=\"invalid_token\" when a presented bearer credential was refused, and resource_metadata naming the OAuth protected-resource metadata when the server has an OIDC resource identity."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found when no graph `graph_id` is served or the caller may not see it, or when no route serves the path",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "method_not_allowed when the path is served, but not with this method",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The methods the path serves."
+              },
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "request_timeout when the request body deadline passes before operation admission",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict (code `conflict`): the same id with a different request (`[operation_request_mismatch]`), an id at or before the eviction mark (`[operation_id_expired]`), an outstanding deployment, four unresolved publications, a record from another ledger (`[operation_record_foreign]`), or a state file or operation record whose stored text is corrupt (`[invalid_state_json]`, `[operation_record_invalid]`; bytes that are not text answer 500)",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large when the request body exceeds its route limit before operation admission",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Another operation is active in the maintenance scope, or that scope's admission gate is held across an acceptance; honor `Retry-After`; too_many_requests when server observer, ingress or operation admission capacity is exhausted; honor Retry-After",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Minimum delay before a caller-bounded retry of this refused request; not a scheduled server retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code `internal`), including a storage read of the cluster state, its lock or the operation record that fails the same way on every read (nothing was accepted), or a record write with no definite answer (code `outcome_unknown`); look the operation up by its id",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The routes are not enabled, admission is closed, a storage read of the cluster state, its lock or the operation record failed temporarily or for an unknown reason, or the operation record write was refused; nothing was accepted (a refusal naming an earlier request of unknown outcome clears once a read sees the record change, or, for an unconditional write or a create whose record never appeared, when the server restarts); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Minimum delay before a caller-bounded retry of this refused request; not a scheduled server retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/operations/{operation_id}": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Look a recorded operation up by its original id, whatever its kind.",
+        "operationId": "getOperation",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to. The `og_` prefix is reserved for system graphs. `og_catalog` is the built-in, storage-free catalogue: it serves only POST /query and GET /schema with their ordinary response bodies. Its query refuses `branch` and `snapshot`; every other route under /graphs/og_catalog returns 405 `method_not_allowed` before effects.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "description": "The id the caller submitted",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Omnigraph-Http-Api",
+            "in": "header",
+            "description": "exactly one Omnigraph-Http-Api header with value 0.14 is required",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0.14"
+              ]
+            }
+          },
+          {
+            "name": "Omnigraph-If-Actor",
+            "in": "header",
+            "description": "The actor the caller expects its credential to resolve to. A mismatch is refused with 412 actor_mismatch before graph lookup or effects; a match changes nothing.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The operation's record, or `lookup: unknown`",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "api_contract_mismatch when the required API contract header is missing, duplicated or unsupported",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized when no bearer credential is presented or the server refuses it",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge (RFC 6750 §3). It carries error=\"invalid_token\" when a presented bearer credential was refused, and resource_metadata naming the OAuth protected-resource metadata when the server has an OIDC resource identity."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found when no graph `graph_id` is served or the caller may not see it, or when no route serves the path",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "method_not_allowed when the path is served, but not with this method",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The methods the path serves."
+              },
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict (code `conflict`): a record from another ledger at this root, the record changed during resolution, or a state file or operation record whose stored text is corrupt (`[invalid_state_json]`, `[operation_record_invalid]`; bytes that are not text answer 500)",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_requests when server observer, ingress or operation admission capacity is exhausted; honor Retry-After",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Minimum delay before a caller-bounded retry of this refused request; not a scheduled server retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code `internal`), including a storage read of the cluster state, its lock or the operation record that fails the same way on every read (nothing changed), or a resolution write with no definite answer (code `outcome_unknown`); retry the lookup",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The routes are not enabled, a storage read of the cluster state, its lock or the operation record failed temporarily or for an unknown reason, or a record write was refused; nothing changed, retry; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Minimum delay before a caller-bounded retry of this refused request; not a scheduled server retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/graphs/{graph_id}/operations/{operation_id}/cancel": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Ask a recorded operation to stop at its next safe boundary.",
+        "operationId": "cancelOperation",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "description": "Graph id to route the request to. The `og_` prefix is reserved for system graphs. `og_catalog` is the built-in, storage-free catalogue: it serves only POST /query and GET /schema with their ordinary response bodies. Its query refuses `branch` and `snapshot`; every other route under /graphs/og_catalog returns 405 `method_not_allowed` before effects.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "description": "The id the caller submitted",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Omnigraph-Http-Api",
+            "in": "header",
+            "description": "exactly one Omnigraph-Http-Api header with value 0.14 is required",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0.14"
+              ]
+            }
+          },
+          {
+            "name": "Omnigraph-If-Actor",
+            "in": "header",
+            "description": "The actor the caller expects its credential to resolve to. A mismatch is refused with 412 actor_mismatch before graph lookup or effects; a match changes nothing.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The operation is terminal, unchanged; or `lookup: unknown`",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOutput"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Cancellation requested; a `publishing` operation is unchanged",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "api_contract_mismatch when the required API contract header is missing, duplicated or unsupported",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized when no bearer credential is presented or the server refuses it",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bearer challenge (RFC 6750 §3). It carries error=\"invalid_token\" when a presented bearer credential was refused, and resource_metadata naming the OAuth protected-resource metadata when the server has an OIDC resource identity."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found when no graph `graph_id` is served or the caller may not see it, or when no route serves the path",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "method_not_allowed when the path is served, but not with this method",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The methods the path serves."
+              },
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict (code `conflict`): a record from another ledger at this root, the record changed during resolution, or a state file or operation record whose stored text is corrupt (`[invalid_state_json]`, `[operation_record_invalid]`; bytes that are not text answer 500)",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "too_many_requests when server observer, ingress or operation admission capacity is exhausted; honor Retry-After",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Minimum delay before a caller-bounded retry of this refused request; not a scheduled server retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure (code `internal`), including a storage read of the cluster state, its lock or the operation record that fails the same way on every read (nothing changed), or a resolution write with no definite answer (code `outcome_unknown`); look the operation up by its id",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The routes are not enabled, a storage read of the cluster state, its lock or the operation record failed temporarily or for an unknown reason, or a record write was refused; nothing changed, retry; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying",
+            "headers": {
+              "Omnigraph-Http-Api": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.14"
+                  ]
+                },
+                "description": "Supported OmniGraph HTTP API contract."
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Minimum delay before a caller-bounded retry of this refused request; not a scheduled server retry."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOutput"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/graphs/{graph_id}/queries": {
       "get": {
         "tags": [
@@ -12884,7 +13977,8 @@
           "branch_merge",
           "commit_publish",
           "commit_drop",
-          "invoke_query"
+          "invoke_query",
+          "maintain"
         ]
       },
       "AccessOutput": {
@@ -12916,6 +14010,13 @@
               "null"
             ],
             "description": "The branch asked about, when one was."
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The OAuth client the credential was issued to, when it is a verified\nOIDC access token. The actor stays the person's principal across\nclients. Opaque text the client chose: render it escaped."
           },
           "graph_id": {
             "type": "string"
@@ -13144,6 +14245,53 @@
           }
         }
       },
+      "BranchDetailOutput": {
+        "type": "object",
+        "description": "One live branch as `GET /branches?detailed=true` reports it. `from` and\n`from_commit_id` say where the branch started, as its `POST /branches`\nreceipt did. A branch deleted and created again under the same name is a\nnew lifetime: its start and creation time are the later creation's. The\noptional fields are absent on `main`.",
+        "required": [
+          "name",
+          "head",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the branch was created, as Unix epoch microseconds recorded to\nthe second.",
+            "example": 1714000000000000
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch this one started from, as that branch was named then; it\nmay since have been deleted or recreated."
+          },
+          "from_commit_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The commit the branch started at. A later merge does not move it;\n`GET /branches/merge-base` answers where two branches last met."
+          },
+          "head": {
+            "$ref": "#/components/schemas/CommitOutput",
+            "description": "The commit a read of the branch sees: its newest commit, or the commit\nit started at while it has written none."
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the head last moved, as Unix epoch microseconds: the time of the\nbranch's newest commit, or `created_at` while it has written none.",
+            "example": 1714000000000000
+          }
+        }
+      },
       "BranchListOutput": {
         "type": "object",
         "required": [
@@ -13154,7 +14302,18 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Every live branch, sorted by name in byte order."
+          },
+          "details": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/BranchDetailOutput"
+            },
+            "description": "Present only with `detailed=true`: one entry per branch the caller\nmay `read`, in the order of `branches`. A branch the caller may not\nread is listed in `branches` alone."
           }
         }
       },
@@ -14241,10 +15400,11 @@
       },
       "ErrorCode": {
         "type": "string",
-        "description": "The registry of error codes. A server sends each code under the HTTP statuses named with it; a code without one never appears in an HTTP response.\n\n- `unauthorized` (401): The request carries no credential the server accepts: a bearer token is missing, unknown or expired. Supply one the server is configured to verify.\n- `forbidden` (403): The credential's actor may not do this: policy denies the action, or the action needs a policy permit the server has not been given.\n- `bad_request` (400): The request is malformed or invalid: a body, query string, path parameter or header that does not decode, a query the compiler refuses (see `diagnostic`), or a value refused before any effect.\n- `api_contract_mismatch` (400): The request lacks exactly one `Omnigraph-Http-Api` header naming the contract this server speaks. Authentication and this check precede graph access and effects.\n- `actor_mismatch` (412): The request's `Omnigraph-If-Actor` header names another actor than its credential resolves to. Nothing ran.\n- `outcome_unknown` (500): A write whose completion the server could not settle: it may or may not have published. Read the target before writing again; never replay the write blindly. An MCP write call that was cancelled or passed its deadline answers it too.\n- `precondition_failed` (412): A request precondition no longer holds: the branch head moved past `Omnigraph-If-Graph-Commit` (see `precondition_failure`), or a Blob's `If-Match` names a value the cell no longer holds (a write's `blob_precondition_failure` names the current one). Nothing was written.\n- `recovery_required` (503): An overlapping durable recovery intent must be resolved first; see `recovery_required`.\n- `external_blob_source` (424): An admitted external Blob source could not be probed or read; see `external_blob_source`.\n- `change_feed_gap` (410): Retained history can no longer reconstruct a change continuation; see `change_feed_gap`. Resume from a new baseline.\n- `not_found` (404): The graph, branch, commit, query, entity or route the request names does not exist, or the caller may not learn that it does.\n- `method_not_allowed` (405): The request path is served, but not with the request's method.\n- `request_timeout` (408): The request body did not arrive before its deadline; nothing was admitted.\n- `conflict` (409): The request conflicts with the graph's current state: a concurrent change, an existing id, a merge conflict, an index that must be built first, or a commit that cannot be diffed. The details say which.\n- `branch_start_refusal` (409, 410): `branch create` could not start the branch at the commit `from_commit` named, and nothing was created; see `branch_start_refusal`, whose `not_retained` reason answers 410.\n- `unattached_cannot_publish` (409): The commit is an unattached snapshot, a kind that never publishes. Distinct from `conflict`, the authority-moved refusal of a publishable proposal.\n- `payload_too_large` (413): The request body, or the work it asks for, exceeds a bounded limit; `resource_limit` names the limit when it is the operation's. Split or reduce the request.\n- `unsupported_media_type` (415): The request body's content type is not one the route accepts.\n- `range_not_satisfiable` (416): The requested Blob byte range lies outside the value; see `blob_range`.\n- `too_many_requests` (429): Admission capacity is exhausted: an actor's, the server's, or the MCP endpoint's concurrent tool calls. Nothing started; retry after `Retry-After`.\n- `service_unavailable` (503): Operation admission is closed, or a deployment observation raced an owner change. Nothing started; retry after `Retry-After`, reconciling any earlier write first.\n- `graph_unavailable` (503): A known graph is not being served. The request did not start, so it may be retried once the graph is served again.\n- `internal` (500): The server failed. An error before any write took no effect; see the server log.\n- `cancelled` (no HTTP status): MCP only: the client cancelled a read tool call. A cancelled write answers `outcome_unknown`.\n- `deadline_exceeded` (no HTTP status): MCP only: a read tool call passed its deadline. A write that does answers `outcome_unknown`.\n- `result_too_large` (no HTTP status): MCP only: a tool result exceeds the result limit. Narrow the read.",
+        "description": "The registry of error codes. A server sends each code under the HTTP statuses named with it; a code without one never appears in an HTTP response.\n\n- `unauthorized` (401): The request carries no credential the server accepts: a bearer token is missing, unknown or expired. Supply one the server is configured to verify.\n- `forbidden` (403): The credential's actor may not do this: policy denies the action, or the action needs a policy permit the server has not been given.\n- `not_admitted` (403): The OIDC access token is valid, but the server admits no principal for its subject. Signing in again issues a token for the same subject and cannot help; the server's operator must admit the identity.\n- `bad_request` (400): The request is malformed or invalid: a body, query string, path parameter or header that does not decode, a query the compiler refuses (see `diagnostic`), or a value refused before any effect.\n- `api_contract_mismatch` (400): The request lacks exactly one `Omnigraph-Http-Api` header naming the contract this server speaks. Authentication and this check precede graph access and effects.\n- `actor_mismatch` (412): The request's `Omnigraph-If-Actor` header names another actor than its credential resolves to. Nothing ran.\n- `outcome_unknown` (500): A write whose completion the server could not settle: it may or may not have published. Read the target before writing again; never replay the write blindly. An MCP write call that was cancelled or passed its deadline answers it too.\n- `precondition_failed` (412): A request precondition no longer holds: the branch head moved past `Omnigraph-If-Graph-Commit` (see `precondition_failure`), or a Blob's `If-Match` names a value the cell no longer holds (a write's `blob_precondition_failure` names the current one). Nothing was written.\n- `recovery_required` (503): An overlapping durable recovery intent must be resolved first; see `recovery_required`.\n- `external_blob_source` (424): An admitted external Blob source could not be probed or read; see `external_blob_source`.\n- `change_feed_gap` (410): Retained history can no longer reconstruct a change continuation; see `change_feed_gap`. Resume from a new baseline.\n- `not_found` (404): The graph, branch, commit, query, entity or route the request names does not exist, or the caller may not learn that it does.\n- `method_not_allowed` (405): The request path is served, but not with the request's method.\n- `request_timeout` (408): The request body did not arrive before its deadline; nothing was admitted.\n- `conflict` (409): The request conflicts with the graph's current state: a concurrent change, an existing id, a merge conflict, an index that must be built first, or a commit that cannot be diffed. The details say which.\n- `branch_start_refusal` (409, 410): `branch create` could not start the branch at the commit `from_commit` named, and nothing was created; see `branch_start_refusal`, whose `not_retained` reason answers 410.\n- `unattached_cannot_publish` (409): The commit is an unattached snapshot, a kind that never publishes. Distinct from `conflict`, the authority-moved refusal of a publishable proposal.\n- `writer_fenced` (409): The branch's writer epoch refused the write: another process claimed the branch, or the serving process holds no claim on it; see `writer_fenced`. Nothing was written.\n- `payload_too_large` (413): The request body, or the work it asks for, exceeds a bounded limit; `resource_limit` names the limit when it is the operation's. Split or reduce the request.\n- `unsupported_media_type` (415): The request body's content type is not one the route accepts.\n- `range_not_satisfiable` (416): The requested Blob byte range lies outside the value; see `blob_range`.\n- `too_many_requests` (429): Admission capacity is exhausted: an actor's, the server's, or the MCP endpoint's concurrent tool calls. Nothing started; retry after `Retry-After`.\n- `service_unavailable` (503): Operation admission is closed, or a deployment observation raced an owner change. Nothing started; retry after `Retry-After`, reconciling any earlier write first.\n- `graph_unavailable` (503): A known graph is not being served. The request did not start, so it may be retried once the graph is served again.\n- `internal` (500): The server failed. An error before any write took no effect; see the server log.\n- `cancelled` (no HTTP status): MCP only: the client cancelled a read tool call. A cancelled write answers `outcome_unknown`.\n- `deadline_exceeded` (no HTTP status): MCP only: a read tool call passed its deadline. A write that does answers `outcome_unknown`.\n- `result_too_large` (no HTTP status): MCP only: a tool result exceeds the result limit. Narrow the read.",
         "enum": [
           "unauthorized",
           "forbidden",
+          "not_admitted",
           "bad_request",
           "api_contract_mismatch",
           "actor_mismatch",
@@ -14259,6 +15419,7 @@
           "conflict",
           "branch_start_refusal",
           "unattached_cannot_publish",
+          "writer_fenced",
           "payload_too_large",
           "unsupported_media_type",
           "range_not_satisfiable",
@@ -14460,6 +15621,17 @@
                 "description": "Set when the request must be split into smaller graph commits. The\nrejected attempt has no durable effect."
               }
             ]
+          },
+          "writer_fenced": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WriterFencedOutput",
+                "description": "Set with HTTP 409 and `writer_fenced` when the branch's writer epoch\nrefused a publish or a claim. Nothing was written."
+              }
+            ]
           }
         }
       },
@@ -14520,7 +15692,7 @@
       },
       "FullTextIndexRequiredOutput": {
         "type": "object",
-        "description": "A full-text call read a declared full-text index that has no segment at\nthe query's snapshot (HTTP 409), so no segment carries its analyzer. This\nis not a retryable conflict: an operator builds the branch's index\n(`omnigraph optimize` on main, `omnigraph rebuild-full-text-indexes\n--branch` elsewhere). Historical snapshots stay unchanged.",
+        "description": "A full-text call read a declared full-text index that has no segment at\nthe query's snapshot (HTTP 409), so no segment carries its analyzer. This\nis not a retryable conflict: an operator builds the branch's index\n(`omnigraph index build --branch <branch>`). Historical snapshots stay\nunchanged.",
         "required": [
           "index"
         ],
@@ -15097,6 +16269,12 @@
             "description": "The partition that claimed the slice; which one varies between runs.",
             "minimum": 0
           },
+          "read_ns": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Nanoseconds the slice's partition waited for the source's bytes.",
+            "minimum": 0
+          },
           "rows": {
             "type": "integer",
             "format": "int64",
@@ -15183,6 +16361,36 @@
           },
           "type_name": {
             "type": "string"
+          }
+        }
+      },
+      "OperationLookup": {
+        "type": "string",
+        "enum": [
+          "found",
+          "unknown"
+        ]
+      },
+      "OperationOutput": {
+        "type": "object",
+        "required": [
+          "lookup",
+          "in_progress"
+        ],
+        "properties": {
+          "in_progress": {
+            "type": "boolean",
+            "description": "Whether this server is running it now."
+          },
+          "lookup": {
+            "$ref": "#/components/schemas/OperationLookup"
+          },
+          "operation": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The operation's record; absent for an `unknown` lookup."
           }
         }
       },
@@ -15434,6 +16642,45 @@
         },
         "additionalProperties": false
       },
+      "RankOrder": {
+        "type": "string",
+        "description": "The direction a ranking's score orders rows.",
+        "enum": [
+          "ascending",
+          "descending"
+        ]
+      },
+      "RankingOutput": {
+        "type": "object",
+        "description": "The ranking a read ordered its rows by.",
+        "required": [
+          "by",
+          "order",
+          "exhaustive",
+          "score_columns"
+        ],
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/SearchFunction",
+            "description": "The search function the leading `order` key names."
+          },
+          "exhaustive": {
+            "type": "boolean",
+            "description": "Whether no row the search admitted and did not return outranks a\nreturned one. `bm25` scores every match, so it is always exhaustive.\n`nearest` is exhaustive when the run searched every partition of the\nvector index, scored every row flat or returned every row it\nadmitted, and `false` when a probe cap left partitions unsearched, so\na nearer row may exist. `rrf` is exhaustive when its `nearest` arms\nare."
+          },
+          "order": {
+            "$ref": "#/components/schemas/RankOrder",
+            "description": "`ascending` for a `nearest` distance (smaller is nearer),\n`descending` for a `bm25` or `rrf` score (larger is more relevant)."
+          },
+          "score_columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The returned columns that hold the ranking's own score, in return\norder; empty when the read returns none. A column computed from the\nscore is not one."
+          }
+        }
+      },
       "ReadOutput": {
         "type": "object",
         "required": [
@@ -15469,6 +16716,17 @@
           },
           "query_name": {
             "type": "string"
+          },
+          "ranking": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RankingOutput",
+                "description": "How the read ordered its rows when its order is a search: the\nsearch function, the direction its score ranks, whether the run's\nsearch was exhaustive, and the returned columns holding the score.\nAbsent when the order is no search."
+              }
+            ]
           },
           "row_count": {
             "type": "integer",
@@ -15686,6 +16944,15 @@
           }
         }
       },
+      "SearchFunction": {
+        "type": "string",
+        "description": "The search function a ranked read orders by.",
+        "enum": [
+          "nearest",
+          "bm25",
+          "rrf"
+        ]
+      },
       "SettingsRequest": {
         "type": "object",
         "description": "The `settings` field of a request: one optional value per `request`-scope\nsetting of the definition, applied to the request's session before the\nsource's own `set` lines, so a `set` line in the request's text overrides\nthe field. An absent field is empty. A `process` setting has no field\nhere, so `{\"stage_write_concurrency\": 64}` is refused as an unknown field.",
@@ -15694,6 +16961,15 @@
             "type": "integer",
             "description": "the partition cap per index delta of a `nearest` scan; `0` is no cap",
             "minimum": 0
+          },
+          "change_lineage": {
+            "type": "string",
+            "description": "how a graph diff or commit page finds the entities it compares across a window with no adjacent transaction: the exact ordered merge of both versions, the entities paired by stable identity, or both compared",
+            "enum": [
+              "off",
+              "on",
+              "verify"
+            ]
           },
           "engine": {
             "type": "string",
@@ -15809,6 +17085,39 @@
           }
         }
       },
+      "StartOptimizeRequest": {
+        "type": "object",
+        "description": "`POST /graphs/{graph_id}/operations/optimize`.",
+        "required": [
+          "operation_id"
+        ],
+        "properties": {
+          "datasets": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Only these datasets, each named by its type key (`node:<Type>`,\n`edge:<Type>`), in this order."
+          },
+          "max_gate_hold_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long writers to main wait at most, within the server's ceiling.",
+            "minimum": 0
+          },
+          "operation_id": {
+            "type": "string",
+            "description": "A canonical ULID the caller chose; a repeated submission with the same\nrequest answers the existing record."
+          }
+        },
+        "additionalProperties": false
+      },
       "SuggestionOutput": {
         "type": "object",
         "description": "Non-overlapping edits against the original request source.",
@@ -15869,6 +17178,36 @@
             "minimum": 0
           }
         }
+      },
+      "WriterFencedOutput": {
+        "type": "object",
+        "description": "The writer epochs of a publish or claim a claimed branch refused. `held`\nis the serving process's epoch, absent when it holds none; `read` is the\nepoch a refused claim read; `current` is the branch's epoch.",
+        "required": [
+          "current"
+        ],
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "held": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "read": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -15906,6 +17245,10 @@
     {
       "name": "health",
       "description": "Process health and readiness probes"
+    },
+    {
+      "name": "operations",
+      "description": "Recorded operations: optimize through the serving owner, looked up and cancelled by id"
     },
     {
       "name": "management",

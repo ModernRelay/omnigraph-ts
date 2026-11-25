@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph
 
-TypeScript client for **OmniGraph 0.14**, with typed errors, exact write receipts,
+TypeScript client for **Omnigraph 0.16** (HTTP contract 0.14), with typed errors, exact write receipts,
 streaming exports, and cluster deployment APIs. Requires Node.js 22 or newer.
 
 ```sh
@@ -32,9 +32,10 @@ Use the server root as `baseUrl`; select a graph with `graphId` or
 requests. Server methods such as health, readiness, graph listing, and cluster
 management do not require a graph ID.
 
-The SDK checks discovery before authenticated data requests, sends
-`Omnigraph-Http-Api: 0.14`, and checks the response contract before exposing data.
-It supports only 0.14; upgrade the server and clients together. Proxies and
+The SDK checks discovery before authenticated data requests, sends the
+`Omnigraph-Http-Api` contract its pinned spec requires (`HTTP_API_CONTRACT`), and
+checks the response contract before exposing data. A server on another contract
+is refused; upgrade the server and clients together. Proxies and
 custom fetch implementations must preserve this response header. No redirects
 or automatic request retries are performed.
 
@@ -103,6 +104,14 @@ for await (const record of og.export({ branch: 'main', typeNames: ['Person'] }))
 }
 ```
 
+`og.branches.listDetailed()` returns `{ branches, details }`: for each branch
+you may read, its `head` commit, the branch and commit it started `from`, and
+`createdAt`/`updatedAt` (Unix epoch microseconds). A read ordered by `nearest`,
+`bm25` or `rrf()` reports `ranking`: the search, its score `order`, whether it
+was `exhaustive`, and the `scoreColumns` holding the score. Pass a `bigint`
+parameter for an integer beyond `Number.MAX_SAFE_INTEGER`, such as a `U64` above
+`i64::MAX`; it is sent as its exact decimal string.
+
 Snapshots report `graphBranch`, `graphManifestVersion`, and `datasets`.
 Published dataset versions identify the graph snapshot. Export returns NDJSON records. Network stream failures and malformed NDJSON
 reject iteration. Consume to completion before treating an export as complete.
@@ -163,6 +172,48 @@ the response was lost. The SDK performs one data request per method and does not
 poll or retry for you. Nested `deployment`, `plan`, and `status` documents keep
 the server's exact wire keys.
 
+## Recorded operations
+
+A cluster server started with `OMNIGRAPH_OPERATION_ROUTES=true` runs `optimize`
+on a graph's `main` while it serves, and records the run under an id the
+caller chooses (omnigraph-server 0.16). Every route needs the `maintain`
+action on `main`.
+
+```ts
+import { newOperationId, OperationState } from '@modernrelay/omnigraph';
+
+const operationId = newOperationId(); // keep it before you submit
+await og.operations.optimize({ operationId, maxGateHoldMs: 30_000 });
+// Stopping the wait (here after ten minutes) leaves the run going on the server.
+const result = await og.operations.wait(operationId, { signal: AbortSignal.timeout(600_000) });
+if (result.lookup === 'unknown') {
+  // The record no longer holds the id. This does not prove the run never
+  // happened; never resubmit the same work under this id.
+} else if (result.operation?.state === OperationState.SUCCEEDED) {
+  for (const d of result.operation.outcome.datasets ?? []) console.log(d.typeKey, d.outcome, d.reason);
+}
+```
+
+`optimize` resolves once the run is durably accepted (or already terminal).
+While the server's record still holds the id (it keeps the 32 newest terminal
+operations), the same id and request (same graph, branch, request and
+principal) returns the existing record; an evicted id is refused as expired.
+The same id with another request is a `ConflictError`, and another active
+operation a `TooManyRequestsError` with `retryAfter`. After a lost response,
+look the id up with `get` instead of submitting again. `lookup: 'unknown'`
+does not prove the run never happened. Every reply must be a receipt for the
+id; anything else is an `ApiContractError`. `wait` only calls the lookup and
+rejects on its first failure, and retrying a lookup is always safe, a 500
+`outcome_unknown` included (a lookup can settle a publication in doubt).
+`cancel` is best effort: it stops an `accepted` or `running` run at its next
+safe boundary, the run may still end `succeeded` (with a late-cancellation
+`reason`, or with none when the cancel lands as the run finishes on server
+0.16.0), and a `publishing` run is returned unchanged. Only `cancelled` means
+it stopped. A `succeeded` run can
+still have `deferred` or `failed` datasets, and an `optimized` one can carry
+`reason: 'index_failed'`. The record type follows the 0.16 server; the spec
+leaves it open, so read unknown fields from the object.
+
 ## Errors and cancellation
 
 ```ts
@@ -184,6 +235,21 @@ Methods accept an `AbortSignal`; authenticated operations also accept `ifActor` 
 `requestDispatched: false`; a failure after a write was sent may set
 `outcomeUnknown: true`. An HTTP status alone does not establish retry safety.
 
+A 403 is `ForbiddenError`; its subclass `NotAdmittedError` (`not_admitted`)
+means an OIDC token is valid but the server admits no principal for its
+subject: signing in again cannot help, the server's operator must admit it.
+A refusal whose disposition says `effects: none` is never `outcomeUnknown`; code
+`outcome_unknown`, or effects `unknown` or `partial`, always is, on any route.
+`WriterFencedError` (409 `writer_fenced`, a `ConflictError`) means another
+process claimed the branch; `writerFenced` holds the epochs and nothing was
+written. A merge with `dryRun` writes nothing, so a lost answer is not
+`outcomeUnknown`; a reply that is not a dry-run receipt is.
+
+From omnigraph-server 0.16 a graph with no applied policy refuses reads too
+(`ForbiddenError`), a request setting above the server's resource budget is a
+`BadRequestError`, and a conditional mutation that loses a race is a
+`PreconditionFailedError` with `preconditionFailure`.
+
 Inspect 409 details: merge/key conflicts require a decision;
 `fullTextIndexRebuildRequired` needs operator maintenance. A 503 can mean a
 known graph is loading or unavailable; 404 means the target is unknown.
@@ -202,9 +268,21 @@ Existing data migration depends on its storage format; follow the authoritative
 [upgrade guide](https://github.com/ModernRelay/omnigraph/blob/9d92f3970311d5229f55b1a1fc06b2d3fba30a55/docs/user/operations/upgrade.md).
 The SDK does not convert stored graphs or legacy credentials.
 
-`SERVER_VERSION` identifies the pinned server release. Package major/minor
-tracks the server contract; patch releases are independent. Each client has
+`SERVER_VERSION` identifies the pinned server release and `HTTP_API_CONTRACT`
+the header contract its spec requires; the two are separate numbers. Package
+major/minor tracks the server release; patch releases are independent. Each client has
 isolated configuration and supports a custom `fetch` for testing or tracing.
+
+## Upgrading from 0.14
+
+The wire contract is unchanged (`Omnigraph-Http-Api: 0.14`), so this release
+reads and writes a 0.14 server's routes; `listDetailed()` and `ranking` need
+omnigraph-server 0.15, and `operations` and `writer_fenced` need 0.16. New in
+0.16: `og.operations`, `newOperationId`, `WriterFencedError`, the `maintain`
+access action, and dry-run merges classified as reads. New in 0.15: `branches.listDetailed()`, `Read.ranking` with the
+`SearchFunction` and `RankOrder` enums, `Access.clientId`,
+`Settings.changeLineage`, `NotAdmittedError`, and exact `bigint` parameters.
+See [CHANGELOG.md](../../CHANGELOG.md).
 
 ## Upgrading from 0.13
 

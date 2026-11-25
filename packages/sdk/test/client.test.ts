@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import Omnigraph from '../src';
+import Omnigraph, { RankOrder, SearchFunction } from '../src';
 import { stubFetch, withContract } from './helpers';
 
 describe('top-level client operations', () => {
@@ -319,6 +319,31 @@ it('serializes request settings while preserving query parameters and result key
   const result = await og.query({ query: 'query q() {}', params: { userName: 'Alice' }, settings: { engine: 'v2', annNprobes: 4, traversalWorkLimit: 100 } });
   expect(JSON.parse(calls[0]!.body!)).toMatchObject({ params: { userName: 'Alice' }, settings: { engine: 'v2', ann_nprobes: 4, traversal_work_limit: 100 } });
   expect(result.rows).toEqual([{ userName: 'Alice', user_id: '1' }]);
+});
+
+it('reports a ranked read\'s ranking in camelCase without touching row keys', async () => {
+  const { fetch } = stubFetch({ body: {
+    rows: [{ score_bm25: 1.5, doc_title: 'a' }], columns: ['score_bm25', 'doc_title'], graph_commit_id: 'c',
+    target: { branch: 'main' }, query_name: 'q', row_count: 1,
+    ranking: { by: 'bm25', order: 'descending', exhaustive: true, score_columns: ['score_bm25'] },
+  } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  const result = await og.query({ query: 'query q() {}' });
+  expect(result.ranking).toEqual({ by: SearchFunction.BM25, order: RankOrder.DESCENDING, exhaustive: true, scoreColumns: ['score_bm25'] });
+  expect(result.rows).toEqual([{ score_bm25: 1.5, doc_title: 'a' }]);
+});
+
+it('sends the change_lineage setting in snake case', async () => {
+  const { fetch, calls } = stubFetch({ body: { rows: [], columns: [], graph_commit_id: 'c', target: { branch: 'main' }, query_name: 'q', row_count: 0 } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  await og.query({ query: 'query q() {}', settings: { changeLineage: 'verify' } });
+  expect(JSON.parse(calls[0]!.body!).settings).toEqual({ change_lineage: 'verify' });
+});
+
+it('access reports the OAuth client of an OIDC token beside the actor', async () => {
+  const { fetch } = stubFetch({ body: { actor_id: 'principal:user_1', client_id: 'client_studio', graph_id: 'g', graph_wide: ['read'], actions: ['read'] } });
+  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+  expect(await og.access()).toMatchObject({ actorId: 'principal:user_1', clientId: 'client_studio' });
 });
 
 it('exposes unsupported server-side embedding generation instead of implying it ran', async () => {

@@ -9,6 +9,7 @@ import { BlobsResource } from './resources/blobs';
 import { ChangesResource } from './resources/changes';
 import { CommitsResource } from './resources/commits';
 import { GraphsResource } from './resources/graphs';
+import { OperationsResource } from './resources/operations';
 import { QueriesResource } from './resources/queries';
 import { SchemaResource } from './resources/schema';
 import type { ChangeFilterInput } from './resources/changes';
@@ -72,6 +73,7 @@ export default class Omnigraph {
   readonly branches: BranchesResource;
   readonly commits: CommitsResource;
   readonly graphs: GraphsResource;
+  readonly operations: OperationsResource;
   readonly queries: QueriesResource;
   readonly schema: SchemaResource;
 
@@ -87,6 +89,7 @@ export default class Omnigraph {
     this.branches = new BranchesResource(this.t);
     this.commits = new CommitsResource(this.t);
     this.graphs = new GraphsResource(this.t);
+    this.operations = new OperationsResource(this.t);
     this.queries = new QueriesResource(this.t);
     this.schema = new SchemaResource(this.t);
   }
@@ -177,7 +180,9 @@ export default class Omnigraph {
   /**
    * Run a GQ read query (`POST /query`). Read-only. Field names are
    * `query` / `name`; `params` is a free-form map matched to `$var`
-   * placeholders in the query source.
+   * placeholders in the query source. Pass a `bigint` for an integer beyond
+   * `Number.MAX_SAFE_INTEGER` (such as a `U64` above `i64::MAX`); it is sent as
+   * its decimal string, which the server binds exactly.
    */
   query(input: QueryInput, opts: CallOptions = {}): Promise<Read> {
     return this.t.request<Read>('POST', '/query', {
