@@ -196,7 +196,8 @@ Methods accept an `AbortSignal`; authenticated operations also accept `ifActor` 
 A 403 is `ForbiddenError`; its subclass `NotAdmittedError` (`not_admitted`)
 means an OIDC token is valid but the server admits no principal for its
 subject: signing in again cannot help, the server's operator must admit it.
-A refusal whose disposition says `effects: none` is never `outcomeUnknown`.
+A refusal whose disposition says `effects: none` is never `outcomeUnknown`; code
+`outcome_unknown`, or effects `unknown` or `partial`, always is, on any route.
 
 Inspect 409 details: merge/key conflicts require a decision;
 `fullTextIndexRebuildRequired` needs operator maintenance. A 503 can mean a

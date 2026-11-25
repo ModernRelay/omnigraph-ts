@@ -31,6 +31,11 @@ Targets omnigraph-server 0.15.0. The HTTP contract is still `0.14`.
 - `Access.clientId` (omnigraph#1196), `Settings.changeLineage`
   (omnigraph#1201) and `read_ns` in load profiles, from the regenerated types.
 
+- An error response that says a write may have taken effect is
+  `outcomeUnknown` on every route, reads included: code `outcome_unknown`
+  always (whatever its disposition reads), and otherwise effects `unknown` or
+  `partial`. Before, a GET could never be `outcomeUnknown`.
+
 ### Changed
 
 - A class chosen by error code now replaces the status's class only when it

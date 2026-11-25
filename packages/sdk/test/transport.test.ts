@@ -593,3 +593,28 @@ it.each([
     .rejects.toMatchObject({ requestDispatched: true, outcomeUnknown: true });
   expect(calls).toHaveLength(1);
 });
+
+describe('server-sent uncertainty on every route', () => {
+  it.each([
+    ['outcome_unknown with effects none', { error: 'resolution write in doubt', code: 'outcome_unknown', disposition: { effects: 'none', action: 'reconcile' } }, 500, true],
+    ['outcome_unknown without a disposition', { error: 'in doubt', code: 'outcome_unknown' }, 500, true],
+    ['effects unknown', { error: 'in doubt', code: 'internal', disposition: { effects: 'unknown', action: 'reconcile' } }, 500, true],
+    ['effects partial', { error: 'half', code: 'conflict', disposition: { effects: 'partial', action: 'refresh' } }, 409, true],
+    ['a certain refusal', { error: 'retry', code: 'service_unavailable', disposition: { effects: 'none', action: 'retry' } }, 503, false],
+    ['no valid body', 'gateway timeout', 500, false],
+  ] as const)('a read keeps the server\'s word: %s', async (_name, body, status, unknown) => {
+    const { fetch, calls } = stubFetch({ status, body });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.snapshot()).rejects.toMatchObject({ status, outcomeUnknown: unknown });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a write without a valid body stays uncertain; one the server calls certain does not', async () => {
+    const lost = stubFetch({ status: 502, body: 'bad gateway' });
+    await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: lost.fetch }).mutate({ query: 'q' }))
+      .rejects.toMatchObject({ outcomeUnknown: true });
+    const refused = stubFetch({ status: 409, body: { error: 'x', code: 'conflict', disposition: { effects: 'none', action: 'refresh' } } });
+    await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: refused.fetch }).mutate({ query: 'q' }))
+      .rejects.toMatchObject({ outcomeUnknown: false });
+  });
+});

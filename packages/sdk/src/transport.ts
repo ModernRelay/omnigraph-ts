@@ -54,6 +54,24 @@ function canWrite(method: string, path: string): boolean {
   );
 }
 
+/**
+ * Whether an error response says a write may have taken effect, on any route:
+ * `outcome_unknown` always does, whatever its disposition reads (a recorded
+ * operation's lookup can leave a settlement write in doubt), and a valid
+ * disposition otherwise decides. `undefined` when the body says neither, so
+ * the route decides.
+ */
+function serverOutcomeUnknown(body: unknown): boolean | undefined {
+  if (
+    body &&
+    typeof body === 'object' &&
+    (body as Record<string, unknown>).code === ErrorCode.OUTCOME_UNKNOWN
+  )
+    return true;
+  const effects = errorEffects(body);
+  return effects === undefined ? undefined : effects !== 'none';
+}
+
 function errorEffects(body: unknown): DispositionEffects | undefined {
   if (!body || typeof body !== 'object') return undefined;
   const { error, code, disposition } = body as Record<string, unknown>;
@@ -290,7 +308,7 @@ export class Transport {
         requestId,
         request: requestMeta,
         response,
-        outcomeUnknown: canWrite(method, path) && errorEffects(body) !== 'none',
+        outcomeUnknown: serverOutcomeUnknown(body) ?? canWrite(method, path),
       });
     }
     return response;
