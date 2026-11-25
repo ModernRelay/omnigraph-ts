@@ -305,16 +305,29 @@ describe('dry-run merge classification', () => {
   });
 });
 
-it('classifies a merge by the body it sends, not by inherited input properties', async () => {
-  // A prototype getter is not copied into the request, so the server runs a
-  // real merge; losing its answer must stay outcome unknown.
-  class Options { source = 'topic'; get dryRun() { return true; } }
-  const bodies: string[] = [];
-  const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: async (_input, init) => {
-    if (init?.method === 'HEAD') return new Response(null, { headers: { 'Omnigraph-Http-Api': '0.14' } });
-    bodies.push(String(init?.body));
-    throw new TypeError('socket hang up');
-  } });
-  await expect(og.branches.merge(new Options())).rejects.toMatchObject({ outcomeUnknown: true });
-  expect(JSON.parse(bodies[0]!)).toEqual({ source: 'topic', target: 'main' });
+describe('a merge is classified by the body it sends', () => {
+  const lostAnswer = () => {
+    const bodies: unknown[] = [];
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: async (_input, init) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: { 'Omnigraph-Http-Api': '0.14' } });
+      bodies.push(JSON.parse(String(init?.body)));
+      throw new TypeError('socket hang up');
+    } });
+    return { og, bodies };
+  };
+  class Inherited { source = 'topic'; get dryRun() { return true; } }
+
+  it.each([
+    // Codex's repro: case conversion used to send dry_run: false here.
+    ['a stray dry_run beside dryRun', { source: 'topic', dryRun: true, dry_run: false } as never, true],
+    ['an inherited dryRun getter', new Inherited() as never, true],
+    ['a stray dry_run alone', { source: 'topic', dry_run: true } as never, false],
+    ['no dryRun', { source: 'topic' }, false],
+  ])('%s: the lost-answer flag agrees with the wire body', async (_name, input, dryRun) => {
+    const { og, bodies } = lostAnswer();
+    const error = await og.branches.merge(input).catch((e: unknown) => e);
+    const sent = bodies[0] as Record<string, unknown>;
+    expect(sent).toEqual(dryRun ? { source: 'topic', target: 'main', dry_run: true } : { source: 'topic', target: 'main' });
+    expect(error).toMatchObject({ name: 'NetworkError', outcomeUnknown: sent.dry_run !== true });
+  });
 });

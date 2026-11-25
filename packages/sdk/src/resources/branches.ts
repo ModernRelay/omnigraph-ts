@@ -115,24 +115,32 @@ export class BranchesResource {
     input: BranchMergeInput,
     opts: CallOptions = {},
   ): Promise<BranchMerge> {
-    const normalized = {
-      ...input,
+    // The request is built from the fields the route defines, so the body
+    // sent, the classification and the receipt check all see one request.
+    const payload: BranchMergeInput = {
+      source: input.source,
       target: input.target ?? 'main',
     };
+    if (input.asCommit !== undefined) payload.asCommit = input.asCommit;
+    if (input.deleteBranch !== undefined)
+      payload.deleteBranch = input.deleteBranch;
+    if (input.dryRun !== undefined) payload.dryRun = input.dryRun;
+    if (input.settings !== undefined) payload.settings = input.settings;
     const result = await this.t.request<BranchMerge>(
       'POST',
       '/branches/merge',
       {
-        body: normalized,
+        body: payload,
         signal: opts.signal,
         ifActor: opts.ifActor,
-        // A dry run writes nothing; a reply that is not a dry-run receipt
-        // still fails validMerge below with effects unknown. Judge the body
-        // that is sent: a spread copy drops inherited properties.
-        readOnly: normalized.dryRun === true,
+        // A dry run writes nothing, judged on the serialized body; a reply
+        // that is not a dry-run receipt still fails validMerge below with
+        // effects unknown.
+        readsWhen: (wire) =>
+          (wire as { dry_run?: unknown } | null)?.dry_run === true,
       },
     );
-    if (!validMerge(result, normalized))
+    if (!validMerge(result, payload))
       throw this.t.invalidResponse(
         'POST',
         '/branches/merge',

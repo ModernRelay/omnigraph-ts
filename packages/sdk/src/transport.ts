@@ -133,12 +133,15 @@ export interface RequestOptions {
   /** The endpoint returns an opaque JSON document, not an SDK DTO. */
   opaqueResponse?: boolean;
   /**
-   * The request reads although its route can write (a merge `dryRun`). A
-   * lost or interrupted answer then has no effects. A reply that breaks the
-   * contract or contradicts the request still leaves effects unknown: only a
-   * valid reply confirms the server treated the request as a read.
+   * Whether the request reads although its route can write (a merge with
+   * `dry_run`), judged on the JSON body exactly as it is sent: the parse of
+   * the serialized bytes, never the caller's input, which case conversion and
+   * object copies can change on the way to the wire. A lost or interrupted
+   * answer to such a request has no effects. A reply that breaks the contract
+   * or contradicts the request still leaves effects unknown: only a valid
+   * reply confirms the server treated the request as a read.
    */
-  readOnly?: boolean;
+  readsWhen?: (wireBody: unknown) => boolean;
 }
 
 export class Transport {
@@ -184,7 +187,7 @@ export class Transport {
     path: string,
     opts: RequestOptions = {},
   ): Promise<T> {
-    const response = await this.send(method, path, opts);
+    const { response, writes } = await this.send(method, path, opts);
     try {
       const text = await response.text();
       if (!text) throw new Error('Missing JSON response body');
@@ -199,7 +202,7 @@ export class Transport {
           'Response body was interrupted or invalid; do not automatically repeat writes',
         request: { method, url: this.buildUrl(path, opts.query) },
         requestDispatched: true,
-        outcomeUnknown: !opts.readOnly && canWrite(method, path),
+        outcomeUnknown: writes,
       });
     }
   }
@@ -209,14 +212,19 @@ export class Transport {
     path: string,
     opts: RequestOptions = {},
   ): Promise<Response> {
-    return this.send(method, path, opts);
+    return (await this.send(method, path, opts)).response;
   }
 
+  /**
+   * Send one request. `writes` says whether it may have written, from its
+   * route and the body it actually sent; every uncertainty it reports
+   * derives from that.
+   */
   private async send(
     method: string,
     path: string,
     opts: RequestOptions,
-  ): Promise<Response> {
+  ): Promise<{ response: Response; writes: boolean }> {
     if (!this.graphId && !isRootPath(path)) {
       throw new ConfigurationError({
         status: 0,
@@ -245,17 +253,23 @@ export class Transport {
     if (!headers.has('Accept'))
       headers.set('Accept', 'application/json, application/x-ndjson');
     let bodyInit: BodyInit | undefined;
+    let wireBody: unknown;
     if (opts.rawBody !== undefined) {
       bodyInit = opts.rawBody.content;
       headers.set('Content-Type', opts.rawBody.contentType);
     } else if (opts.body !== undefined) {
-      bodyInit = JSON.stringify(
+      const text = JSON.stringify(
         camelToSnake(opts.body, { opaqueKeys: opts.opaqueBodyKeys }),
         jsonValue,
       );
+      bodyInit = text;
+      wireBody = JSON.parse(text);
       if (!headers.has('Content-Type'))
         headers.set('Content-Type', 'application/json');
     }
+    const writes =
+      canWrite(method, path) &&
+      !(wireBody !== undefined && opts.readsWhen?.(wireBody) === true);
     const init: RequestInit = {
       method,
       headers,
@@ -268,7 +282,6 @@ export class Transport {
     try {
       response = await this.fetchImpl(url, init);
     } catch (e) {
-      const writes = !opts.readOnly && canWrite(method, path);
       if (
         !writes &&
         e instanceof Error &&
@@ -318,10 +331,10 @@ export class Transport {
         response,
         outcomeUnknown:
           serverOutcomeUnknown(body) ??
-          (!opts.readOnly && canWrite(method, path)),
+          writes,
       });
     }
-    return response;
+    return { response, writes };
   }
 
   invalidResponse(

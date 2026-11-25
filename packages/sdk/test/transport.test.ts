@@ -620,3 +620,19 @@ describe('server-sent uncertainty on every route', () => {
       .rejects.toMatchObject({ outcomeUnknown: false });
   });
 });
+
+it('judges readsWhen on the serialized body, not the caller\'s object', async () => {
+  // dryRun and dry_run both convert to dry_run; the later key wins on the
+  // wire, so the request below is a real merge whatever dryRun says.
+  const seen: unknown[] = [];
+  const t = new Transport({ baseUrl: 'http://x', graphId: 'g', fetch: async (_input, init) => {
+    if (init?.method === 'HEAD') return new Response(null, { headers: { 'Omnigraph-Http-Api': '0.14' } });
+    throw new TypeError('socket hang up');
+  } });
+  const readsWhen = (wire: unknown) => { seen.push(wire); return (wire as { dry_run?: unknown }).dry_run === true; };
+  await expect(t.request('POST', '/branches/merge', { body: { source: 's', dryRun: true, dry_run: false }, readsWhen }))
+    .rejects.toMatchObject({ outcomeUnknown: true });
+  expect(seen).toEqual([{ source: 's', dry_run: false }]);
+  await expect(t.request('POST', '/branches/merge', { body: { source: 's', dryRun: true }, readsWhen }))
+    .rejects.toMatchObject({ outcomeUnknown: false });
+});
