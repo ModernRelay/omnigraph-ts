@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph
 
-TypeScript client for **Omnigraph 0.15** (HTTP contract 0.14), with typed errors, exact write receipts,
+TypeScript client for **Omnigraph 0.16** (HTTP contract 0.14), with typed errors, exact write receipts,
 streaming exports, and cluster deployment APIs. Requires Node.js 22 or newer.
 
 ```sh
@@ -172,6 +172,35 @@ the response was lost. The SDK performs one data request per method and does not
 poll or retry for you. Nested `deployment`, `plan`, and `status` documents keep
 the server's exact wire keys.
 
+## Recorded operations
+
+A cluster server started with `OMNIGRAPH_OPERATION_ROUTES=true` runs `optimize`
+on a graph's `main` while it serves, and records the run under an id the
+caller chooses (omnigraph-server 0.16). Every route needs the `maintain`
+action on `main`.
+
+```ts
+import { newOperationId, OperationState } from '@modernrelay/omnigraph';
+
+const operationId = newOperationId(); // keep it before you submit
+await og.operations.optimize({ operationId, maxGateHoldMs: 30_000 });
+const { operation } = await og.operations.wait(operationId, { signal: AbortSignal.timeout(600_000) });
+if (operation?.state === OperationState.SUCCEEDED) {
+  for (const d of operation.outcome.datasets ?? []) console.log(d.typeKey, d.outcome, d.reason);
+}
+```
+
+`optimize` resolves once the run is durably accepted (or already terminal).
+Submitting the same id and request returns the existing record; the same id
+with another request is a `ConflictError`, and another active operation a
+`TooManyRequestsError` with `retryAfter`. After a lost response, look the id
+up with `get` instead of submitting again. `lookup: 'unknown'` does not prove
+the run never happened. `wait` only calls the lookup and rejects on its first
+failure; `cancel` stops a run at its next safe boundary. A `succeeded` run can
+still have `deferred` or `failed` datasets, and an `optimized` one can carry
+`reason: 'index_failed'`. The record type follows the 0.16 server; the spec
+leaves it open, so read unknown fields from the object.
+
 ## Errors and cancellation
 
 ```ts
@@ -198,6 +227,15 @@ means an OIDC token is valid but the server admits no principal for its
 subject: signing in again cannot help, the server's operator must admit it.
 A refusal whose disposition says `effects: none` is never `outcomeUnknown`; code
 `outcome_unknown`, or effects `unknown` or `partial`, always is, on any route.
+`WriterFencedError` (409 `writer_fenced`, a `ConflictError`) means another
+process claimed the branch; `writerFenced` holds the epochs and nothing was
+written. A merge with `dryRun` writes nothing, so a lost answer is not
+`outcomeUnknown`; a reply that is not a dry-run receipt is.
+
+From omnigraph-server 0.16 a graph with no applied policy refuses reads too
+(`ForbiddenError`), a request setting above the server's resource budget is a
+`BadRequestError`, and a conditional mutation that loses a race is a
+`PreconditionFailedError` with `preconditionFailure`.
 
 Inspect 409 details: merge/key conflicts require a decision;
 `fullTextIndexRebuildRequired` needs operator maintenance. A 503 can mean a
@@ -226,7 +264,9 @@ isolated configuration and supports a custom `fetch` for testing or tracing.
 
 The wire contract is unchanged (`Omnigraph-Http-Api: 0.14`), so this release
 reads and writes a 0.14 server's routes; `listDetailed()` and `ranking` need
-omnigraph-server 0.15. New: `branches.listDetailed()`, `Read.ranking` with the
+omnigraph-server 0.15, and `operations` and `writer_fenced` need 0.16. New in
+0.16: `og.operations`, `newOperationId`, `WriterFencedError`, the `maintain`
+access action, and dry-run merges classified as reads. New in 0.15: `branches.listDetailed()`, `Read.ranking` with the
 `SearchFunction` and `RankOrder` enums, `Access.clientId`,
 `Settings.changeLineage`, `NotAdmittedError`, and exact `bigint` parameters.
 See [CHANGELOG.md](../../CHANGELOG.md).

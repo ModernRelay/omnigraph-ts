@@ -5,6 +5,47 @@ share one version, whose major.minor is the `omnigraph-server` release they are
 generated from and tested against. Earlier releases are described in their
 GitHub release notes.
 
+## 0.16.0
+
+Targets omnigraph-server 0.16.0. The HTTP contract is still `0.14`.
+
+### Added
+
+- `og.operations`: `optimize`, `get`, `cancel` and `wait` for recorded
+  operations, which a cluster server runs on a graph's `main` under an id the
+  caller chooses (omnigraph#1282). `newOperationId()` mints the canonical
+  ULID, `isTerminal()` and `OperationState` name the states, and `Operation`,
+  `OperationOutcome`, `OperationTableOutcome` and `OperationResult` type the
+  record with its per-dataset outcomes (omnigraph#1275, omnigraph#1418).
+- `WriterFencedError`, a `ConflictError` for 409 `writer_fenced`, with the
+  branch's writer epochs in `writerFenced` (omnigraph#1350). Its disposition
+  decides `outcomeUnknown` (the intent of PR #25).
+- `AccessAction.MAINTAIN` from the regenerated types.
+
+### Fixed
+
+- A merge with `dryRun` is a read: a lost or interrupted answer is no longer
+  `outcomeUnknown`. A reply that is not a dry-run receipt still is
+  (CLI parity with omnigraph#1448).
+
+### Server behaviour to know
+
+- A graph with no applied policy now refuses reads (`ForbiddenError`) unless
+  the server sets `OMNIGRAPH_ALLOW_READS_WITHOUT_POLICY=1`.
+- A request setting above the server's resource budget is a `BadRequestError`
+  (omnigraph#1327).
+- Failed reads of cluster control state on the deployment routes answer 503
+  or 500 with `effects: none`, no longer 409 (omnigraph#1357).
+- A conditional mutation that loses a race is a `PreconditionFailedError`, not
+  a `@card` violation (omnigraph#1426); an overtaken update or delete reruns
+  instead of failing with `readSetConflict` (omnigraph#1349).
+
+### Changed
+
+- `@modernrelay/omnigraph-mcp` is unchanged apart from its version. The
+  server's own `/mcp` endpoint now covers every non-streaming operation;
+  deprecating this package is tracked separately.
+
 ## 0.15.0
 
 Targets omnigraph-server 0.15.0. The HTTP contract is still `0.14`.
