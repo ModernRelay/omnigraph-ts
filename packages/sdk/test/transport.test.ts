@@ -26,6 +26,20 @@ describe('transport URL handling', () => {
     );
   });
 
+  it('sends a bigint body value as its exact decimal string', async () => {
+    const { fetch, calls } = stubFetch({ body: { rows: [], columns: [] } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await og.query({
+      query: 'query q($n: U64) { match { $p: P { n: $n } } return { $p.n } }',
+      params: { n: 18446744073709551615n, small: 7, list: [9007199254740993n] },
+    });
+    // The raw body text keeps every digit; a JSON number would round.
+    expect(calls[0]?.body).toContain('"n":"18446744073709551615"');
+    expect(JSON.parse(calls[0]?.body ?? '{}').params).toEqual({
+      n: '18446744073709551615', small: 7, list: ['9007199254740993'],
+    });
+  });
+
   it('omits null/undefined query params', async () => {
     const { fetch, calls } = stubFetch({ body: { commits: [] } });
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });

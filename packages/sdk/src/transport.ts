@@ -75,6 +75,15 @@ function errorEffects(body: unknown): DispositionEffects | undefined {
   return effects as DispositionEffects;
 }
 
+/**
+ * A `bigint` travels as its decimal text: JSON numbers lose integers beyond
+ * 2^53 in JavaScript, and the server binds a `U64` parameter above
+ * `i64::MAX` from its decimal string.
+ */
+function jsonValue(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value;
+}
+
 export interface RequestOptions {
   headers?: Record<string, string>;
   ifActor?: string;
@@ -217,6 +226,7 @@ export class Transport {
     } else if (opts.body !== undefined) {
       bodyInit = JSON.stringify(
         camelToSnake(opts.body, { opaqueKeys: opts.opaqueBodyKeys }),
+        jsonValue,
       );
       if (!headers.has('Content-Type'))
         headers.set('Content-Type', 'application/json');

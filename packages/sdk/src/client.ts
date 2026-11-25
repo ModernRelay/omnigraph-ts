@@ -177,7 +177,9 @@ export default class Omnigraph {
   /**
    * Run a GQ read query (`POST /query`). Read-only. Field names are
    * `query` / `name`; `params` is a free-form map matched to `$var`
-   * placeholders in the query source.
+   * placeholders in the query source. Pass a `bigint` for an integer beyond
+   * `Number.MAX_SAFE_INTEGER` (such as a `U64` above `i64::MAX`); it is sent as
+   * its decimal string, which the server binds exactly.
    */
   query(input: QueryInput, opts: CallOptions = {}): Promise<Read> {
     return this.t.request<Read>('POST', '/query', {
