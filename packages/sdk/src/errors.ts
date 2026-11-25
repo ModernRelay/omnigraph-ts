@@ -164,6 +164,7 @@ const codeToClass: Record<
   request_timeout: RequestTimeoutError,
   branch_start_refusal: ConflictError,
   unattached_cannot_publish: ConflictError,
+  writer_fenced: ConflictError,
   payload_too_large: PayloadTooLargeError,
   unsupported_media_type: UnsupportedMediaTypeError,
   range_not_satisfiable: RangeNotSatisfiableError,

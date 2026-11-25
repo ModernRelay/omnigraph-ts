@@ -18,6 +18,7 @@ export const AccessAction = {
   COMMIT_PUBLISH: "commit_publish",
   COMMIT_DROP: "commit_drop",
   INVOKE_QUERY: "invoke_query",
+  MAINTAIN: "maintain",
 } as const;
 
 /**
@@ -844,6 +845,7 @@ export type EntityKind = (typeof EntityKind)[keyof typeof EntityKind];
  * - `conflict` (409): The request conflicts with the graph's current state: a concurrent change, an existing id, a merge conflict, an index that must be built first, or a commit that cannot be diffed. The details say which.
  * - `branch_start_refusal` (409, 410): `branch create` could not start the branch at the commit `from_commit` named, and nothing was created; see `branch_start_refusal`, whose `not_retained` reason answers 410.
  * - `unattached_cannot_publish` (409): The commit is an unattached snapshot, a kind that never publishes. Distinct from `conflict`, the authority-moved refusal of a publishable proposal.
+ * - `writer_fenced` (409): The branch's writer epoch refused the write: another process claimed the branch, or the serving process holds no claim on it; see `writer_fenced`. Nothing was written.
  * - `payload_too_large` (413): The request body, or the work it asks for, exceeds a bounded limit; `resource_limit` names the limit when it is the operation's. Split or reduce the request.
  * - `unsupported_media_type` (415): The request body's content type is not one the route accepts.
  * - `range_not_satisfiable` (416): The requested Blob byte range lies outside the value; see `blob_range`.
@@ -873,6 +875,7 @@ export const ErrorCode = {
   CONFLICT: "conflict",
   BRANCH_START_REFUSAL: "branch_start_refusal",
   UNATTACHED_CANNOT_PUBLISH: "unattached_cannot_publish",
+  WRITER_FENCED: "writer_fenced",
   PAYLOAD_TOO_LARGE: "payload_too_large",
   UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
   RANGE_NOT_SATISFIABLE: "range_not_satisfiable",
@@ -905,6 +908,7 @@ export const ErrorCode = {
  * - `conflict` (409): The request conflicts with the graph's current state: a concurrent change, an existing id, a merge conflict, an index that must be built first, or a commit that cannot be diffed. The details say which.
  * - `branch_start_refusal` (409, 410): `branch create` could not start the branch at the commit `from_commit` named, and nothing was created; see `branch_start_refusal`, whose `not_retained` reason answers 410.
  * - `unattached_cannot_publish` (409): The commit is an unattached snapshot, a kind that never publishes. Distinct from `conflict`, the authority-moved refusal of a publishable proposal.
+ * - `writer_fenced` (409): The branch's writer epoch refused the write: another process claimed the branch, or the serving process holds no claim on it; see `writer_fenced`. Nothing was written.
  * - `payload_too_large` (413): The request body, or the work it asks for, exceeds a bounded limit; `resource_limit` names the limit when it is the operation's. Split or reduce the request.
  * - `unsupported_media_type` (415): The request body's content type is not one the route accepts.
  * - `range_not_satisfiable` (416): The requested Blob byte range lies outside the value; see `blob_range`.
@@ -946,6 +950,7 @@ export type ErrorOutput = {
   read_set_conflict?: null | ReadSetConflictOutput;
   recovery_required?: null | RecoveryRequiredOutput;
   resource_limit?: null | ResourceLimitOutput;
+  writer_fenced?: null | WriterFencedOutput;
 };
 
 export type ExportRequest = {
@@ -1400,6 +1405,25 @@ export type MergeConflictOutput = {
   type_name: string;
 };
 
+export const OperationLookup = { FOUND: "found", UNKNOWN: "unknown" } as const;
+
+export type OperationLookup =
+  (typeof OperationLookup)[keyof typeof OperationLookup];
+
+export type OperationOutput = {
+  /**
+   * Whether this server is running it now.
+   */
+  in_progress: boolean;
+  lookup: OperationLookup;
+  /**
+   * The operation's record; absent for an `unknown` lookup.
+   */
+  operation?: {
+    [key: string]: unknown;
+  } | null;
+};
+
 /**
  * One declared parameter of a stored query, projected for the catalog.
  */
@@ -1817,6 +1841,26 @@ export type SnapshotOutput = {
 };
 
 /**
+ * `POST /graphs/{graph_id}/operations/optimize`.
+ */
+export type StartOptimizeRequest = {
+  /**
+   * Only these datasets, each named by its type key (`node:<Type>`,
+   * `edge:<Type>`), in this order.
+   */
+  datasets?: Array<string> | null;
+  /**
+   * How long writers to main wait at most, within the server's ceiling.
+   */
+  max_gate_hold_ms?: number | null;
+  /**
+   * A canonical ULID the caller chose; a repeated submission with the same
+   * request answers the existing record.
+   */
+  operation_id: string;
+};
+
+/**
  * Non-overlapping edits against the original request source.
  */
 export type SuggestionOutput = {
@@ -1840,6 +1884,17 @@ export type TextEditOutput = {
   end: number;
   replacement: string;
   start: number;
+};
+
+/**
+ * The writer epochs of a publish or claim a claimed branch refused. `held`
+ * is the serving process's epoch, absent when it holds none; `read` is the
+ * epoch a refused claim read; `current` is the branch's epoch.
+ */
+export type WriterFencedOutput = {
+  current: number;
+  held?: number | null;
+  read?: number | null;
 };
 
 export type OauthProtectedResourceMetadataData = {
@@ -1925,6 +1980,10 @@ export type DeploymentStatusErrors = {
    */
   405: ErrorOutput;
   /**
+   * Conflict (code `conflict`), for example a cluster control object whose stored text is corrupt: an applied policy payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead
+   */
+  409: ErrorOutput;
+  /**
    * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
    */
   412: ErrorOutput;
@@ -1933,11 +1992,11 @@ export type DeploymentStatusErrors = {
    */
   429: ErrorOutput;
   /**
-   * Internal failure (code `internal`) while evaluating deployment access
+   * Internal failure (code `internal`) while evaluating deployment access, or a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)
    */
   500: ErrorOutput;
   /**
-   * Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   * Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline. Also a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -1991,6 +2050,9 @@ export type DeploymentApplyErrors = {
    * request_timeout when the request body deadline passes before operation admission
    */
   408: ErrorOutput;
+  /**
+   * Conflict (code `conflict`), including a cluster control object whose stored text is corrupt: a catalog payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead
+   */
   409: ErrorOutput;
   /**
    * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
@@ -2006,11 +2068,11 @@ export type DeploymentApplyErrors = {
    */
   429: ErrorOutput;
   /**
-   * Internal failure (code `internal`), or unsettled deployment completion (code `outcome_unknown`); reconcile the original deployment identity before submitting another deployment
+   * Internal failure (code `internal`), or unsettled deployment completion (code `outcome_unknown`); reconcile the original deployment identity before submitting another deployment. Also, before any effect, a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)
    */
   500: ErrorOutput;
   /**
-   * ; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   * Nothing changed: before any effect, a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2070,6 +2132,10 @@ export type DeploymentLookupErrors = {
    */
   405: ErrorOutput;
   /**
+   * Conflict (code `conflict`), for example a cluster control object whose stored text is corrupt: an applied policy payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead
+   */
+  409: ErrorOutput;
+  /**
    * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
    */
   412: ErrorOutput;
@@ -2078,7 +2144,11 @@ export type DeploymentLookupErrors = {
    */
   429: ErrorOutput;
   /**
-   * Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   * Internal failure (code `internal`), or a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)
+   */
+  500: ErrorOutput;
+  /**
+   * Deployment ownership changed during the bounded ledger observation; retry this GET within the caller deadline. Also a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -2132,6 +2202,9 @@ export type DeploymentPlanErrors = {
    * request_timeout when the request body deadline passes before operation admission
    */
   408: ErrorOutput;
+  /**
+   * Conflict (code `conflict`), including a cluster control object whose stored text is corrupt: a catalog payload that does not match its recorded digest, or a state file that is not valid cluster state; restore the object from a trusted copy. Its bytes failing to decode as text answer 500 instead
+   */
   409: ErrorOutput;
   /**
    * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
@@ -2147,11 +2220,11 @@ export type DeploymentPlanErrors = {
    */
   429: ErrorOutput;
   /**
-   * Internal failure (code `internal`) while evaluating deployment access or planning
+   * Internal failure (code `internal`) while evaluating deployment access or planning, or a storage read of a cluster control object (the state file, its lock or a catalog payload) that fails the same way on every read, such as bytes that are not text (`effects: none`)
    */
   500: ErrorOutput;
   /**
-   * graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   * Nothing was planned: a storage read of a cluster control object (the state file, its lock or a catalog payload) that failed temporarily or for an unknown reason (`effects: none`; retry); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
    */
   503: ErrorOutput;
 };
@@ -4582,6 +4655,253 @@ export type MutateIfGraphCommitResponses = {
 
 export type MutateIfGraphCommitResponse =
   MutateIfGraphCommitResponses[keyof MutateIfGraphCommitResponses];
+
+export type StartOptimizeData = {
+  body: StartOptimizeRequest;
+  headers: {
+    /**
+     * exactly one Omnigraph-Http-Api header with value 0.14 is required
+     */
+    "Omnigraph-Http-Api": "0.14";
+    /**
+     * The actor the caller expects its credential to resolve to. A mismatch is refused with 412 actor_mismatch before graph lookup or effects; a match changes nothing.
+     */
+    "Omnigraph-If-Actor"?: string;
+  };
+  path: {
+    /**
+     * Graph id to route the request to. The `og_` prefix is reserved for system graphs. `og_catalog` is the built-in, storage-free catalogue: it serves only POST /query and GET /schema with their ordinary response bodies. Its query refuses `branch` and `snapshot`; every other route under /graphs/og_catalog returns 405 `method_not_allowed` before effects.
+     */
+    graph_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/operations/optimize";
+};
+
+export type StartOptimizeErrors = {
+  /**
+   * A non-canonical operation_id, or a max_gate_hold_ms above this server's ceiling; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
+   * unauthorized when no bearer credential is presented or the server refuses it
+   */
+  401: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * not_found when no graph `graph_id` is served or the caller may not see it, or when no route serves the path
+   */
+  404: ErrorOutput;
+  /**
+   * method_not_allowed when the path is served, but not with this method
+   */
+  405: ErrorOutput;
+  /**
+   * request_timeout when the request body deadline passes before operation admission
+   */
+  408: ErrorOutput;
+  /**
+   * Conflict (code `conflict`): the same id with a different request (`[operation_request_mismatch]`), an id at or before the eviction mark (`[operation_id_expired]`), an outstanding deployment, four unresolved publications, a record from another ledger (`[operation_record_foreign]`), or a state file or operation record whose stored text is corrupt (`[invalid_state_json]`, `[operation_record_invalid]`; bytes that are not text answer 500)
+   */
+  409: ErrorOutput;
+  /**
+   * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
+   */
+  412: ErrorOutput;
+  /**
+   * payload_too_large when the request body exceeds its route limit before operation admission
+   */
+  413: ErrorOutput;
+  /**
+   * Another operation is active in the maintenance scope, or that scope's admission gate is held across an acceptance; honor `Retry-After`; too_many_requests when server observer, ingress or operation admission capacity is exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Internal failure (code `internal`), including a storage read of the cluster state, its lock or the operation record that fails the same way on every read (nothing was accepted), or a record write with no definite answer (code `outcome_unknown`); look the operation up by its id
+   */
+  500: ErrorOutput;
+  /**
+   * The routes are not enabled, admission is closed, a storage read of the cluster state, its lock or the operation record failed temporarily or for an unknown reason, or the operation record write was refused; nothing was accepted (a refusal naming an earlier request of unknown outcome clears once a read sees the record change, or, for an unconditional write or a create whose record never appeared, when the server restarts); graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type StartOptimizeError = StartOptimizeErrors[keyof StartOptimizeErrors];
+
+export type StartOptimizeResponses = {
+  /**
+   * The operation is terminal
+   */
+  200: OperationOutput;
+  /**
+   * Durably accepted, or still running; look it up by its id until it is terminal
+   */
+  202: OperationOutput;
+};
+
+export type StartOptimizeResponse =
+  StartOptimizeResponses[keyof StartOptimizeResponses];
+
+export type GetOperationData = {
+  body?: never;
+  headers: {
+    /**
+     * exactly one Omnigraph-Http-Api header with value 0.14 is required
+     */
+    "Omnigraph-Http-Api": "0.14";
+    /**
+     * The actor the caller expects its credential to resolve to. A mismatch is refused with 412 actor_mismatch before graph lookup or effects; a match changes nothing.
+     */
+    "Omnigraph-If-Actor"?: string;
+  };
+  path: {
+    /**
+     * Graph id to route the request to. The `og_` prefix is reserved for system graphs. `og_catalog` is the built-in, storage-free catalogue: it serves only POST /query and GET /schema with their ordinary response bodies. Its query refuses `branch` and `snapshot`; every other route under /graphs/og_catalog returns 405 `method_not_allowed` before effects.
+     */
+    graph_id: string;
+    /**
+     * The id the caller submitted
+     */
+    operation_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/operations/{operation_id}";
+};
+
+export type GetOperationErrors = {
+  /**
+   * api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
+   * unauthorized when no bearer credential is presented or the server refuses it
+   */
+  401: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * not_found when no graph `graph_id` is served or the caller may not see it, or when no route serves the path
+   */
+  404: ErrorOutput;
+  /**
+   * method_not_allowed when the path is served, but not with this method
+   */
+  405: ErrorOutput;
+  /**
+   * Conflict (code `conflict`): a record from another ledger at this root, the record changed during resolution, or a state file or operation record whose stored text is corrupt (`[invalid_state_json]`, `[operation_record_invalid]`; bytes that are not text answer 500)
+   */
+  409: ErrorOutput;
+  /**
+   * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
+   */
+  412: ErrorOutput;
+  /**
+   * too_many_requests when server observer, ingress or operation admission capacity is exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Internal failure (code `internal`), including a storage read of the cluster state, its lock or the operation record that fails the same way on every read (nothing changed), or a resolution write with no definite answer (code `outcome_unknown`); retry the lookup
+   */
+  500: ErrorOutput;
+  /**
+   * The routes are not enabled, a storage read of the cluster state, its lock or the operation record failed temporarily or for an unknown reason, or a record write was refused; nothing changed, retry; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type GetOperationError = GetOperationErrors[keyof GetOperationErrors];
+
+export type GetOperationResponses = {
+  /**
+   * The operation's record, or `lookup: unknown`
+   */
+  200: OperationOutput;
+};
+
+export type GetOperationResponse =
+  GetOperationResponses[keyof GetOperationResponses];
+
+export type CancelOperationData = {
+  body?: never;
+  headers: {
+    /**
+     * exactly one Omnigraph-Http-Api header with value 0.14 is required
+     */
+    "Omnigraph-Http-Api": "0.14";
+    /**
+     * The actor the caller expects its credential to resolve to. A mismatch is refused with 412 actor_mismatch before graph lookup or effects; a match changes nothing.
+     */
+    "Omnigraph-If-Actor"?: string;
+  };
+  path: {
+    /**
+     * Graph id to route the request to. The `og_` prefix is reserved for system graphs. `og_catalog` is the built-in, storage-free catalogue: it serves only POST /query and GET /schema with their ordinary response bodies. Its query refuses `branch` and `snapshot`; every other route under /graphs/og_catalog returns 405 `method_not_allowed` before effects.
+     */
+    graph_id: string;
+    /**
+     * The id the caller submitted
+     */
+    operation_id: string;
+  };
+  query?: never;
+  url: "/graphs/{graph_id}/operations/{operation_id}/cancel";
+};
+
+export type CancelOperationErrors = {
+  /**
+   * api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   */
+  400: ErrorOutput;
+  /**
+   * unauthorized when no bearer credential is presented or the server refuses it
+   */
+  401: ErrorOutput;
+  403: ErrorOutput;
+  /**
+   * not_found when no graph `graph_id` is served or the caller may not see it, or when no route serves the path
+   */
+  404: ErrorOutput;
+  /**
+   * method_not_allowed when the path is served, but not with this method
+   */
+  405: ErrorOutput;
+  /**
+   * Conflict (code `conflict`): a record from another ledger at this root, the record changed during resolution, or a state file or operation record whose stored text is corrupt (`[invalid_state_json]`, `[operation_record_invalid]`; bytes that are not text answer 500)
+   */
+  409: ErrorOutput;
+  /**
+   * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
+   */
+  412: ErrorOutput;
+  /**
+   * too_many_requests when server observer, ingress or operation admission capacity is exhausted; honor Retry-After
+   */
+  429: ErrorOutput;
+  /**
+   * Internal failure (code `internal`), including a storage read of the cluster state, its lock or the operation record that fails the same way on every read (nothing changed), or a resolution write with no definite answer (code `outcome_unknown`); look the operation up by its id
+   */
+  500: ErrorOutput;
+  /**
+   * The routes are not enabled, a storage read of the cluster state, its lock or the operation record failed temporarily or for an unknown reason, or a record write was refused; nothing changed, retry; graph_unavailable for a known graph that is not served, or service_unavailable when server operation admission is closed; honor Retry-After, and reconcile any earlier write before retrying
+   */
+  503: ErrorOutput;
+};
+
+export type CancelOperationError =
+  CancelOperationErrors[keyof CancelOperationErrors];
+
+export type CancelOperationResponses = {
+  /**
+   * The operation is terminal, unchanged; or `lookup: unknown`
+   */
+  200: OperationOutput;
+  /**
+   * Cancellation requested; a `publishing` operation is unchanged
+   */
+  202: OperationOutput;
+};
+
+export type CancelOperationResponse =
+  CancelOperationResponses[keyof CancelOperationResponses];
 
 export type QueriesListData = {
   body?: never;
