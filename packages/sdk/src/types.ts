@@ -99,6 +99,13 @@ export type Ingest = Camelize<IngestOutput>;
 export type GraphBatchLoad = Camelize<GraphBatchLoadOutput>;
 export type GraphBatchDeclaration = Camelize<GraphBatchDeclarationOutput>;
 export type Read = Camelize<ReadOutput>;
+/**
+ * How a read ordered by `nearest`, `bm25` or `rrf()` ranked its rows
+ * (`Read.ranking`, omnigraph-server 0.15+): the search, the direction its
+ * score orders rows, whether the search was exhaustive, and the returned
+ * columns that hold the score.
+ */
+export type Ranking = Camelize<import('./generated/types.gen').RankingOutput>;
 export type ReadTarget = Camelize<ReadTargetOutput>;
 // Stored queries (GET /queries, POST /queries/{name}).
 export type Queries = Camelize<QueriesCatalogOutput>;
@@ -203,6 +210,8 @@ export {
   EntityKind,
   ChangeOp,
   ChangeDiffRefusalReason,
+  SearchFunction,
+  RankOrder,
 } from './generated/types.gen';
 
 // CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.

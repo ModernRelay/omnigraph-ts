@@ -107,6 +107,7 @@ export type {
   LoadNdjsonInput,
   QueryInput,
   Read,
+  Ranking,
   ReadTarget,
   Snapshot,
   SnapshotDataset,
@@ -153,4 +154,6 @@ export {
   EntityKind,
   ChangeOp,
   ChangeDiffRefusalReason,
+  SearchFunction,
+  RankOrder,
 } from './types';
