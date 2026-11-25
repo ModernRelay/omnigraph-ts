@@ -19,6 +19,8 @@ import Omnigraph, {
   SERVER_VERSION,
   HTTP_API_CONTRACT,
   UnauthorizedError,
+  RankOrder,
+  SearchFunction,
   type ChangeBaselineRecord,
   type EntityChange,
 } from '../src';
@@ -211,6 +213,23 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(unchanged.commit).toBeNull();
     });
 
+    it('listDetailed reports each branch head and where it started', async () => {
+      const name = `e2e-detail-${Date.now()}`;
+      branchesToCleanup.push(name);
+      const created = await og.branches.create({ name, from: 'main' });
+      const listing = await og.branches.listDetailed();
+      expect(listing.branches).toEqual(await og.branches.list());
+      expect(listing.details.map((d) => d.name)).toEqual(listing.branches);
+      const detail = listing.details.find((d) => d.name === name)!;
+      expect(detail.from).toBe('main');
+      expect(detail.fromCommitId).toBe(created.fromCommitId);
+      expect(detail.head.graphCommitId).toBe(detail.fromCommitId);
+      expect(detail.updatedAt).toBeGreaterThan(0);
+      const main = listing.details.find((d) => d.name === 'main')!;
+      expect(main.from).toBeUndefined();
+      expect(main.head.graphCommitId).toBe((await findPerson('main', 'Alice')).graphCommitId);
+    });
+
     it('idempotent re-merge yields already_up_to_date', async () => {
       const src = `e2e-idempotent-${Date.now()}`;
       branchesToCleanup.push(src);
@@ -222,6 +241,24 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
   });
 
   describe('queries', () => {
+    it('binds a U64 parameter above i64::MAX sent as a bigint', async () => {
+      const q = 'query q($n: U64) { match { $p: Person { name: "Alice" } } return { $p.name } }';
+      const r = await og.query({ query: q, params: { n: 18446744073709551615n } });
+      expect(r.rowCount).toBe(1);
+      // One past U64::MAX is refused at bind time, before execution.
+      await expect(og.query({ query: q, params: { n: 18446744073709551616n } }))
+        .rejects.toBeInstanceOf(BadRequestError);
+    });
+
+    it('a ranked read reports its ranking', async () => {
+      const r = await og.query({
+        query: 'query q($t: String) { match { $p: Person } return { $p.name, bm25($p.name, $t) as score } order { bm25($p.name, $t) desc } limit 2 }',
+        params: { t: 'alice' },
+      });
+      expect(r.ranking).toEqual({ by: SearchFunction.BM25, order: RankOrder.DESCENDING, exhaustive: true, scoreColumns: ['score'] });
+      expect(r.columns).toContain('score');
+    });
+
     it('parameterized query returns matching row with camelCased fields', async () => {
       const r = await og.query({
         query:
