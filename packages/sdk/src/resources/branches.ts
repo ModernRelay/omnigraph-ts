@@ -106,6 +106,10 @@ export class BranchesResource {
    * Returns this merge's exact commit, or null when already up to date.
    * An optional source deletion can fail after a successful merge; inspect
    * branchDeleted and branchDeleteErrorDetails. Never retry an uncertain merge blindly.
+   *
+   * With `dryRun`, the merge is classified and validated but nothing is
+   * written, so a lost answer is not `outcomeUnknown`; a reply that is not a
+   * dry-run receipt is, since it may mean a merge landed.
    */
   async merge(
     input: BranchMergeInput,
@@ -122,6 +126,9 @@ export class BranchesResource {
         body: normalized,
         signal: opts.signal,
         ifActor: opts.ifActor,
+        // A dry run writes nothing; a reply that is not a dry-run receipt
+        // still fails validMerge below with effects unknown.
+        readOnly: input.dryRun === true,
       },
     );
     if (!validMerge(result, normalized))

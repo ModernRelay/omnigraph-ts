@@ -132,6 +132,13 @@ export interface RequestOptions {
   opaqueResponseKeys?: ReadonlySet<string>;
   /** The endpoint returns an opaque JSON document, not an SDK DTO. */
   opaqueResponse?: boolean;
+  /**
+   * The request reads although its route can write (a merge `dryRun`). A
+   * lost or interrupted answer then has no effects. A reply that breaks the
+   * contract or contradicts the request still leaves effects unknown: only a
+   * valid reply confirms the server treated the request as a read.
+   */
+  readOnly?: boolean;
 }
 
 export class Transport {
@@ -192,7 +199,7 @@ export class Transport {
           'Response body was interrupted or invalid; do not automatically repeat writes',
         request: { method, url: this.buildUrl(path, opts.query) },
         requestDispatched: true,
-        outcomeUnknown: canWrite(method, path),
+        outcomeUnknown: !opts.readOnly && canWrite(method, path),
       });
     }
   }
@@ -261,8 +268,9 @@ export class Transport {
     try {
       response = await this.fetchImpl(url, init);
     } catch (e) {
+      const writes = !opts.readOnly && canWrite(method, path);
       if (
-        !canWrite(method, path) &&
+        !writes &&
         e instanceof Error &&
         e.name === 'AbortError'
       )
@@ -275,7 +283,7 @@ export class Transport {
             : 'HTTP transport failed after dispatch; reconcile writes before retrying',
         request: requestMeta,
         requestDispatched: true,
-        outcomeUnknown: canWrite(method, path),
+        outcomeUnknown: writes,
       });
     }
     if (
@@ -308,7 +316,9 @@ export class Transport {
         requestId,
         request: requestMeta,
         response,
-        outcomeUnknown: serverOutcomeUnknown(body) ?? canWrite(method, path),
+        outcomeUnknown:
+          serverOutcomeUnknown(body) ??
+          (!opts.readOnly && canWrite(method, path)),
       });
     }
     return response;

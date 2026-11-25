@@ -259,3 +259,48 @@ it('accepts the detached u64 version in a complete asCommit receipt without trea
   const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
   expect((await og.branches.merge({ source: 'topic', asCommit: true })).commit!.graphCommitId).toBe('proposal');
 });
+
+describe('dry-run merge classification', () => {
+  const contract = { 'Omnigraph-Http-Api': '0.14' };
+  const losing = (body?: string) => {
+    let posts = 0;
+    const fetch = async (_input: unknown, init?: RequestInit) => {
+      if (init?.method === 'HEAD') return new Response(null, { headers: contract });
+      posts++;
+      if (body !== undefined) return new Response(body, { headers: { ...contract, 'content-type': 'application/json' } });
+      throw new TypeError('socket hang up');
+    };
+    return { og: new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch: fetch as typeof globalThis.fetch }), posts: () => posts };
+  };
+
+  it('a dry run whose answer is lost has no effects; a merge stays uncertain', async () => {
+    const dry = losing();
+    await expect(dry.og.branches.merge({ source: 'topic', dryRun: true })).rejects.toMatchObject({
+      name: 'NetworkError', requestDispatched: true, outcomeUnknown: false,
+    });
+    expect(dry.posts()).toBe(1);
+    const real = losing();
+    await expect(real.og.branches.merge({ source: 'topic' })).rejects.toMatchObject({ outcomeUnknown: true });
+  });
+
+  it('a dry run whose body is interrupted has no effects', async () => {
+    await expect(losing('{"source":"topic",').og.branches.merge({ source: 'topic', dryRun: true }))
+      .rejects.toMatchObject({ name: 'NetworkError', outcomeUnknown: false });
+  });
+
+  it('a dry run with a malformed error body has no effects', async () => {
+    const { fetch } = stubFetch({ status: 500, body: 'not json' });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.branches.merge({ source: 'topic', dryRun: true })).rejects.toMatchObject({ outcomeUnknown: false });
+  });
+
+  it('a reply that contradicts the dry run leaves effects unknown', async () => {
+    const { fetch } = stubFetch({ body: {
+      source: 'topic', target: 'main', outcome: 'fast_forward', dry_run: false, commit: null,
+    } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    await expect(og.branches.merge({ source: 'topic', dryRun: true })).rejects.toMatchObject({
+      name: 'ApiContractError', outcomeUnknown: true,
+    });
+  });
+});
