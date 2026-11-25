@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph
 
-TypeScript client for **OmniGraph 0.14**, with typed errors, exact write receipts,
+TypeScript client for **Omnigraph 0.15** (HTTP contract 0.14), with typed errors, exact write receipts,
 streaming exports, and cluster deployment APIs. Requires Node.js 22 or newer.
 
 ```sh
@@ -104,6 +104,14 @@ for await (const record of og.export({ branch: 'main', typeNames: ['Person'] }))
 }
 ```
 
+`og.branches.listDetailed()` returns `{ branches, details }`: for each branch
+you may read, its `head` commit, the branch and commit it started `from`, and
+`createdAt`/`updatedAt` (Unix epoch microseconds). A read ordered by `nearest`,
+`bm25` or `rrf()` reports `ranking`: the search, its score `order`, whether it
+was `exhaustive`, and the `scoreColumns` holding the score. Pass a `bigint`
+parameter for an integer beyond `Number.MAX_SAFE_INTEGER`, such as a `U64` above
+`i64::MAX`; it is sent as its exact decimal string.
+
 Snapshots report `graphBranch`, `graphManifestVersion`, and `datasets`.
 Published dataset versions identify the graph snapshot. Export returns NDJSON records. Network stream failures and malformed NDJSON
 reject iteration. Consume to completion before treating an export as complete.
@@ -185,6 +193,11 @@ Methods accept an `AbortSignal`; authenticated operations also accept `ifActor` 
 `requestDispatched: false`; a failure after a write was sent may set
 `outcomeUnknown: true`. An HTTP status alone does not establish retry safety.
 
+A 403 is `ForbiddenError`; its subclass `NotAdmittedError` (`not_admitted`)
+means an OIDC token is valid but the server admits no principal for its
+subject: signing in again cannot help, the server's operator must admit it.
+A refusal whose disposition says `effects: none` is never `outcomeUnknown`.
+
 Inspect 409 details: merge/key conflicts require a decision;
 `fullTextIndexRebuildRequired` needs operator maintenance. A 503 can mean a
 known graph is loading or unavailable; 404 means the target is unknown.
@@ -207,6 +220,15 @@ The SDK does not convert stored graphs or legacy credentials.
 the header contract its spec requires; the two are separate numbers. Package
 major/minor tracks the server release; patch releases are independent. Each client has
 isolated configuration and supports a custom `fetch` for testing or tracing.
+
+## Upgrading from 0.14
+
+The wire contract is unchanged (`Omnigraph-Http-Api: 0.14`), so this release
+reads and writes a 0.14 server's routes; `listDetailed()` and `ranking` need
+omnigraph-server 0.15. New: `branches.listDetailed()`, `Read.ranking` with the
+`SearchFunction` and `RankOrder` enums, `Access.clientId`,
+`Settings.changeLineage`, `NotAdmittedError`, and exact `bigint` parameters.
+See [CHANGELOG.md](../../CHANGELOG.md).
 
 ## Upgrading from 0.13
 
