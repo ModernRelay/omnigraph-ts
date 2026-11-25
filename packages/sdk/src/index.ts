@@ -27,6 +27,12 @@ export type {
 } from './resources/changes';
 
 export type { BranchDiffInput, MergeBaseInput } from './resources/branches';
+export type {
+  StartOptimizeInput,
+  WaitOptions,
+} from './resources/operations';
+export { isTerminal } from './resources/operations';
+export { newOperationId } from './operation-id';
 
 // The generated server pin and exact HTTP contract enforced by every client.
 export {
@@ -133,6 +139,13 @@ export type {
   ChangeBaselineInput,
   ChangeBaselineRecord,
   ExportRecord,
+  // Recorded operations
+  Operation,
+  OperationRequest,
+  OperationOutcome,
+  OperationTableOutcome,
+  OperationTailOutcome,
+  OperationResult,
   // Utility
   Camelize,
 } from './types';
@@ -158,4 +171,6 @@ export {
   ChangeDiffRefusalReason,
   SearchFunction,
   RankOrder,
+  OperationLookup,
+  OperationState,
 } from './types';

@@ -9,6 +9,7 @@ import { BlobsResource } from './resources/blobs';
 import { ChangesResource } from './resources/changes';
 import { CommitsResource } from './resources/commits';
 import { GraphsResource } from './resources/graphs';
+import { OperationsResource } from './resources/operations';
 import { QueriesResource } from './resources/queries';
 import { SchemaResource } from './resources/schema';
 import type { ChangeFilterInput } from './resources/changes';
@@ -72,6 +73,7 @@ export default class Omnigraph {
   readonly branches: BranchesResource;
   readonly commits: CommitsResource;
   readonly graphs: GraphsResource;
+  readonly operations: OperationsResource;
   readonly queries: QueriesResource;
   readonly schema: SchemaResource;
 
@@ -87,6 +89,7 @@ export default class Omnigraph {
     this.branches = new BranchesResource(this.t);
     this.commits = new CommitsResource(this.t);
     this.graphs = new GraphsResource(this.t);
+    this.operations = new OperationsResource(this.t);
     this.queries = new QueriesResource(this.t);
     this.schema = new SchemaResource(this.t);
   }

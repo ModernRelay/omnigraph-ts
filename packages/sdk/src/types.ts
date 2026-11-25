@@ -215,6 +215,7 @@ export {
   ChangeDiffRefusalReason,
   SearchFunction,
   RankOrder,
+  OperationLookup,
 } from './generated/types.gen';
 
 // CamelErrorOutput is the camelCased version surfaced on OmnigraphError.body.
@@ -244,3 +245,99 @@ export type Deployment = Camelize<
 export type DeploymentStatus = Camelize<
   import('./generated/types.gen').DeploymentStatusOutput
 >;
+
+// Recorded operations (omnigraph-server 0.16+). The spec leaves the record an
+// open object; these types describe the record the 0.16 server writes. Fields
+// may be added; read unknown ones from the raw object.
+
+/** `accepted` → `running` → `publishing` → one terminal state. */
+export const OperationState = {
+  ACCEPTED: 'accepted',
+  RUNNING: 'running',
+  /** A commit may have landed; only `main`'s history settles it. */
+  PUBLISHING: 'publishing',
+  SUCCEEDED: 'succeeded',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  INTERRUPTED: 'interrupted',
+  /** Terminal with its publication unknown (`reason: graph_deleted`). */
+  UNSETTLED: 'unsettled',
+} as const;
+export type OperationState =
+  (typeof OperationState)[keyof typeof OperationState];
+
+/** What an optimize run was asked to do; the request digest covers it. */
+export interface OperationRequest {
+  kind: 'optimize' | (string & {});
+  datasets?: string[];
+  maxGateHoldMs?: number;
+}
+
+/** One dataset's outcome, as the engine reported it. */
+export interface OperationTableOutcome {
+  /** The dataset's type key, `node:<Type>` or `edge:<Type>`. */
+  typeKey: string;
+  /** `optimized`, `unchanged`, `deferred` or `failed`. */
+  outcome: string;
+  /** Why a `deferred` dataset was not started, or `index_failed` on an `optimized` one. */
+  reason?: string;
+  detail?: string;
+  fragmentsRemoved: number;
+  fragmentsAdded: number;
+  durationMs: number;
+  sourceBytes?: number;
+}
+
+/** An outcome after the graph commit, which never fails the operation. */
+export interface OperationTailOutcome {
+  outcome: string;
+  detail?: string;
+}
+
+export interface OperationOutcome {
+  kind: 'optimize' | (string & {});
+  /** The resume position the server supplied for a full-catalog run. */
+  startAt?: string;
+  /** At most 1,024 datasets, in the run's visit order. */
+  datasets?: OperationTableOutcome[];
+  /** The datasets beyond the listed ones, counted by `outcome` or `outcome:reason` (keys verbatim). */
+  moreDatasets?: Record<string, number>;
+  resumeAt?: string;
+  configurationClear?: OperationTailOutcome;
+  artifact?: OperationTailOutcome;
+}
+
+/** A recorded operation, as `GET /operations/{id}` reports it. */
+export interface Operation {
+  /** The caller's canonical ULID. */
+  operationId: string;
+  requestDigest: string;
+  graph: string;
+  schemaIdentityDomain: string;
+  /** The branch whose history settles the publication (`main`). */
+  settlementBranch: string;
+  request: OperationRequest;
+  principal: string;
+  acceptedAt: string;
+  state: OperationState;
+  nonce?: string;
+  inputCommit?: string;
+  inputManifestVersion?: number;
+  /** The published graph commit, from the publisher's answer or from resolution. */
+  publishedCommit?: string;
+  /** Present while a `publishing` record's history walk is open. */
+  resolution?: { cursor?: string; visited: number };
+  outcome: OperationOutcome;
+  timings?: { queuedMs?: number; gateHoldMs?: number; computeMs?: number };
+  /** Why a terminal operation ended as it did, or where a resolution stopped. */
+  reason?: string;
+}
+
+/** The answer of every operation route: the record, or `lookup: 'unknown'`. */
+export interface OperationResult {
+  lookup: import('./generated/types.gen').OperationLookup;
+  /** Whether this server is running the operation now. */
+  inProgress: boolean;
+  /** Absent for an `unknown` lookup. */
+  operation?: Operation | null;
+}
