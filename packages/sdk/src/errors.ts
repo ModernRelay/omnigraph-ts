@@ -143,6 +143,7 @@ const codeToClass: Record<
   graph_unavailable: GraphUnavailableError,
   unauthorized: UnauthorizedError,
   forbidden: ForbiddenError,
+  not_admitted: ForbiddenError,
   not_found: NotFoundError,
   method_not_allowed: MethodNotAllowedError,
   conflict: ConflictError,

@@ -47,6 +47,12 @@ export type AccessOutput = {
    * The branch asked about, when one was.
    */
   branch?: string | null;
+  /**
+   * The OAuth client the credential was issued to, when it is a verified
+   * OIDC access token. The actor stays the person's principal across
+   * clients. Opaque text the client chose: render it escaped.
+   */
+  client_id?: string | null;
   graph_id: string;
   /**
    * Actions allowed with no branch named: the graph-scoped ones, and the
@@ -179,8 +185,53 @@ export type BranchDeleteOutput = {
   uri: string;
 };
 
+/**
+ * One live branch as `GET /branches?detailed=true` reports it. `from` and
+ * `from_commit_id` say where the branch started, as its `POST /branches`
+ * receipt did. A branch deleted and created again under the same name is a
+ * new lifetime: its start and creation time are the later creation's. The
+ * optional fields are absent on `main`.
+ */
+export type BranchDetailOutput = {
+  /**
+   * When the branch was created, as Unix epoch microseconds recorded to
+   * the second.
+   */
+  created_at?: number | null;
+  /**
+   * The branch this one started from, as that branch was named then; it
+   * may since have been deleted or recreated.
+   */
+  from?: string | null;
+  /**
+   * The commit the branch started at. A later merge does not move it;
+   * `GET /branches/merge-base` answers where two branches last met.
+   */
+  from_commit_id?: string | null;
+  /**
+   * The commit a read of the branch sees: its newest commit, or the commit
+   * it started at while it has written none.
+   */
+  head: CommitOutput;
+  name: string;
+  /**
+   * When the head last moved, as Unix epoch microseconds: the time of the
+   * branch's newest commit, or `created_at` while it has written none.
+   */
+  updated_at: number;
+};
+
 export type BranchListOutput = {
+  /**
+   * Every live branch, sorted by name in byte order.
+   */
   branches: Array<string>;
+  /**
+   * Present only with `detailed=true`: one entry per branch the caller
+   * may `read`, in the order of `branches`. A branch the caller may not
+   * read is listed in `branches` alone.
+   */
+  details?: Array<BranchDetailOutput> | null;
 };
 
 export const BranchMergeOutcome = {
@@ -778,6 +829,7 @@ export type EntityKind = (typeof EntityKind)[keyof typeof EntityKind];
  *
  * - `unauthorized` (401): The request carries no credential the server accepts: a bearer token is missing, unknown or expired. Supply one the server is configured to verify.
  * - `forbidden` (403): The credential's actor may not do this: policy denies the action, or the action needs a policy permit the server has not been given.
+ * - `not_admitted` (403): The OIDC access token is valid, but the server admits no principal for its subject. Signing in again issues a token for the same subject and cannot help; the server's operator must admit the identity.
  * - `bad_request` (400): The request is malformed or invalid: a body, query string, path parameter or header that does not decode, a query the compiler refuses (see `diagnostic`), or a value refused before any effect.
  * - `api_contract_mismatch` (400): The request lacks exactly one `Omnigraph-Http-Api` header naming the contract this server speaks. Authentication and this check precede graph access and effects.
  * - `actor_mismatch` (412): The request's `Omnigraph-If-Actor` header names another actor than its credential resolves to. Nothing ran.
@@ -806,6 +858,7 @@ export type EntityKind = (typeof EntityKind)[keyof typeof EntityKind];
 export const ErrorCode = {
   UNAUTHORIZED: "unauthorized",
   FORBIDDEN: "forbidden",
+  NOT_ADMITTED: "not_admitted",
   BAD_REQUEST: "bad_request",
   API_CONTRACT_MISMATCH: "api_contract_mismatch",
   ACTOR_MISMATCH: "actor_mismatch",
@@ -837,6 +890,7 @@ export const ErrorCode = {
  *
  * - `unauthorized` (401): The request carries no credential the server accepts: a bearer token is missing, unknown or expired. Supply one the server is configured to verify.
  * - `forbidden` (403): The credential's actor may not do this: policy denies the action, or the action needs a policy permit the server has not been given.
+ * - `not_admitted` (403): The OIDC access token is valid, but the server admits no principal for its subject. Signing in again issues a token for the same subject and cannot help; the server's operator must admit the identity.
  * - `bad_request` (400): The request is malformed or invalid: a body, query string, path parameter or header that does not decode, a query the compiler refuses (see `diagnostic`), or a value refused before any effect.
  * - `api_contract_mismatch` (400): The request lacks exactly one `Omnigraph-Http-Api` header naming the contract this server speaks. Authentication and this check precede graph access and effects.
  * - `actor_mismatch` (412): The request's `Omnigraph-If-Actor` header names another actor than its credential resolves to. Nothing ran.
@@ -940,8 +994,8 @@ export type FullTextIndexRebuildRequiredOutput = {
  * A full-text call read a declared full-text index that has no segment at
  * the query's snapshot (HTTP 409), so no segment carries its analyzer. This
  * is not a retryable conflict: an operator builds the branch's index
- * (`omnigraph optimize` on main, `omnigraph rebuild-full-text-indexes
- * --branch` elsewhere). Historical snapshots stay unchanged.
+ * (`omnigraph index build --branch <branch>`). Historical snapshots stay
+ * unchanged.
  */
 export type FullTextIndexRequiredOutput = {
   /**
@@ -1294,6 +1348,10 @@ export type LoadSliceExecutedOutput = {
    */
   partition: number;
   /**
+   * Nanoseconds the slice's partition waited for the source's bytes.
+   */
+  read_ns?: number;
+  /**
    * The records the slice held.
    */
   rows: number;
@@ -1505,6 +1563,50 @@ export type QueryRequest = {
   snapshot?: string | null;
 };
 
+/**
+ * The direction a ranking's score orders rows.
+ */
+export const RankOrder = {
+  ASCENDING: "ascending",
+  DESCENDING: "descending",
+} as const;
+
+/**
+ * The direction a ranking's score orders rows.
+ */
+export type RankOrder = (typeof RankOrder)[keyof typeof RankOrder];
+
+/**
+ * The ranking a read ordered its rows by.
+ */
+export type RankingOutput = {
+  /**
+   * The search function the leading `order` key names.
+   */
+  by: SearchFunction;
+  /**
+   * Whether no row the search admitted and did not return outranks a
+   * returned one. `bm25` scores every match, so it is always exhaustive.
+   * `nearest` is exhaustive when the run searched every partition of the
+   * vector index, scored every row flat or returned every row it
+   * admitted, and `false` when a probe cap left partitions unsearched, so
+   * a nearer row may exist. `rrf` is exhaustive when its `nearest` arms
+   * are.
+   */
+  exhaustive: boolean;
+  /**
+   * `ascending` for a `nearest` distance (smaller is nearer),
+   * `descending` for a `bm25` or `rrf` score (larger is more relevant).
+   */
+  order: RankOrder;
+  /**
+   * The returned columns that hold the ranking's own score, in return
+   * order; empty when the read returns none. A column computed from the
+   * score is not one.
+   */
+  score_columns: Array<string>;
+};
+
 export type ReadOutput = {
   columns?: Array<string>;
   /**
@@ -1517,6 +1619,7 @@ export type ReadOutput = {
   graph_commit_id?: string | null;
   page?: null | ReadPageOutput;
   query_name: string;
+  ranking?: null | RankingOutput;
   row_count: number;
   rows: unknown;
   target: ReadTargetOutput;
@@ -1630,6 +1733,21 @@ export type SchemaOutput = {
 };
 
 /**
+ * The search function a ranked read orders by.
+ */
+export const SearchFunction = {
+  NEAREST: "nearest",
+  BM25: "bm25",
+  RRF: "rrf",
+} as const;
+
+/**
+ * The search function a ranked read orders by.
+ */
+export type SearchFunction =
+  (typeof SearchFunction)[keyof typeof SearchFunction];
+
+/**
  * The `settings` field of a request: one optional value per `request`-scope
  * setting of the definition, applied to the request's session before the
  * source's own `set` lines, so a `set` line in the request's text overrides
@@ -1641,6 +1759,10 @@ export type SettingsRequest = {
    * the partition cap per index delta of a `nearest` scan; `0` is no cap
    */
   ann_nprobes?: number;
+  /**
+   * how a graph diff or commit page finds the entities it compares across a window with no adjacent transaction: the exact ordered merge of both versions, the entities paired by stable identity, or both compared
+   */
+  change_lineage?: "off" | "on" | "verify";
   /**
    * the engine a read query runs on; `v2`, the plan runner, is the one value; this setting does not change change-feed or merge execution
    */
@@ -2717,13 +2839,22 @@ export type BranchListData = {
      */
     graph_id: string;
   };
-  query?: never;
+  query?: {
+    /**
+     * `true` adds `details`: each branch's head, the branch and commit it
+     * started from, when it was created, and when it last moved. Defaults
+     * to `false`. Reads each listed branch's latest version, and the version
+     * it was created from once it has written a commit, never its commit
+     * history; the names alone read neither.
+     */
+    detailed?: boolean;
+  };
   url: "/graphs/{graph_id}/branches";
 };
 
 export type BranchListErrors = {
   /**
-   * api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
+   * Invalid `detailed`; api_contract_mismatch when the required API contract header is missing, duplicated or unsupported
    */
   400: ErrorOutput;
   /**
