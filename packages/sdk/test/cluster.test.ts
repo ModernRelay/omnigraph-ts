@@ -68,3 +68,15 @@ describe('cluster deployment API', () => {
     ]);
   });
 });
+
+it.each([
+  [503, 'service_unavailable', 'retry', 'ServiceUnavailableError'],
+  [500, 'internal', 'fix', 'InternalServerError'],
+] as const)('a failed cluster control read (%s) is a certain refusal, not a conflict', async (status, code, action, name) => {
+  // omnigraph-server 0.16 answers a failed read of cluster state with 503
+  // (may pass) or 500 (repeats), effects none, where 0.15 answered 409.
+  const { fetch, calls } = stubFetch({ status, body: { error: '[state_read_error] storage read failed', code, disposition: { effects: 'none', action } } });
+  const og = new Omnigraph({ baseUrl: 'http://x', fetch });
+  await expect(og.cluster.apply({ deploymentId: 'd', deployment: {} })).rejects.toMatchObject({ name, status, outcomeUnknown: false });
+  expect(calls).toHaveLength(1);
+});
