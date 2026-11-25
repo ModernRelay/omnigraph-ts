@@ -47,6 +47,7 @@ export {
   RequestTimeoutError,
   UnsupportedMediaTypeError,
   ConflictError,
+  WriterFencedError,
   GoneError,
   PreconditionFailedError,
   PayloadTooLargeError,
@@ -120,6 +121,7 @@ export type {
   // Conflict / errors / shared
   MergeConflict,
   PublishedDatasetVersionConflict,
+  WriterFenced,
   ErrorOutput,
   CommitChanges,
   ChangeFeed,

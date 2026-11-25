@@ -118,6 +118,9 @@ export type Schema = Camelize<SchemaOutput>;
 export type Snapshot = Camelize<SnapshotOutput>;
 export type SnapshotDataset = Camelize<SnapshotDatasetOutput>;
 export type MergeConflict = Camelize<MergeConflictOutput>;
+export type WriterFenced = Camelize<
+  import('./generated/types.gen').WriterFencedOutput
+>;
 export type PublishedDatasetVersionConflict =
   Camelize<PublishedDatasetVersionConflictOutput>;
 

@@ -90,6 +90,19 @@ export class ConflictError extends OmnigraphError {
   }
 }
 
+/**
+ * A branch's writer epoch refused a publish or a claim (409 `writer_fenced`):
+ * another process claimed the branch, so this write was fenced. Nothing was
+ * written. `writerFenced` holds the epochs: `current` is the branch's, `held`
+ * the serving process's (absent when it holds none), `read` the epoch a
+ * refused claim read.
+ */
+export class WriterFencedError extends ConflictError {
+  get writerFenced() {
+    return (this.body as ErrorOutput | undefined)?.writerFenced ?? undefined;
+  }
+}
+
 /** Retained change history is unavailable; recover through a baseline. */
 export class GoneError extends OmnigraphError {
   get changeFeedGap() {
@@ -164,7 +177,7 @@ const codeToClass: Record<
   request_timeout: RequestTimeoutError,
   branch_start_refusal: ConflictError,
   unattached_cannot_publish: ConflictError,
-  writer_fenced: ConflictError,
+  writer_fenced: WriterFencedError,
   payload_too_large: PayloadTooLargeError,
   unsupported_media_type: UnsupportedMediaTypeError,
   range_not_satisfiable: RangeNotSatisfiableError,
@@ -211,7 +224,7 @@ export function fromResponse(args: {
   const byStatus = statusToClass[args.status];
   // Status distinguishes broad error codes: e.g. 413/416 use bad_request,
   // while Blob 412 uses conflict. A code whose class refines the status's
-  // class (graph_unavailable, not_admitted) adds detail; the contract code
+  // class (graph_unavailable, not_admitted, writer_fenced) adds detail; the contract code
   // always names a contract failure.
   const Ctor =
     (code === 'api_contract_mismatch' ? ApiContractError : undefined) ??

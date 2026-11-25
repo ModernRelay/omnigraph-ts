@@ -12,6 +12,7 @@ import Omnigraph, {
   GraphUnavailableError,
   InternalServerError,
   NotAdmittedError,
+  WriterFencedError,
   MethodNotAllowedError,
   NotFoundError,
   TooManyRequestsError,
@@ -25,6 +26,7 @@ const cases: Array<[number, string, unknown]> = [
   [403, 'forbidden', ForbiddenError],
   [403, 'not_admitted', NotAdmittedError],
   [503, 'graph_unavailable', GraphUnavailableError],
+  [409, 'writer_fenced', WriterFencedError],
   [404, 'not_found', NotFoundError],
   [405, 'method_not_allowed', MethodNotAllowedError],
   [409, 'conflict', ConflictError],
@@ -54,6 +56,23 @@ describe('error dispatcher', () => {
     expect(error).toBeInstanceOf(NotAdmittedError);
     expect(error).toBeInstanceOf(ForbiddenError);
     expect(error).toMatchObject({ status: 403, code: 'not_admitted', outcomeUnknown: false });
+  });
+
+  it('WriterFencedError is a ConflictError carrying the branch epochs', async () => {
+    const { fetch, calls } = stubFetch({
+      status: 409,
+      body: {
+        error: 'branch main is claimed by another writer', code: 'writer_fenced',
+        disposition: { effects: 'none', action: 'refresh' },
+        writer_fenced: { current: 7, held: 6, read: null },
+      },
+    });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    const error = await og.mutate({ query: 'insert Person { name: "x" }' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(WriterFencedError);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error).toMatchObject({ outcomeUnknown: false, writerFenced: { current: 7, held: 6, read: null } });
+    expect(calls).toHaveLength(1);
   });
 
   it('a code whose class does not refine the status keeps the status class', async () => {
