@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import Omnigraph, {
   BadRequestError,
+  ConflictError,
   ForbiddenError,
   BranchMergeOutcome,
   LoadMode,
@@ -162,6 +163,21 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       expect(ids).toContain('beta');
     });
 
+    it('a static reader cannot use the catalog or identity-only discovery', async () => {
+      const reader = new Omnigraph({
+        baseUrl: BASE_URL, token: 'reader-token', graphId: GRAPH_ID,
+      });
+      // A working graph credential is neither the graph_list permit nor an
+      // admitted identity. In 0.17.1 the two inventory routes remain distinct.
+      expect((await reader.snapshot()).datasets.length).toBeGreaterThan(0);
+      await expect(reader.graphs.list()).rejects.toMatchObject({
+        name: 'ForbiddenError', status: 403, code: 'forbidden', outcomeUnknown: false,
+      });
+      await expect(reader.graphs.discover()).rejects.toMatchObject({
+        name: 'ForbiddenError', status: 403, code: 'forbidden', outcomeUnknown: false,
+      });
+    });
+
     it('og.graph("beta") routes under /graphs/beta and returns a snapshot', async () => {
       const beta = og.graph('beta');
       const s = await beta.snapshot({ branch: 'main' });
@@ -200,6 +216,29 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       branchesToCleanup.pop();
     });
 
+    it('an existing branch refuses a create with known no effects and no retry', async () => {
+      const name = `e2e-existing-${Date.now()}`;
+      branchesToCleanup.push(name);
+      await og.branches.create({ name, from: 'main' });
+      const before = (await og.branches.listDetailed()).details.find((d) => d.name === name);
+      let attempts = 0;
+      const client = new Omnigraph({
+        baseUrl: BASE_URL, token: TOKEN, graphId: GRAPH_ID,
+        fetch: async (input, init) => {
+          if (init?.method === 'POST') attempts++;
+          return fetch(input, init);
+        },
+      });
+      const error = await client.branches.create({ name, from: 'main' }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error).toMatchObject({
+        status: 409, code: 'branch_exists', requestDispatched: true,
+        outcomeUnknown: false, disposition: { effects: 'none', action: 'refresh' },
+      });
+      expect(attempts).toBe(1);
+      expect((await og.branches.listDetailed()).details.find((d) => d.name === name)).toEqual(before);
+    });
+
     it('publishing merge returns its exact receipt and no-op merge returns null', async () => {
       const source = `e2e-merge-src-${Date.now()}`;
       const target = `e2e-merge-target-${Date.now()}`;
@@ -227,11 +266,12 @@ describe.skipIf(!E2E_ENABLED)('e2e: live omnigraph-server', () => {
       const detail = listing.details.find((d) => d.name === name)!;
       expect(detail.from).toBe('main');
       expect(detail.fromCommitId).toBe(created.fromCommitId);
-      expect(detail.head.graphCommitId).toBe(detail.fromCommitId);
+      expect(detail.head).toBeTruthy();
+      expect(detail.head?.graphCommitId).toBe(detail.fromCommitId);
       expect(detail.updatedAt).toBeGreaterThan(0);
       const main = listing.details.find((d) => d.name === 'main')!;
       expect(main.from).toBeUndefined();
-      expect(main.head.graphCommitId).toBe((await findPerson('main', 'Alice')).graphCommitId);
+      expect(main.head?.graphCommitId).toBe((await findPerson('main', 'Alice')).graphCommitId);
     });
 
     it('idempotent re-merge yields already_up_to_date', async () => {

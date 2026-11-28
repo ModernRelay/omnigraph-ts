@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph-mcp
 
-MCP server for **Omnigraph 0.16** (HTTP contract 0.14), using the TypeScript SDK over HTTP and stdio
+MCP server tested against **Omnigraph 0.17.1** (HTTP contract 0.14), using the TypeScript SDK over HTTP and stdio
 with MCP hosts. Requires Node.js 22 or newer.
 
 ## Configure
@@ -10,7 +10,7 @@ with MCP hosts. Requires Node.js 22 or newer.
   "mcpServers": {
     "omnigraph": {
       "command": "npx",
-      "args": ["-y", "@modernrelay/omnigraph-mcp@0.16"],
+      "args": ["-y", "@modernrelay/omnigraph-mcp@0.17.1"],
       "env": {
         "OMNIGRAPH_BASE_URL": "http://127.0.0.1:8080",
         "OMNIGRAPH_GRAPH_ID": "alpha",
@@ -33,7 +33,7 @@ to `createOmnigraphMcpServer`, then connect an MCP transport.
 
 | Tools | Purpose |
 |---|---|
-| `health`, `graphs_list` | Liveness and authorized graph listing |
+| `health`, `graphs_list` | Liveness and full graph catalog (requires `graph_list`) |
 | `schema_get`, `snapshot` | Active schema and branch datasets/counts |
 | `query` | Parameterized GQ reads and exact `graphCommitId` |
 | `commits_list`, `commits_get`, `commits_changes` | Commit history, receipts, bounded entity changes |
@@ -45,6 +45,15 @@ to `createOmnigraphMcpServer`, then connect an MCP transport.
 Read-only tools carry `readOnlyHint`; mutating tools declare their side effects.
 Schema and deployment writes remain operator-owned: use
 `omnigraph cluster plan/apply --target NAME --config DIR` for live configuration changes.
+
+`graphs_list` and `omnigraph://graphs` use the server's catalog endpoint and
+require its `graph_list` permission. They do not expose the SDK's names-only
+`graphs.discover()` method or the native server MCP's separate `graphs` tool.
+On server 0.17.1, admitted identities can discover graph names without data
+access; discovery does not authorize reads or writes. `branches_list` returns
+the listed names, including branches that are not ready or are retiring;
+subsequent operations can refuse such a branch with `branch_not_ready` or
+`branch_deleted`. Detailed nullable branch metadata is available through the SDK.
 
 Resources expose `omnigraph://schema`, `omnigraph://branches`,
 `omnigraph://graphs`, and `omnigraph://best-practices/index`. The index links

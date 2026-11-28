@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import Omnigraph, {
   ApiContractError,
   ConflictError,
   NotFoundError,
+  type BranchDetail,
+  type Commit,
 } from '../src';
 import { stubFetch } from './helpers';
 
@@ -52,6 +54,29 @@ describe('branches resource', () => {
     const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
     await expect(og.branches.listDetailed()).rejects.toMatchObject({
       name: 'ApiContractError', outcomeUnknown: false,
+    });
+  });
+
+  it('listDetailed preserves absent/null heads and pending retirement in public types', async () => {
+    // These assignments and type assertions are checked by tsconfig.test.json,
+    // so a generated DTO cannot silently make an unreadable branch look ready.
+    const notReady: BranchDetail = { name: 'not-ready' };
+    const retiring: BranchDetail = {
+      name: 'retiring', head: null, updatedAt: null, retirementPending: true,
+    };
+    expectTypeOf<BranchDetail['head']>().toEqualTypeOf<Commit | null | undefined>();
+    expectTypeOf<BranchDetail['updatedAt']>().toEqualTypeOf<number | null | undefined>();
+    expectTypeOf<BranchDetail['retirementPending']>().toEqualTypeOf<boolean | undefined>();
+    const { fetch } = stubFetch({ body: {
+      branches: ['not-ready', 'retiring'],
+      details: [
+        { name: 'not-ready' },
+        { name: 'retiring', head: null, updated_at: null, retirement_pending: true },
+      ],
+    } });
+    const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
+    expect(await og.branches.listDetailed()).toEqual({
+      branches: ['not-ready', 'retiring'], details: [notReady, retiring],
     });
   });
 

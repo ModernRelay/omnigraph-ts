@@ -25,7 +25,7 @@ TypeScript packages for the [Omnigraph](https://github.com/ModernRelay/omnigraph
 
 The SDK targets the `omnigraph-server` version in **`package.json#omnigraph.serverVersion`**. By default, the source is the matching `vX.Y.Z` tag. Before a server release exists, **`omnigraph.serverRef`** may temporarily pin a full immutable commit SHA. The OpenAPI spec and live CI server use that source. MCP reference documents use the same pin unless an immutable `omnigraph.skillsRef` selects corrected documentation. Branch names and abbreviated SHAs are rejected.
 
-The **v0.16** line targets `omnigraph-server` **v0.16.0** and enforces its exact HTTP contract (`0.14`). Upgrade the CLI, server, and client integrations together; see [the SDK guide](packages/sdk/README.md). Development source pins remain supported, but block publishing through both the release workflow and each package's `prepublishOnly` hook.
+The **v0.17** line is generated from and tested against `omnigraph-server` **v0.17.1** and enforces its exact HTTP contract (`0.14`). Upgrade the CLI, server, and client integrations together; see [the SDK guide](packages/sdk/README.md). Development source pins remain supported, but block publishing through both the release workflow and each package's `prepublishOnly` hook.
 
 `scripts/gen-version.ts` stamps the target version as `SERVER_VERSION`. CI checks that the bundled spec matches the pinned source byte for byte and runs live e2e tests against it: a checksum-verified release binary for tags, or a source build for commit pins.
 
@@ -33,7 +33,7 @@ The **v0.16** line targets `omnigraph-server` **v0.16.0** and enforces its exact
 
 `@modernrelay/omnigraph` matches `omnigraph-server` on **major.minor**; the **patch** is independent. A published `@modernrelay/omnigraph@X.Y.*` is built against `omnigraph-server@X.Y.*` and is expected to work against any `>=X.Y.0, <X.(Y+1).0`. The exact server version the SDK was generated from is always available at runtime as `import { SERVER_VERSION } from '@modernrelay/omnigraph'`.
 
-The server release and the HTTP contract are separate numbers. Every request sends, and every response must carry, the `Omnigraph-Http-Api` value that the pinned `spec/openapi.json` requires; `scripts/gen-version.ts` reads it from the spec as `HTTP_API_CONTRACT`. A server release may keep an earlier contract (0.15 and 0.16 both speak `0.14`), so an SDK and a server on the same contract interoperate on the routes both know; a route or field added in a later release needs that release.
+The server release and the HTTP contract are separate numbers. Every request sends, and every response must carry, the `Omnigraph-Http-Api` value that the pinned `spec/openapi.json` requires; `scripts/gen-version.ts` reads it from the spec as `HTTP_API_CONTRACT`. Server releases 0.15, 0.16 and 0.17 retain contract `0.14`. A matching contract is required but does not guarantee identical features or authorization behavior: later routes and fields require the release that introduced them, and graph discovery changed between 0.17.0 and 0.17.1. The live compatibility gate exercises the exact pinned release.
 
 ## Workflow when omnigraph cuts a new release
 

@@ -5,7 +5,7 @@
 /**
  * The omnigraph-server release this build of the SDK was generated against.
  */
-export const SERVER_VERSION = "0.16.0";
+export const SERVER_VERSION = "0.17.1";
 /**
  * The HTTP contract every request sends and every response must carry. It is
  * the spec's header value, not the server's major.minor: a server release can

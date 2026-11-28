@@ -20,6 +20,9 @@ describe('runtime enum constants', () => {
     expect(ErrorCode.FORBIDDEN).toBe('forbidden');
     expect(ErrorCode.NOT_ADMITTED).toBe('not_admitted');
     expect(ErrorCode.WRITER_FENCED).toBe('writer_fenced');
+    expect(ErrorCode.BRANCH_EXISTS).toBe('branch_exists');
+    expect(ErrorCode.BRANCH_DELETED).toBe('branch_deleted');
+    expect(ErrorCode.BRANCH_NOT_READY).toBe('branch_not_ready');
     expect(ErrorCode.BAD_REQUEST).toBe('bad_request');
     expect(ErrorCode.NOT_FOUND).toBe('not_found');
     expect(ErrorCode.METHOD_NOT_ALLOWED).toBe('method_not_allowed');

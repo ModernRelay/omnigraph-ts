@@ -28,7 +28,7 @@ const INSTRUCTIONS = `Omnigraph is a versioned property graph. This MCP requires
 ALWAYS read \`omnigraph://schema\` (or call \`schema_get\`) FIRST, before queries, mutations, or loads. It defines the available types, properties, keys, directions, and vector dimensions.
 Consult the matching \`omnigraph://best-practices/\` resource: queries, data, schema, search, or changes. Operator/CLI examples in these resources are not MCP tools.
 
-1. Parameterize values and declare typed parameters. Every block uses \`query name($p: T) { ... }\`; send writes through \`mutate\`. GQ edges use lowerCamelCase. Search ordering operators \`nearest\`, \`bm25\`, and \`rrf\` require a trailing limit.
+1. Parameterize values and declare typed parameters. Every block uses \`query name($p: T) { ... }\`; send writes through \`mutate\`. GQ edges use lowerCamelCase. Search ordering operators \`nearest\` and \`rrf\` require a trailing limit; BM25 alone does not, but a limit keeps results bounded.
 2. A successful mutation, load, or publishing merge returns its exact \`commit\` receipt. A data mutation with \`commit: null\` is a successful no-op. Branch create/delete report their effects in \`outcome\` with no commit; an already-up-to-date merge publishes no commit. Branch statements name their own branches and must not carry a request branch.
 3. For read-modify-write, pass \`query.graphCommitId\` as \`mutate.ifGraphCommit\`. A 412 preconditionFailure means no effects: re-read and reconsider. Never fall back to an unconditional mutation.
 4. \`load mode: "merge"\` upserts keys; it is not request deduplication. \`"overwrite"\` replaces supplied types; \`"append"\` rejects key collisions. Large loads can use a branch → load → verify → merge workflow. Split oversized batches into separate commits.
@@ -223,7 +223,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     'branches_list',
     {
       title: 'List branches',
-      description: 'Return all user-visible branch names.',
+      description: 'Return listed branch names, including branches that are not ready or are retiring. Listing does not guarantee that a branch can be queried.',
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -235,7 +235,7 @@ export function createOmnigraphMcpServer(opts: CreateServerOptions): McpServer {
     {
       title: 'List registered graphs',
       description:
-        'Return every graph the cluster exposes, alphabetically by graphId. ' +
+        'Return the full registered graph catalog, alphabetically by graphId, not names-only discovery. ' +
         'The `/graphs` management surface is closed by default — the cluster ' +
         'must grant the `graph_list` action (a `cluster`-scoped policy bundle) ' +
         'or this returns 403 (ForbiddenError).',

@@ -68,14 +68,20 @@ export type BlobWrite = Camelize<
 export type BranchCreate = Camelize<BranchCreateOutput>;
 export type BranchDelete = Camelize<BranchDeleteOutput>;
 export type BranchList = Camelize<BranchListOutput>;
-/** One live branch with its head, where it started, and when it was created and last moved. */
+/**
+ * A listed branch, including an unfinished create or pending retirement.
+ * `head`, `fromCommitId` and `updatedAt` can be absent/null when there is no
+ * readable tree. `retirementPending` marks a tombstone whose retirement can
+ * be completed by deleting the branch; it does not imply the branch is readable.
+ */
 export type BranchDetail = Camelize<
   import('./generated/types.gen').BranchDetailOutput
 >;
 /**
- * `GET /branches?detailed=true`: every live branch name, and details for each
- * branch the caller may read, in the order of `branches`. A branch the caller
- * may not read is listed in `branches` alone.
+ * `GET /branches?detailed=true`: every registered branch name, including
+ * not-ready and retiring branches, and details for each branch the caller may
+ * read, in the order of `branches`. A branch the caller may not read is listed
+ * in `branches` alone. A permitted branch can still have no readable head.
  */
 export interface BranchListDetailed {
   branches: string[];
