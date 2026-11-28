@@ -5,6 +5,27 @@ share one version, whose major.minor is the `omnigraph-server` release they are
 generated from and tested against. Earlier releases are described in their
 GitHub release notes.
 
+## 0.17.1
+
+Targets omnigraph-server 0.17.1. The HTTP contract remains `0.14`.
+
+### Changed
+
+- Regenerated the OpenAPI types and version stamps from the stable 0.17.1
+  release. Branch details now represent absent or null `head` and `updatedAt`
+  values and expose `retirementPending`; listings may include branches that
+  are not ready or are retiring.
+- Added the `branch_exists`, `branch_deleted` and `branch_not_ready` error
+  codes. These remain `ConflictError` responses, with the server's valid
+  disposition determining effect certainty.
+- Documented the 0.17.1 graph-discovery behavior: admitted identities can see
+  registered graph names without data access. `graphs.list()` and MCP
+  `graphs_list` still use the full catalog and require `graph_list`.
+- Refreshed MCP cookbook content from the released server. Corrected guidance
+  for nullable-to-required schema promotion and BM25 ranking without a limit;
+  `nearest` and `rrf` still require a limit. The exposed resource topics and
+  MCP tool routes are unchanged.
+
 ## 0.16.0
 
 Targets omnigraph-server 0.16.0. The HTTP contract is still `0.14`.

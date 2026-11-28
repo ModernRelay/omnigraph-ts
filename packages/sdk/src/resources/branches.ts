@@ -51,7 +51,9 @@ export class BranchesResource {
   }
 
   /**
-   * List all branches. Read-only.
+   * List every branch the graph holds, including unfinished creates and
+   * pending retirements. A listed name does not guarantee a readable branch.
+   * Read-only.
    */
   async list(opts: CallOptions = {}): Promise<string[]> {
     const r = await this.t.request<BranchList>('GET', '/branches', {
@@ -67,6 +69,11 @@ export class BranchesResource {
    * (`GET /branches?detailed=true`, omnigraph-server 0.15+). Read-only. Each
    * listed branch costs the server a read of its latest version; no commit
    * history is read. Times are Unix epoch microseconds.
+   *
+   * In 0.17+, an unfinished create or pending retirement can have no `head`,
+   * `fromCommitId` or `updatedAt` (absent/null). `retirementPending` marks a
+   * branch whose reads refuse with `branch_deleted`; delete it to finish
+   * retirement. Never substitute another branch's head for a missing one.
    */
   async listDetailed(opts: CallOptions = {}): Promise<BranchListDetailed> {
     const r = await this.t.request<BranchList>('GET', '/branches', {
@@ -86,8 +93,10 @@ export class BranchesResource {
   /**
    * Create a new branch. Forks `name` off `from` (defaults to `main`).
    *
-   * Throws `ConflictError` if `name` already exists. After an uncertain
-   * outcome, inspect the branch before deciding whether to retry.
+   * Throws `ConflictError` with `branch_exists` if a live branch has this
+   * name or one above/below it in the `/` hierarchy. A deleted source can
+   * refuse with `branch_deleted`. Inspect the server's disposition; after an
+   * uncertain outcome, inspect the branch before deciding whether to retry.
    */
   create(
     input: BranchCreateInput,
@@ -150,7 +159,9 @@ export class BranchesResource {
   }
 
   /**
-   * Delete a branch by name. A missing branch returns NotFoundError (404).
+   * Delete a branch by name, completing a pending retirement if needed.
+   * A missing branch returns NotFoundError (404); a conflicting branch state
+   * returns ConflictError (409). The server's disposition describes effects.
    */
   delete(name: string, opts: CallOptions = {}): Promise<BranchDelete> {
     return this.t.request<BranchDelete>(

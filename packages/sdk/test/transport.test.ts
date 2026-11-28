@@ -573,6 +573,11 @@ it.each([
   [403, 'not_admitted', 'none', 'fix', false],
   [409, 'writer_fenced', 'none', 'refresh', false],
   [409, 'writer_fenced', 'partial', 'refresh', true],
+  [409, 'branch_exists', 'none', 'refresh', false],
+  [409, 'branch_deleted', 'none', 'refresh', false],
+  [409, 'branch_not_ready', 'none', 'refresh', false],
+  [409, 'branch_deleted', 'partial', 'refresh', true],
+  [409, 'branch_not_ready', 'unknown', 'reconcile', true],
 ] as const)('preserves error disposition for %s %s without inventing retries', async (status, code, effects, action, unknown) => {
   const { fetch, calls } = stubFetch({ status, body: { error: 'refused', code, disposition: { effects, action } } });
   const og = new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch });
@@ -589,6 +594,10 @@ it.each([
   { error: 'conflict', code: 'conflict', disposition: { effects: 'none', action: 'unexpected' } },
   { error: 'conflict', code: 'conflict', disposition: { effects: 'unexpected', action: 'fix' } },
   { error: 'conflict', code: 'new_code', disposition: { effects: 'none', action: 'fix' } },
+  { error: 'branch exists', code: 'branch_exists' },
+  { error: 'branch deleted', code: 'branch_deleted', disposition: { effects: 'none' } },
+  { error: 'branch not ready', code: 'branch_not_ready', disposition: { effects: 'none', action: 'unexpected' } },
+  { error: 'branch not ready', code: 'branch_not_ready', disposition: { effects: 'unexpected', action: 'refresh' } },
 ])('refuses to infer write certainty from an incomplete or unknown 0.14 error body', async (body) => {
   const { fetch, calls } = stubFetch({ status: 409, body });
   await expect(new Omnigraph({ baseUrl: 'http://x', graphId: 'g', fetch }).commits.drop('c'))

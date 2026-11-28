@@ -1,6 +1,6 @@
 # @modernrelay/omnigraph
 
-TypeScript client for **Omnigraph 0.16** (HTTP contract 0.14), with typed errors, exact write receipts,
+TypeScript client generated from and tested against **Omnigraph 0.17.1** (HTTP contract 0.14), with typed errors, exact write receipts,
 streaming exports, and cluster deployment APIs. Requires Node.js 22 or newer.
 
 ```sh
@@ -104,9 +104,13 @@ for await (const record of og.export({ branch: 'main', typeNames: ['Person'] }))
 }
 ```
 
-`og.branches.listDetailed()` returns `{ branches, details }`: for each branch
-you may read, its `head` commit, the branch and commit it started `from`, and
-`createdAt`/`updatedAt` (Unix epoch microseconds). A read ordered by `nearest`,
+`og.branches.listDetailed()` returns `{ branches, details }`: branch identity,
+its `head` commit when available, the branch and commit it started `from`, and
+`createdAt`/`updatedAt` (Unix epoch microseconds). In 0.17.1, listings can include
+branches that are not ready or are retiring. `head` and `updatedAt` may be absent
+or null; `retirementPending` signals retirement in progress. Do not assume that
+a listed branch can already be queried or that every detail has a commit.
+A read ordered by `nearest`,
 `bm25` or `rrf()` reports `ranking`: the search, its score `order`, whether it
 was `exhaustive`, and the `scoreColumns` holding the score. Pass a `bigint`
 parameter for an integer beyond `Number.MAX_SAFE_INTEGER`, such as a `U64` above
@@ -259,13 +263,22 @@ Use readiness, not liveness, for traffic admission.
 ## Authorization and upgrades
 
 Credentials resolve actors at the server. Permissions come from the cluster's
-Cedar policy. Graph listing requires `graph_list`; cluster deployment operations
-require `config_manage`. A token does not imply write permission.
+Cedar policy. `og.graphs.list()` returns the full catalog and requires
+`graph_list`; cluster deployment operations require `config_manage`. A token
+does not imply write permission.
+
+`og.graphs.discover()` requests names and IDs without storage or runtime
+metadata. On 0.17.1, an admitted identity can discover every registered graph
+even without access to its data. Discovery does not grant read or write access,
+and it is not a replacement for the catalog permission required by static-token
+listing. This differs from 0.17.0, which limited discovery to granted graphs;
+use the server's access checks, not discovery membership, to decide what an
+actor may do.
 
 Schema changes use cluster deployments; `schema.apply()` and the old HTTP
 compatibility routes are unavailable.
 Existing data migration depends on its storage format; follow the authoritative
-[upgrade guide](https://github.com/ModernRelay/omnigraph/blob/9d92f3970311d5229f55b1a1fc06b2d3fba30a55/docs/user/operations/upgrade.md).
+[upgrade guide](https://github.com/ModernRelay/omnigraph/blob/v0.17.1/docs/user/operations/upgrade.md).
 The SDK does not convert stored graphs or legacy credentials.
 
 `SERVER_VERSION` identifies the pinned server release and `HTTP_API_CONTRACT`
@@ -273,10 +286,20 @@ the header contract its spec requires; the two are separate numbers. Package
 major/minor tracks the server release; patch releases are independent. Each client has
 isolated configuration and supports a custom `fetch` for testing or tracing.
 
+## Upgrading from 0.16
+
+The HTTP contract remains `0.14`; the generated types and live test target are
+now 0.17.1. Handle absent or null branch `head` and `updatedAt` values and inspect
+`retirementPending` before using branch details. The new `branch_exists`,
+`branch_deleted`, and `branch_not_ready` codes are `ConflictError` responses;
+inspect their disposition before deciding whether a request may have had effects.
+Graph discovery follows the 0.17.1 identity rules described above. Upgrade the
+CLI and server together and consult the tagged upgrade guide for stored graphs.
+
 ## Upgrading from 0.14
 
-The wire contract is unchanged (`Omnigraph-Http-Api: 0.14`), so this release
-reads and writes a 0.14 server's routes; `listDetailed()` and `ranking` need
+The wire contract is unchanged (`Omnigraph-Http-Api: 0.14`), but available routes,
+fields and authorization behavior depend on the server release. `listDetailed()` and `ranking` need
 omnigraph-server 0.15, and `operations` and `writer_fenced` need 0.16. New in
 0.16: `og.operations`, `newOperationId`, `WriterFencedError`, the `maintain`
 access action, and dry-run merges classified as reads. New in 0.15: `branches.listDetailed()`, `Read.ranking` with the
@@ -286,9 +309,9 @@ See [CHANGELOG.md](../../CHANGELOG.md).
 
 ## Upgrading from 0.13
 
-Upgrade server and client together. This candidate is pinned to the final 0.14
-HTTP contract at `9d92f397`; npm publication remains blocked until the server's
-stable tag exists and the temporary `serverRef` is removed.
+Upgrade server and client together. The 0.13 clients and servers speak a
+different HTTP contract; this release requires `0.14` and is tested against
+the stable 0.17.1 server.
 
 - `commits.list()` now returns `{ commits, headCommitId?, nextPageToken? }`,
   preserving the server's page metadata. Use `listing: 'history'` (default),

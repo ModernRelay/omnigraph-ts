@@ -191,7 +191,10 @@ export type BranchDeleteOutput = {
  * `from_commit_id` say where the branch started, as its `POST /branches`
  * receipt did. A branch deleted and created again under the same name is a
  * new lifetime: its start and creation time are the later creation's. The
- * optional fields are absent on `main`.
+ * optional fields are absent on `main`; `head`, `from_commit_id` and
+ * `updated_at` are absent on a branch that is not ready (a create that
+ * registered the branch and wrote no tree) and on one whose retirement is
+ * pending.
  */
 export type BranchDetailOutput = {
   /**
@@ -209,22 +212,27 @@ export type BranchDetailOutput = {
    * `GET /branches/merge-base` answers where two branches last met.
    */
   from_commit_id?: string | null;
-  /**
-   * The commit a read of the branch sees: its newest commit, or the commit
-   * it started at while it has written none.
-   */
-  head: CommitOutput;
+  head?: null | CommitOutput;
   name: string;
+  /**
+   * `true` when the branch's tree carries a tombstone: a delete crashed
+   * before it retired the branch, or finished after this listing read the
+   * branch set. Reads of the branch refuse with `branch_deleted`; the next
+   * `DELETE /branches/{branch_name}` finishes the retirement.
+   */
+  retirement_pending?: boolean;
   /**
    * When the head last moved, as Unix epoch microseconds: the time of the
    * branch's newest commit, or `created_at` while it has written none.
+   * Absent with `head`.
    */
-  updated_at: number;
+  updated_at?: number | null;
 };
 
 export type BranchListOutput = {
   /**
-   * Every live branch, sorted by name in byte order.
+   * Every branch the graph holds, sorted by name in byte order, a branch
+   * that is not ready or whose retirement is pending included.
    */
   branches: Array<string>;
   /**
@@ -846,6 +854,9 @@ export type EntityKind = (typeof EntityKind)[keyof typeof EntityKind];
  * - `branch_start_refusal` (409, 410): `branch create` could not start the branch at the commit `from_commit` named, and nothing was created; see `branch_start_refusal`, whose `not_retained` reason answers 410.
  * - `unattached_cannot_publish` (409): The commit is an unattached snapshot, a kind that never publishes. Distinct from `conflict`, the authority-moved refusal of a publishable proposal.
  * - `writer_fenced` (409): The branch's writer epoch refused the write: another process claimed the branch, or the serving process holds no claim on it; see `writer_fenced`. Nothing was written.
+ * - `branch_exists` (409): `branch create` names a branch that exists: a live branch has the name, or one above or below it in the `/` hierarchy. Nothing was created.
+ * - `branch_deleted` (409): The branch was deleted: a read or write of a branch whose delete has begun, or a `branch create` whose source was deleted under it. Nothing was written.
+ * - `branch_not_ready` (409): The branch is not ready: its create wrote the branch and no tree, so reads and writes refuse until `branch delete` removes it and a new `branch create` starts it again. Nothing was written.
  * - `payload_too_large` (413): The request body, or the work it asks for, exceeds a bounded limit; `resource_limit` names the limit when it is the operation's. Split or reduce the request.
  * - `unsupported_media_type` (415): The request body's content type is not one the route accepts.
  * - `range_not_satisfiable` (416): The requested Blob byte range lies outside the value; see `blob_range`.
@@ -876,6 +887,9 @@ export const ErrorCode = {
   BRANCH_START_REFUSAL: "branch_start_refusal",
   UNATTACHED_CANNOT_PUBLISH: "unattached_cannot_publish",
   WRITER_FENCED: "writer_fenced",
+  BRANCH_EXISTS: "branch_exists",
+  BRANCH_DELETED: "branch_deleted",
+  BRANCH_NOT_READY: "branch_not_ready",
   PAYLOAD_TOO_LARGE: "payload_too_large",
   UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
   RANGE_NOT_SATISFIABLE: "range_not_satisfiable",
@@ -909,6 +923,9 @@ export const ErrorCode = {
  * - `branch_start_refusal` (409, 410): `branch create` could not start the branch at the commit `from_commit` named, and nothing was created; see `branch_start_refusal`, whose `not_retained` reason answers 410.
  * - `unattached_cannot_publish` (409): The commit is an unattached snapshot, a kind that never publishes. Distinct from `conflict`, the authority-moved refusal of a publishable proposal.
  * - `writer_fenced` (409): The branch's writer epoch refused the write: another process claimed the branch, or the serving process holds no claim on it; see `writer_fenced`. Nothing was written.
+ * - `branch_exists` (409): `branch create` names a branch that exists: a live branch has the name, or one above or below it in the `/` hierarchy. Nothing was created.
+ * - `branch_deleted` (409): The branch was deleted: a read or write of a branch whose delete has begun, or a `branch create` whose source was deleted under it. Nothing was written.
+ * - `branch_not_ready` (409): The branch is not ready: its create wrote the branch and no tree, so reads and writes refuse until `branch delete` removes it and a new `branch create` starts it again. Nothing was written.
  * - `payload_too_large` (413): The request body, or the work it asks for, exceeds a bounded limit; `resource_limit` names the limit when it is the operation's. Split or reduce the request.
  * - `unsupported_media_type` (415): The request body's content type is not one the route accepts.
  * - `range_not_satisfiable` (416): The requested Blob byte range lies outside the value; see `blob_range`.
@@ -2504,7 +2521,7 @@ export type BlobClearErrors = {
    */
   405: ErrorOutput;
   /**
-   * Write-authority conflict, or the branch's incarnation or accepted schema changed while the write retried
+   * Write-authority conflict, the branch's incarnation or accepted schema changed while the write retried, or the branch was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -2850,7 +2867,7 @@ export type BlobPutErrors = {
    */
   408: ErrorOutput;
   /**
-   * Write-authority conflict, or the branch's incarnation or accepted schema changed while the write retried
+   * Write-authority conflict, the branch's incarnation or accepted schema changed while the write retried, or the branch was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -3023,7 +3040,7 @@ export type BranchCreateErrors = {
    */
   408: ErrorOutput;
   /**
-   * Branch already exists, or the commit `from_commit` names cannot start a branch; see branch_start_refusal
+   * The branch exists (`branch_exists`), its source was deleted under the create or the commit it starts at is on a deleted branch (`branch_deleted`), another process holds `main` (`writer_fenced`), or the commit `from_commit` names cannot start a branch; see branch_start_refusal
    */
   409: ErrorOutput;
   /**
@@ -3226,7 +3243,7 @@ export type BranchMergeErrors = {
    */
   408: ErrorOutput;
   /**
-   * Merge conflict
+   * Merge conflict, or a branch that was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -3397,6 +3414,10 @@ export type BranchDeleteErrors = {
    * method_not_allowed when the path is served, but not with this method
    */
   405: ErrorOutput;
+  /**
+   * Another process holds `main` (`writer_fenced`); nothing was written
+   */
+  409: ErrorOutput;
   /**
    * actor_mismatch when Omnigraph-If-Actor names another actor than the credential resolves to
    */
@@ -4522,7 +4543,7 @@ export type MutateErrors = {
    */
   408: ErrorOutput;
   /**
-   * Write-authority conflict; also `branch create` of a branch that already exists, and a conflicting `branch merge`, whose body carries `merge_conflicts`
+   * Write-authority conflict; also `branch create` of a branch that exists (`branch_exists`), a conflicting `branch merge`, whose body carries `merge_conflicts`, and a branch that was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -4614,7 +4635,7 @@ export type MutateIfGraphCommitErrors = {
    */
   408: ErrorOutput;
   /**
-   * Write-authority conflict
+   * Write-authority conflict, or the branch was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -5028,7 +5049,7 @@ export type QueryInvokeErrors = {
    */
   408: ErrorOutput;
   /**
-   * Stored mutation write-authority conflict, or a full-text index requires explicit rebuilding (full_text_index_rebuild_required) or has no segment at the snapshot (full_text_index_required); neither is cleared by retrying
+   * Stored mutation write-authority conflict, or a full-text index requires explicit rebuilding (full_text_index_rebuild_required) or has no segment at the snapshot (full_text_index_required), neither cleared by retrying; or the branch was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -5125,7 +5146,7 @@ export type QueryInvokeIfGraphCommitErrors = {
    */
   408: ErrorOutput;
   /**
-   * Stored mutation write-authority conflict
+   * Stored mutation write-authority conflict, or the branch was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
@@ -5215,7 +5236,7 @@ export type QueryErrors = {
    */
   408: ErrorOutput;
   /**
-   * A full-text index requires explicit rebuilding (full_text_index_rebuild_required) or has no segment at the snapshot (full_text_index_required); neither is cleared by retrying
+   * A full-text index requires explicit rebuilding (full_text_index_rebuild_required) or has no segment at the snapshot (full_text_index_required), neither cleared by retrying; or the branch was deleted (`branch_deleted`) or is not ready (`branch_not_ready`)
    */
   409: ErrorOutput;
   /**
