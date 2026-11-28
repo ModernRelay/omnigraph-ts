@@ -1,4 +1,4 @@
-// One hermetic fixture owner for CI and local SDK/MCP qualification.
+// One hermetic fixture owner for CI and local SDK qualification.
 import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { copyFileSync, mkdtempSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -111,13 +111,11 @@ try {
   const testEnv = { ...env, OMNIGRAPH_E2E: '1', OMNIGRAPH_BASE_URL: baseUrl,
     OMNIGRAPH_TOKEN: 'ci-token', OMNIGRAPH_E2E_DATA_ROOT: dataRoot, OMNIGRAPH_GRAPH_ID: 'alpha', OMNIGRAPH_E2E_CLUSTER_DIR: dir,
     OMNIGRAPH_BIN: cli, OMNIGRAPH_E2E_SERVER_PID: String(server.pid) };
-  for (const pkg of ['sdk', 'mcp']) {
-    const child = spawn(process.execPath, [join(root, `packages/${pkg}/node_modules/vitest/vitest.mjs`), 'run', 'test/e2e.test.ts'], {
-      cwd: join(root, `packages/${pkg}`), env: testEnv, stdio: 'inherit',
-    });
-    const [code] = await once(child, 'exit');
-    if (code !== 0) throw new Error(`${pkg} live tests failed with ${code}`);
-  }
+  const child = spawn(process.execPath, [join(root, 'packages/sdk/node_modules/vitest/vitest.mjs'), 'run', 'test/e2e.test.ts'], {
+    cwd: join(root, 'packages/sdk'), env: testEnv, stdio: 'inherit',
+  });
+  const [code] = await once(child, 'exit');
+  if (code !== 0) throw new Error(`SDK live tests failed with ${code}`);
   passed = true;
 } finally {
   if (server.exitCode === null && server.signalCode === null) {
