@@ -1,25 +1,12 @@
 name: release
 
-# Publishes both workspace packages when a `v*` tag is pushed. The dist-tag
+# Publishes the SDK when a `v*` tag is pushed. The dist-tag
 # is derived from the tag name: pre-releases (`v1.2.3-alpha.1`, `-beta.x`,
 # `-rc.x`) ship under `next`; everything else under `latest`.
 #
-# Setup the first time:
-#   1. `gh secret set NPM_TOKEN` with an "Automation" token from npmjs.com
-#      (Automation tokens bypass 2FA in CI; granular tokens scoped to the
-#      `@modernrelay` packages are fine if your account has Automation
-#      disabled).
-#   2. Repo Settings → Environments → create `release` → require manual
-#      approval. Without this gate, any push of a `v*` tag publishes.
-#
-# To cut a release (note: the tag MUST be annotated so `git push --follow-tags`
-# actually pushes it — lightweight tags are skipped by --follow-tags):
-#   pnpm --filter @modernrelay/omnigraph version 0.4.0-alpha.1
-#   pnpm --filter @modernrelay/omnigraph-mcp version 0.4.0-alpha.1
-#   git commit -am "Release 0.4.0-alpha.1"
-#   git tag -a v0.4.0-alpha.1 -m "Release 0.4.0-alpha.1"
-#   git push --follow-tags
-#   # then approve the `release` environment in the Actions UI.
+# Use the release environment and its configured npm publishing credentials.
+# After the SDK passes CI against the pinned server, push an annotated tag
+# matching packages/sdk/package.json to start a release.
 
 on:
   push:
@@ -53,17 +40,15 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test
 
-      - name: Verify tag matches package versions
+      - name: Verify tag matches the SDK version
         run: |
           set -euo pipefail
           tag_version="${GITHUB_REF_NAME#v}"
-          for pkg in packages/sdk packages/mcp; do
-            pkg_version=$(node -p "require('./${pkg}/package.json').version")
-            if [ "$tag_version" != "$pkg_version" ]; then
-              echo "Tag ${GITHUB_REF_NAME} does not match ${pkg}/package.json version (${pkg_version})"
-              exit 1
-            fi
-          done
+          pkg_version=$(node -p "require('./packages/sdk/package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match the SDK version (${pkg_version})"
+            exit 1
+          fi
 
       - name: Derive npm dist-tag
         id: tag
@@ -89,27 +74,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # SDK first — MCP's workspace:* dependency resolves to the just-published
-      # version once pnpm rewrites the manifest at publish time.
-      #
-      # Each step skips if `pkg@ver` is already on npm. Lets us re-run a tag
-      # after a partial-failure (e.g. SDK published, MCP rejected on a manifest
-      # issue) without npm rejecting the SDK with EPUBLISHCONFLICT.
+      # Allow a retry if the SDK is published but GitHub Release creation fails.
       - name: Publish @modernrelay/omnigraph
         working-directory: packages/sdk
-        run: |
-          set -euo pipefail
-          pkg=$(node -p "require('./package.json').name")
-          ver=$(node -p "require('./package.json').version")
-          existing=$(npm view "${pkg}@${ver}" version 2>/dev/null || true)
-          if [ -n "$existing" ]; then
-            echo "${pkg}@${ver} already on npm — skipping"
-          else
-            pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.tag.outputs.dist }}
-          fi
-
-      - name: Publish @modernrelay/omnigraph-mcp
-        working-directory: packages/mcp
         run: |
           set -euo pipefail
           pkg=$(node -p "require('./package.json').name")

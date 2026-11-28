@@ -85,7 +85,7 @@ jobs:
           echo "$PWD/target/debug" >> "$GITHUB_PATH"
 
       - run: pnpm run build
-      - name: Qualify SDK and MCP against the pinned server
+      - name: Qualify SDK against the pinned server
         run: pnpm run test:e2e
 
       - name: Upload server logs on failure

@@ -16,7 +16,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Verify package versions match pinned server
+      - name: Verify SDK version matches pinned server
         run: pnpm run check-versions
       - name: Verify spec matches upstream pinned source
         run: pnpm run check-drift
@@ -32,18 +32,12 @@ jobs:
             echo "packages/sdk/src/version.gen.ts is stale (run 'pnpm run gen-version')"
             stale=1
           fi
-          if ! git diff --quiet packages/mcp/src/version.gen.ts; then
-            echo "packages/mcp/src/version.gen.ts is stale (run 'pnpm run gen-version')"
-            stale=1
-          fi
           if [ "$stale" -ne 0 ]; then
-            git diff packages/sdk/src/generated packages/sdk/src/version.gen.ts packages/mcp/src/version.gen.ts
+            git diff packages/sdk/src/generated packages/sdk/src/version.gen.ts
             exit 1
           fi
       - name: Verify every operation has a facade binding
         run: pnpm run check-coverage
-      # Build first so downstream packages (mcp) can resolve @modernrelay/omnigraph
-      # types from the SDK's dist/ when typechecking.
       - run: pnpm run build
       - run: pnpm run typecheck
       - run: pnpm run test

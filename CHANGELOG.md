@@ -1,9 +1,23 @@
 # Changelog
 
-Both packages, `@modernrelay/omnigraph` and `@modernrelay/omnigraph-mcp`,
-share one version, whose major.minor is the `omnigraph-server` release they are
-generated from and tested against. Earlier releases are described in their
-GitHub release notes.
+`@modernrelay/omnigraph` follows the major.minor of the `omnigraph-server`
+release it is generated from and tested against. Through 0.17.1, the SDK and
+`@modernrelay/omnigraph-mcp` shared one version. Earlier releases are described
+in their GitHub release notes.
+
+## Unreleased
+
+### Removed
+
+- Retired the TypeScript MCP wrapper and its workspace, build, test and release
+  tooling. Future releases publish only `@modernrelay/omnigraph`; the SDK API
+  is unchanged by this retirement.
+- `@modernrelay/omnigraph-mcp@0.17.1` is the final MCP package release and remains
+  installable. Use the native server's `/mcp` endpoint or `omnigraph mcp` for
+  stdio hosts. The [migration guide](docs/migrating-from-omnigraph-mcp.md)
+  covers authentication, tool schemas, resources, results and JavaScript
+  factory callers. Historical package source remains at the
+  [v0.17.1 tag](https://github.com/ModernRelay/omnigraph-ts/tree/v0.17.1/packages/mcp).
 
 ## 0.17.1
 

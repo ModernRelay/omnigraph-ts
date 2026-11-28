@@ -19,17 +19,14 @@ function readPackage(path: string): PackageJson {
 
 const rootPackagePath = join(ROOT, 'package.json');
 const sdkPackagePath = join(ROOT, 'packages/sdk/package.json');
-const mcpPackagePath = join(ROOT, 'packages/mcp/package.json');
 
 const root = readPackage(rootPackagePath);
 const sdk = readPackage(sdkPackagePath);
-const mcp = readPackage(mcpPackagePath);
 
 const serverVersion = root.omnigraph?.serverVersion;
 const versions = [
   ['root omnigraph.serverVersion', serverVersion],
   ['packages/sdk package version', sdk.version],
-  ['packages/mcp package version', mcp.version],
 ] as const;
 
 const missing = versions.filter(([, version]) => !version);
@@ -40,9 +37,9 @@ if (missing.length > 0) {
 
 const unique = new Set(versions.map(([, version]) => version));
 if (unique.size !== 1) {
-  console.error('Version mismatch: SDK/MCP package versions must match root omnigraph.serverVersion.');
+  console.error('Version mismatch: SDK package version must match root omnigraph.serverVersion.');
   for (const [label, version] of versions) console.error(`  - ${label}: ${version}`);
   process.exit(1);
 }
 
-console.log(`Version check passed: all packages target omnigraph-server v${serverVersion} (${pin.ref})`);
+console.log(`Version check passed: SDK targets omnigraph-server v${serverVersion} (${pin.ref})`);
